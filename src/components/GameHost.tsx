@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Updated with game name and max tickets
+// src/components/GameHost.tsx - Updated with phone field, game management, and settings persistence
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   Play, 
   Pause, 
@@ -20,7 +21,11 @@ import {
   AlertCircle,
   Trophy,
   Ticket,
-  Lock
+  Lock,
+  Edit,
+  Trash2,
+  Settings,
+  Phone
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -50,9 +55,16 @@ interface GamePrize {
 }
 
 interface CreateGameForm {
-  gameName: string;
+  hostPhone: string;
   maxTickets: number;
   selectedTicketSet: string;
+  selectedPrizes: string[];
+}
+
+interface EditGameForm {
+  gameId: string;
+  hostPhone: string;
+  maxTickets: number;
   selectedPrizes: string[];
 }
 
@@ -131,13 +143,25 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [activeTab, setActiveTab] = useState('create-game');
   const [currentGame, setCurrentGame] = useState<GameData | null>(null);
+  const [allGames, setAllGames] = useState<GameData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [selectedGameForEdit, setSelectedGameForEdit] = useState<GameData | null>(null);
+  
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
-    gameName: '',
+    hostPhone: '',
     maxTickets: 100,
-    selectedTicketSet: '1', // Default to ticket set 1
+    selectedTicketSet: '1',
     selectedPrizes: []
   });
+
+  const [editGameForm, setEditGameForm] = useState<EditGameForm>({
+    gameId: '',
+    hostPhone: '',
+    maxTickets: 100,
+    selectedPrizes: []
+  });
+
   const { toast } = useToast();
 
   // Game control states
@@ -149,60 +173,45 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   // Check subscription status
   const isSubscriptionValid = useCallback(() => {
-    console.log('🔍 Checking subscription validity for user:', user.email);
-    console.log('🔍 User isActive:', user.isActive);
-    console.log('🔍 User subscriptionEndDate:', user.subscriptionEndDate);
-    
-    if (!user.isActive) {
-      console.log('❌ User is not active');
-      return false;
-    }
-    
-    if (!user.subscriptionEndDate) {
-      console.log('❌ No subscription end date');
-      return false;
-    }
+    if (!user.isActive) return false;
+    if (!user.subscriptionEndDate) return false;
     
     const subscriptionEnd = new Date(user.subscriptionEndDate);
     const now = new Date();
     
-    console.log('🔍 Subscription end date:', subscriptionEnd);
-    console.log('🔍 Current date:', now);
-    console.log('🔍 Is subscription valid?', subscriptionEnd > now);
-    
     return subscriptionEnd > now && user.isActive;
-  }, [user.isActive, user.subscriptionEndDate, user.email]);
+  }, [user.isActive, user.subscriptionEndDate]);
 
   const getSubscriptionStatus = useCallback(() => {
-    console.log('🔍 Getting subscription status for user:', user.email);
-    
     if (!user.isActive) {
-      console.log('❌ User is inactive');
       return { status: 'inactive', message: 'Account is deactivated', variant: 'destructive' as const };
     }
     
     if (!user.subscriptionEndDate) {
-      console.log('❌ No subscription end date');
       return { status: 'no-subscription', message: 'No subscription date', variant: 'destructive' as const };
     }
     
     const subscriptionEnd = new Date(user.subscriptionEndDate);
     const now = new Date();
     
-    // Check if date is valid
     if (isNaN(subscriptionEnd.getTime())) {
-      console.log('❌ Invalid subscription date:', user.subscriptionEndDate);
       return { status: 'invalid-date', message: 'Invalid subscription date', variant: 'destructive' as const };
     }
     
     const daysLeft = Math.ceil((subscriptionEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
-    console.log('🔍 Days left:', daysLeft);
-    
     if (daysLeft < 0) return { status: 'expired', message: 'Subscription expired', variant: 'destructive' as const };
     if (daysLeft <= 7) return { status: 'expiring', message: `Expires in ${daysLeft} days`, variant: 'secondary' as const };
     return { status: 'active', message: `Active (${daysLeft} days left)`, variant: 'default' as const };
-  }, [user.isActive, user.subscriptionEndDate, user.email]);
+  }, [user.isActive, user.subscriptionEndDate]);
+
+  // Load host games and settings
+  useEffect(() => {
+    if (isSubscriptionValid()) {
+      loadHostGames();
+      loadPreviousSettings();
+    }
+  }, [user.uid]);
 
   // Cleanup intervals and subscriptions on unmount
   useEffect(() => {
@@ -216,12 +225,47 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     };
   }, [gameInterval, gameUnsubscribe]);
 
-  const loadTicketSetData = async (setId: string) => {
+  const loadHostGames = async () => {
     try {
-      return await firebaseService.loadTicketSet(setId);
+      const games = await firebaseService.getHostGames(user.uid);
+      setAllGames(games);
+    } catch (error: any) {
+      console.error('Error loading host games:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load your games",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const loadPreviousSettings = async () => {
+    try {
+      const settings = await firebaseService.getHostSettings(user.uid);
+      if (settings) {
+        setCreateGameForm(prev => ({
+          ...prev,
+          hostPhone: settings.hostPhone || prev.hostPhone,
+          maxTickets: settings.maxTickets || prev.maxTickets,
+          selectedTicketSet: settings.selectedTicketSet || prev.selectedTicketSet,
+          selectedPrizes: settings.selectedPrizes || prev.selectedPrizes
+        }));
+      }
     } catch (error) {
-      console.error('Error loading ticket set:', error);
-      throw new Error('Failed to load ticket set data');
+      console.error('Error loading previous settings:', error);
+    }
+  };
+
+  const savePreviousSettings = async () => {
+    try {
+      await firebaseService.saveHostSettings(user.uid, {
+        hostPhone: createGameForm.hostPhone,
+        maxTickets: createGameForm.maxTickets,
+        selectedTicketSet: createGameForm.selectedTicketSet,
+        selectedPrizes: createGameForm.selectedPrizes
+      });
+    } catch (error) {
+      console.error('Error saving settings:', error);
     }
   };
 
@@ -235,10 +279,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return;
     }
 
-    if (!createGameForm.gameName.trim()) {
+    if (!createGameForm.hostPhone.trim()) {
       toast({
         title: "Validation Error",
-        description: "Please enter a game name",
+        description: "Please enter your WhatsApp phone number",
         variant: "destructive",
       });
       return;
@@ -273,33 +317,32 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsLoading(true);
     try {
-      // Load ticket data for selected set
-      const ticketSetData = await loadTicketSetData(createGameForm.selectedTicketSet);
+      // Generate game name based on timestamp
+      const gameName = `Game ${new Date().toLocaleString()}`;
       
-      // Create the game using the form values
+      // Create the game
       const gameData = await firebaseService.createGame(
         {
-          name: createGameForm.gameName,
+          name: gameName,
           maxTickets: createGameForm.maxTickets,
-          ticketPrice: 0, // No ticket price as per requirement
+          ticketPrice: 0,
+          hostPhone: createGameForm.hostPhone
         },
         user.uid,
-        createGameForm.selectedTicketSet, // Pass ticket set ID
-        createGameForm.selectedPrizes // Pass selected prizes
+        createGameForm.selectedTicketSet,
+        createGameForm.selectedPrizes
       );
 
+      // Save settings for next time
+      await savePreviousSettings();
+
       setCurrentGame(gameData);
-      setCreateGameForm({ 
-        gameName: '',
-        maxTickets: 100,
-        selectedTicketSet: '', 
-        selectedPrizes: [] 
-      });
       setActiveTab('game-control');
+      await loadHostGames(); // Refresh games list
 
       toast({
         title: "Game Created",
-        description: `"${createGameForm.gameName}" has been created successfully with ${createGameForm.maxTickets} tickets!`,
+        description: `Game created successfully with ${createGameForm.maxTickets} tickets!`,
       });
 
       // Subscribe to real-time game updates
@@ -326,11 +369,103 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  const editGame = async () => {
+    if (!selectedGameForEdit) return;
+
+    setIsLoading(true);
+    try {
+      await firebaseService.updateGameConfig(editGameForm.gameId, {
+        maxTickets: editGameForm.maxTickets,
+        hostPhone: editGameForm.hostPhone,
+        selectedPrizes: editGameForm.selectedPrizes
+      });
+
+      setShowEditDialog(false);
+      setSelectedGameForEdit(null);
+      await loadHostGames();
+
+      toast({
+        title: "Game Updated",
+        description: "Game configuration updated successfully!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update game",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteGame = async (gameId: string, gameName: string) => {
+    const confirmed = window.confirm(`Are you sure you want to delete "${gameName}"? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    try {
+      await firebaseService.deleteGame(gameId);
+      await loadHostGames();
+      
+      if (currentGame?.gameId === gameId) {
+        setCurrentGame(null);
+        setActiveTab('create-game');
+      }
+
+      toast({
+        title: "Game Deleted",
+        description: "Game has been deleted successfully!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete game",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const selectGame = (game: GameData) => {
+    setCurrentGame(game);
+    setActiveTab('game-control');
+
+    // Subscribe to real-time updates for selected game
+    if (gameUnsubscribe) {
+      gameUnsubscribe();
+    }
+
+    const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
+      if (updatedGame) {
+        setCurrentGame(updatedGame);
+        const called = updatedGame.gameState.calledNumbers || [];
+        const available = Array.from({ length: 90 }, (_, i) => i + 1)
+          .filter(num => !called.includes(num));
+        setAvailableNumbers(available);
+      }
+    });
+
+    setGameUnsubscribe(() => unsubscribe);
+  };
+
+  const openEditDialog = (game: GameData) => {
+    setSelectedGameForEdit(game);
+    setEditGameForm({
+      gameId: game.gameId,
+      hostPhone: game.hostPhone || '',
+      maxTickets: game.maxTickets,
+      selectedPrizes: Object.keys(game.prizes)
+    });
+    setShowEditDialog(true);
+  };
+
+  // Game control functions (same as before)
   const startGame = async () => {
     if (!currentGame || !isSubscriptionValid()) return;
 
     try {
-      // Start countdown
       await firebaseService.updateGameState(currentGame.gameId, {
         ...currentGame.gameState,
         isCountdown: true,
@@ -343,7 +478,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         description: "10 second countdown has begun!",
       });
 
-      // Start the actual game after countdown
       setTimeout(async () => {
         await firebaseService.updateGameState(currentGame.gameId, {
           ...currentGame.gameState,
@@ -352,7 +486,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           countdownTime: 0
         });
 
-        // Start number calling
         startNumberCalling();
       }, 10000);
     } catch (error: any) {
@@ -380,18 +513,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setAvailableNumbers(prev => prev.filter(n => n !== numberToBeCalled));
       
       try {
-        // Add the number to called numbers
         await firebaseService.addCalledNumber(currentGame.gameId, numberToBeCalled);
-        
-        // Update current number (for display)
         await firebaseService.updateGameState(currentGame.gameId, {
           ...currentGame.gameState,
           currentNumber: numberToBeCalled
         });
 
-        console.log(`Number called: ${numberToBeCalled}`);
-
-        // Reset current number after 3 seconds
         setTimeout(async () => {
           await firebaseService.updateGameState(currentGame.gameId, {
             ...currentGame.gameState,
@@ -462,9 +589,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  const getBookedTicketsCount = () => {
-    if (!currentGame || !currentGame.tickets) return 0;
-    return Object.values(currentGame.tickets || {}).filter(ticket => ticket.isBooked).length;
+  const getBookedTicketsCount = (game?: GameData) => {
+    const gameToCheck = game || currentGame;
+    if (!gameToCheck || !gameToCheck.tickets) return 0;
+    return Object.values(gameToCheck.tickets).filter(ticket => ticket.isBooked).length;
   };
 
   const handleTicketSetSelect = (setId: string) => {
@@ -476,6 +604,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const handlePrizeToggle = (prizeId: string, checked: boolean) => {
     setCreateGameForm(prev => ({
+      ...prev,
+      selectedPrizes: checked 
+        ? [...prev.selectedPrizes, prizeId]
+        : prev.selectedPrizes.filter(id => id !== prizeId)
+    }));
+  };
+
+  const handleEditPrizeToggle = (prizeId: string, checked: boolean) => {
+    setEditGameForm(prev => ({
       ...prev,
       selectedPrizes: checked 
         ? [...prev.selectedPrizes, prizeId]
@@ -509,24 +646,111 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   {subscriptionStatus.message}. Please contact the administrator to restore access to your account.
                 </AlertDescription>
               </Alert>
-              
-              <div className="mt-6 space-y-2">
-                <p className="text-sm text-gray-600">
-                  <strong>Account Status:</strong> {user.isActive ? 'Active' : 'Inactive'}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Subscription End:</strong> {user.subscriptionEndDate ? new Date(user.subscriptionEndDate).toLocaleDateString() : 'Not set'}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Created:</strong> {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Not set'}
-                </p>
-              </div>
             </CardContent>
           </Card>
         </div>
       </div>
     );
   }
+
+  const renderMyGames = () => (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Settings className="w-5 h-5 mr-2" />
+            My Games
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {allGames.length === 0 ? (
+            <div className="text-center py-8">
+              <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600">No games created yet</p>
+              <Button
+                onClick={() => setActiveTab('create-game')}
+                className="mt-4"
+                variant="outline"
+              >
+                Create First Game
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {allGames.map((game) => (
+                <Card key={game.gameId} className="border-gray-200">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-bold text-gray-800">{game.name}</h3>
+                      <Badge variant={game.gameState.isActive ? "default" : "secondary"}>
+                        {game.gameState.isActive ? "Active" : 
+                         game.gameState.gameOver ? "Completed" : "Waiting"}
+                      </Badge>
+                    </div>
+                    
+                    <div className="space-y-2 text-sm text-gray-600 mb-4">
+                      <div className="flex justify-between">
+                        <span>Max Tickets:</span>
+                        <span className="font-medium">{game.maxTickets}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Booked:</span>
+                        <span className="font-medium text-green-600">
+                          {getBookedTicketsCount(game)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Prizes:</span>
+                        <span className="font-medium text-purple-600">
+                          {Object.values(game.prizes).filter(p => p.won).length} / {Object.keys(game.prizes).length}
+                        </span>
+                      </div>
+                      {game.hostPhone && (
+                        <div className="flex justify-between">
+                          <span>WhatsApp:</span>
+                          <span className="font-medium text-blue-600 flex items-center">
+                            <Phone className="w-3 h-3 mr-1" />
+                            {game.hostPhone}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex space-x-2">
+                      <Button
+                        size="sm"
+                        onClick={() => selectGame(game)}
+                        className="flex-1"
+                      >
+                        Select
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEditDialog(game)}
+                        disabled={game.gameState.isActive}
+                      >
+                        <Edit className="w-3 h-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deleteGame(game.gameId, game.name)}
+                        disabled={game.gameState.isActive}
+                        className="text-red-600 hover:text-red-700"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 
   const renderCreateGame = () => (
     <div className="space-y-6">
@@ -555,16 +779,16 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Game Details */}
+          {/* Game Settings */}
           <div className="space-y-4">
             <div>
-              <Label htmlFor="game-name" className="text-base font-semibold">Game Name</Label>
-              <p className="text-sm text-gray-600 mb-2">Enter a name for your game</p>
+              <Label htmlFor="host-phone" className="text-base font-semibold">WhatsApp Phone Number</Label>
+              <p className="text-sm text-gray-600 mb-2">Your WhatsApp number for ticket bookings (e.g., 919876543210)</p>
               <Input
-                id="game-name"
-                placeholder="e.g., Sunday Evening Tambola"
-                value={createGameForm.gameName}
-                onChange={(e) => setCreateGameForm(prev => ({ ...prev, gameName: e.target.value }))}
+                id="host-phone"
+                placeholder="919876543210"
+                value={createGameForm.hostPhone}
+                onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
                 className="border-2 border-gray-200 focus:border-blue-400"
               />
             </div>
@@ -679,7 +903,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           {/* Create Game Button */}
           <Button 
             onClick={createNewGame} 
-            disabled={isLoading || !createGameForm.gameName.trim() || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0}
+            disabled={isLoading || !createGameForm.hostPhone.trim() || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0}
             className="w-full bg-blue-600 hover:bg-blue-700"
             size="lg"
           >
@@ -697,7 +921,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         <Card>
           <CardContent className="p-6 text-center">
             <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No active game. Create a new game to start.</p>
+            <p className="text-gray-600">No game selected. Create or select a game to start.</p>
           </CardContent>
         </Card>
       );
@@ -785,46 +1009,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
             )}
 
-            {/* Selected Prizes Display */}
-            <div>
-              <h4 className="text-lg font-semibold mb-3">Active Prizes</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {Object.values(currentGame.prizes || {}).map((prize: any) => (
-                  <div
-                    key={prize.id}
-                    className={`p-3 rounded-lg border-2 transition-all duration-300 ${
-                      prize.won
-                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg'
-                        : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-gray-800'}`}>
-                          {prize.name}
-                        </h3>
-                        <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
-                          {prize.pattern}
-                        </p>
-                        {prize.winner && (
-                          <p className="text-xs text-green-700 font-medium mt-1">
-                            Won by: {prize.winner.name}
-                          </p>
-                        )}
-                      </div>
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                        prize.won 
-                          ? 'bg-green-500 text-white animate-bounce-in' 
-                          : 'bg-gray-200 text-gray-500'
-                      }`}>
-                        {prize.won ? '✓' : '?'}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             {/* Recent Numbers */}
             {(currentGame.gameState.calledNumbers || []).length > 0 && (
               <div>
@@ -867,8 +1051,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="create-game">Create Game</TabsTrigger>
+            <TabsTrigger value="my-games">My Games</TabsTrigger>
             <TabsTrigger value="game-control">Game Control</TabsTrigger>
           </TabsList>
 
@@ -876,10 +1061,75 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             {renderCreateGame()}
           </TabsContent>
 
+          <TabsContent value="my-games" className="mt-6">
+            {renderMyGames()}
+          </TabsContent>
+
           <TabsContent value="game-control" className="mt-6">
             {renderGameControl()}
           </TabsContent>
         </Tabs>
+
+        {/* Edit Game Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Game Configuration</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-phone">WhatsApp Phone Number</Label>
+                <Input
+                  id="edit-phone"
+                  placeholder="919876543210"
+                  value={editGameForm.hostPhone}
+                  onChange={(e) => setEditGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-max-tickets">Maximum Tickets</Label>
+                <Input
+                  id="edit-max-tickets"
+                  type="number"
+                  min="1"
+                  max="600"
+                  value={editGameForm.maxTickets}
+                  onChange={(e) => setEditGameForm(prev => ({ 
+                    ...prev, 
+                    maxTickets: parseInt(e.target.value) || 1 
+                  }))}
+                />
+              </div>
+              <div>
+                <Label className="text-base font-semibold">Update Game Prizes</Label>
+                <div className="grid grid-cols-1 gap-2 mt-2 max-h-40 overflow-y-auto">
+                  {AVAILABLE_PRIZES.map((prize) => (
+                    <div key={prize.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`edit-prize-${prize.id}`}
+                        checked={editGameForm.selectedPrizes.includes(prize.id)}
+                        onCheckedChange={(checked) => handleEditPrizeToggle(prize.id, checked as boolean)}
+                      />
+                      <Label 
+                        htmlFor={`edit-prize-${prize.id}`}
+                        className="text-sm cursor-pointer"
+                      >
+                        {prize.name} - {prize.pattern}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Button
+                onClick={editGame}
+                disabled={isLoading || !editGameForm.hostPhone.trim() || editGameForm.selectedPrizes.length === 0}
+                className="w-full"
+              >
+                {isLoading ? 'Updating...' : 'Update Game'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
