@@ -1,5 +1,5 @@
 // src/pages/Index.tsx
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { UserLandingPage } from '@/components/UserLandingPage';
 import { GameHost } from '@/components/GameHost';
@@ -10,15 +10,18 @@ const Index = () => {
   const [currentUser, setCurrentUser] = useState<AdminUser | HostUser | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'host' | null>(null);
 
-  const handleUserLogin = (user: AdminUser | HostUser, role: 'admin' | 'host') => {
+  // Memoize callbacks to prevent infinite re-renders
+  const handleUserLogin = useCallback((user: AdminUser | HostUser, role: 'admin' | 'host') => {
+    console.log('📝 Index: Setting user login:', user.email, role);
     setCurrentUser(user);
     setUserRole(role);
-  };
+  }, []);
 
-  const handleUserLogout = () => {
+  const handleUserLogout = useCallback(() => {
+    console.log('📝 Index: Setting user logout');
     setCurrentUser(null);
     setUserRole(null);
-  };
+  }, []);
 
   const renderContent = () => {
     // Role-based content rendering
