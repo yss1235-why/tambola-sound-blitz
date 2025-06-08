@@ -1,9 +1,10 @@
+// src/components/Header.tsx
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Menu, LogOut, User, Settings } from 'lucide-react';
+import { LogIn, Menu, LogOut, User } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import {
   DropdownMenu,
@@ -19,10 +20,9 @@ import { auth } from '@/services/firebase';
 interface HeaderProps {
   onUserLogin?: (user: AdminUser | HostUser, role: 'admin' | 'host') => void;
   onUserLogout?: () => void;
-  onShowSetup?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onShowSetup }) => {
+export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => {
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isHostLoginOpen, setIsHostLoginOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -50,7 +50,6 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onSho
           const role = await getCurrentUserRole();
           if (role) {
             setUserRole(role);
-            // You could fetch more user details here based on role
             const userData = { uid: user.uid, email: user.email, role } as any;
             setCurrentUser(userData);
             onUserLogin?.(userData, role);
@@ -77,7 +76,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onSho
       if (admin) {
         toast({
           title: "Admin Login Successful",
-          description: `Welcome back, ${admin.name}!`,
+          description: `Welcome back, ${admin.name}! You can now manage host accounts.`,
         });
         setIsAdminLoginOpen(false);
         setAdminForm({ email: '', password: '' });
@@ -102,7 +101,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onSho
       if (host) {
         toast({
           title: "Host Login Successful",
-          description: `Welcome back, ${host.name}!`,
+          description: `Welcome back, ${host.name}! You can now create and manage games.`,
         });
         setIsHostLoginOpen(false);
         setHostForm({ email: '', password: '' });
@@ -145,19 +144,6 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onSho
           </div>
           
           <div className="flex items-center space-x-2">
-            {/* Firebase Setup Button */}
-            {onShowSetup && (
-              <Button 
-                onClick={onShowSetup}
-                variant="outline" 
-                size="sm"
-                className="border-2 border-orange-300 text-orange-600 hover:bg-orange-50 font-semibold"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Setup
-              </Button>
-            )}
-
             {currentUser ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -309,8 +295,8 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onSho
                 </form>
                 <div className="text-xs text-gray-500 mt-2">
                   <p>Default Admin Credentials:</p>
-                  <p>Email: yurs@gmai.com</p>                    {/* CHANGED: Updated email */}
-                  <p>Password: Qwe123@</p>                       {/* CHANGED: Updated password */}
+                  <p>Email: admin@tambola.com</p>
+                  <p>Password: TambolaAdmin123!</p>
                 </div>
               </DialogContent>
             </Dialog>
