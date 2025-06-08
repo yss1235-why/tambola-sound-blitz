@@ -1,851 +1,819 @@
-// src/services/firebase.ts - Complete Updated Version
-import { initializeApp } from "firebase/app";
+// src/components/GameHost.tsx - Complete Fixed Version
+import React, { useState, useEffect, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useToast } from '@/components/ui/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut,
-  onAuthStateChanged,
-  User
-} from "firebase/auth";
+  Play, 
+  Pause, 
+  Square, 
+  Users, 
+  Plus,
+  Clock,
+  Calendar,
+  AlertCircle,
+  Trophy,
+  Ticket,
+  Lock
+} from 'lucide-react';
 import { 
-  getDatabase, 
-  ref, 
-  set, 
-  get, 
-  push, 
-  onValue, 
-  off,
-  update,
-  remove
-} from "firebase/database";
-import { getAnalytics } from "firebase/analytics";
+  firebaseService, 
+  GameData, 
+  TambolaTicket, 
+  HostUser 
+} from '@/services/firebase';
 
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyCH2WtQ2y3ln8ToHcapIsEMIXJ78Hsg7Bg",
-  authDomain: "tambola-74046.firebaseapp.com",
-  databaseURL: "https://tambola-74046-default-rtdb.firebaseio.com",
-  projectId: "tambola-74046",
-  storageBucket: "tambola-74046.firebasestorage.app",
-  messagingSenderId: "310265084192",
-  appId: "1:310265084192:web:c044bf9b83c444f4a2ff45",
-  measurementId: "G-MP72F136BH"
-};
-
-// Initialize Firebase - Main app for admin/host login
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const database = getDatabase(app);
-
-// Initialize secondary app for creating users without affecting main auth state
-const secondaryApp = initializeApp(firebaseConfig, "secondary");
-const secondaryAuth = getAuth(secondaryApp);
-
-// Initialize analytics only in browser environment
-let analytics: any = null;
-if (typeof window !== 'undefined') {
-  try {
-    analytics = getAnalytics(app);
-  } catch (error) {
-    console.warn("Analytics initialization failed:", error);
-  }
+interface GameHostProps {
+  user: HostUser;
+  userRole: 'host';
 }
 
-// Type definitions
-export interface AdminUser {
-  uid: string;
-  email: string;
+interface TicketSet {
+  id: string;
   name: string;
-  role: 'admin';
-  createdAt: string;
-  permissions: {
-    createHosts: boolean;
-    manageUsers: boolean;
-  };
+  available: boolean;
+  ticketCount: number;
+  description: string;
 }
 
-export interface HostUser {
-  uid: string;
-  email: string;
+interface GamePrize {
+  id: string;
   name: string;
-  role: 'host';
-  createdAt: string;
-  createdBy: string;
-  subscriptionEndDate: string;
-  isActive: boolean;
-  permissions: {
-    createGames: boolean;
-    manageGames: boolean;
-  };
+  pattern: string;
+  description: string;
 }
 
-export interface TambolaTicket {
-  ticketId: string;
-  rows: number[][];
-  isBooked: boolean;
-  playerName: string;
-  playerPhone: string;
-  bookedAt?: string;
+interface CreateGameForm {
+  selectedTicketSet: string;
+  selectedPrizes: string[];
 }
 
-export interface GameData {
-  gameId: string;
-  hostUid: string;
-  name: string;
-  createdAt: string;
-  status: 'waiting' | 'active' | 'completed';
-  maxTickets: number;
-  ticketPrice: number;
-  gameState: {
-    isActive: boolean;
-    isCountdown: boolean;
-    countdownTime: number;
-    calledNumbers: number[];
-    currentNumber: number | null;
-    gameOver: boolean;
-    callInterval: number;
-  };
-  prizes: { [key: string]: any };
-  tickets: { [key: string]: TambolaTicket };
-}
-
-export interface BookingData {
-  ticketId: string;
-  playerName: string;
-  playerPhone: string;
-  gameId: string;
-  timestamp: string;
-  status: 'booked' | 'cancelled';
-}
-
-// Firebase Service Class
-class FirebaseService {
-  private currentUser: User | null = null;
-
-  constructor() {
-    onAuthStateChanged(auth, (user) => {
-      this.currentUser = user;
-    });
+// Ticket sets data
+const TICKET_SETS: TicketSet[] = [
+  {
+    id: "1",
+    name: "Classic Set 1",
+    available: true,
+    ticketCount: 600,
+    description: "Traditional ticket set with balanced number distribution"
+  },
+  {
+    id: "2", 
+    name: "Premium Set 2",
+    available: true,
+    ticketCount: 600,
+    description: "Premium ticket set with optimized winning patterns"
+  },
+  {
+    id: "3",
+    name: "Deluxe Set 3", 
+    available: false,
+    ticketCount: 600,
+    description: "Deluxe ticket set (Coming Soon)"
+  },
+  {
+    id: "4",
+    name: "Ultimate Set 4",
+    available: false, 
+    ticketCount: 600,
+    description: "Ultimate ticket set (Coming Soon)"
   }
+];
 
-  // Authentication Methods with role separation
-  async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      const adminRef = ref(database, `admins/${user.uid}`);
-      const adminSnapshot = await get(adminRef);
-      
-      if (adminSnapshot.exists()) {
-        const adminData = adminSnapshot.val() as AdminUser;
-        if (adminData.role !== 'admin') {
-          await signOut(auth);
-          throw new Error("Invalid admin credentials");
-        }
-        return adminData;
-      } else {
-        const hostRef = ref(database, `hosts/${user.uid}`);
-        const hostSnapshot = await get(hostRef);
-        if (hostSnapshot.exists()) {
-          await signOut(auth);
-          throw new Error("This account is registered as a host. Please use host login.");
-        }
-        
-        await signOut(auth);
-        throw new Error("User is not an admin");
-      }
-    } catch (error: any) {
-      console.error("Admin login error:", error);
-      throw new Error(error.message || "Invalid admin credentials");
-    }
+// Available game prizes - REMOVED Two Lines, Early Ten, and prize amounts
+const AVAILABLE_PRIZES: GamePrize[] = [
+  {
+    id: 'quickFive',
+    name: 'Quick Five',
+    pattern: 'First 5 numbers',
+    description: 'First player to mark any 5 numbers'
+  },
+  {
+    id: 'topLine',
+    name: 'Top Line',
+    pattern: 'Complete top row',
+    description: 'Complete the top row of any ticket'
+  },
+  {
+    id: 'middleLine',
+    name: 'Middle Line',
+    pattern: 'Complete middle row', 
+    description: 'Complete the middle row of any ticket'
+  },
+  {
+    id: 'bottomLine',
+    name: 'Bottom Line',
+    pattern: 'Complete bottom row',
+    description: 'Complete the bottom row of any ticket'
+  },
+  {
+    id: 'fourCorners',
+    name: 'Four Corners',
+    pattern: 'All four corner numbers',
+    description: 'Mark all four corner numbers of any ticket'
+  },
+  {
+    id: 'fullHouse',
+    name: 'Full House',
+    pattern: 'Complete ticket',
+    description: 'Complete all numbers on any ticket'
   }
+];
 
-  async loginHost(email: string, password: string): Promise<HostUser | null> {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      const hostRef = ref(database, `hosts/${user.uid}`);
-      const hostSnapshot = await get(hostRef);
-      
-      if (hostSnapshot.exists()) {
-        const hostData = hostSnapshot.val() as HostUser;
-        if (hostData.role !== 'host') {
-          await signOut(auth);
-          throw new Error("Invalid host credentials");
-        }
-        
-        if (!hostData.isActive) {
-          await signOut(auth);
-          throw new Error("Your account has been deactivated. Please contact admin.");
-        }
-        
-        const subscriptionEnd = new Date(hostData.subscriptionEndDate);
-        if (subscriptionEnd < new Date()) {
-          await signOut(auth);
-          throw new Error("Your subscription has expired. Please contact admin to renew.");
-        }
-        
-        return hostData;
-      } else {
-        const adminRef = ref(database, `admins/${user.uid}`);
-        const adminSnapshot = await get(adminRef);
-        if (adminSnapshot.exists()) {
-          await signOut(auth);
-          throw new Error("This account is registered as an admin. Please use admin login.");
-        }
-        
-        await signOut(auth);
-        throw new Error("User is not a host");
-      }
-    } catch (error: any) {
-      console.error("Host login error:", error);
-      throw new Error(error.message || "Invalid host credentials");
-    }
-  }
+export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
+  const [activeTab, setActiveTab] = useState('create-game');
+  const [currentGame, setCurrentGame] = useState<GameData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
+    selectedTicketSet: '1', // Default to ticket set 1
+    selectedPrizes: []
+  });
+  const { toast } = useToast();
 
-  async logout(): Promise<void> {
-    try {
-      await signOut(auth);
-    } catch (error: any) {
-      console.error("Logout error:", error);
-      throw new Error(error.message || "Failed to logout");
-    }
-  }
+  // Game control states
+  const [gameInterval, setGameInterval] = useState<NodeJS.Timeout | null>(null);
+  const [availableNumbers, setAvailableNumbers] = useState<number[]>(
+    Array.from({ length: 90 }, (_, i) => i + 1)
+  );
+  const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
 
-  // Admin User Management Methods
-  async createAdmin(email: string, password: string, name: string): Promise<AdminUser> {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      const adminData: AdminUser = {
-        uid: user.uid,
-        email: email,
-        name: name,
-        role: 'admin',
-        createdAt: new Date().toISOString(),
-        permissions: {
-          createHosts: true,
-          manageUsers: true
-        }
-      };
-      
-      const adminRef = ref(database, `admins/${user.uid}`);
-      await set(adminRef, adminData);
-      
-      return adminData;
-    } catch (error: any) {
-      console.error("Create admin error:", error);
-      throw new Error(error.message || "Failed to create admin");
-    }
-  }
-
-  // Create host without affecting main auth state
-  async createHost(email: string, password: string, name: string, createdByUid: string, subscriptionMonths: number = 12): Promise<HostUser> {
-    try {
-      // Verify current user is admin
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error("Must be logged in as admin to create hosts");
-      }
-      
-      const adminRef = ref(database, `admins/${currentUser.uid}`);
-      const adminSnapshot = await get(adminRef);
-      
-      if (!adminSnapshot.exists()) {
-        throw new Error("Only admins can create hosts");
-      }
-      
-      const adminData = adminSnapshot.val();
-      if (adminData.role !== 'admin') {
-        throw new Error("Only admins can create hosts");
-      }
-      
-      console.log('✅ Admin verification passed, creating host...');
-      
-      // Use secondary auth instance to create user without affecting main session
-      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
-      const newUser = userCredential.user;
-      
-      console.log('✅ Host auth user created:', newUser.uid);
-      
-      // Sign out from secondary auth to clean up
-      await signOut(secondaryAuth);
-      
-      // Create host data
-      const subscriptionEndDate = new Date();
-      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
-      
-      const hostData: HostUser = {
-        uid: newUser.uid,
-        email: email,
-        name: name,
-        role: 'host',
-        createdAt: new Date().toISOString(),
-        createdBy: createdByUid,
-        subscriptionEndDate: subscriptionEndDate.toISOString(),
-        isActive: true,
-        permissions: {
-          createGames: true,
-          manageGames: true
-        }
-      };
-      
-      // Write host data using main auth (admin is still logged in)
-      const hostRef = ref(database, `hosts/${newUser.uid}`);
-      await set(hostRef, hostData);
-      
-      console.log('✅ Host record created successfully');
-      console.log('✅ Admin remains logged in');
-      
-      return hostData;
-      
-    } catch (error: any) {
-      console.error("Create host error:", error);
-      throw new Error(error.message || "Failed to create host");
-    }
-  }
-
-  async getAllHosts(): Promise<HostUser[]> {
-    try {
-      const hostsRef = ref(database, 'hosts');
-      const snapshot = await get(hostsRef);
-      
-      if (snapshot.exists()) {
-        const hostsData = snapshot.val();
-        return Object.values(hostsData) as HostUser[];
-      }
-      return [];
-    } catch (error: any) {
-      console.error("Get hosts error:", error);
-      throw new Error(error.message || "Failed to get hosts");
-    }
-  }
-
-  async updateHost(hostUid: string, updates: Partial<HostUser>): Promise<void> {
-    try {
-      const hostRef = ref(database, `hosts/${hostUid}`);
-      await update(hostRef, updates);
-    } catch (error: any) {
-      console.error("Update host error:", error);
-      throw new Error(error.message || "Failed to update host");
-    }
-  }
-
-  async deleteHost(hostUid: string): Promise<void> {
-    try {
-      const hostRef = ref(database, `hosts/${hostUid}`);
-      await remove(hostRef);
-    } catch (error: any) {
-      console.error("Delete host error:", error);
-      throw new Error(error.message || "Failed to delete host");
-    }
-  }
-
-  async changeHostPassword(hostUid: string, newPassword: string): Promise<void> {
-    try {
-      const hostRef = ref(database, `hosts/${hostUid}`);
-      await update(hostRef, {
-        passwordChangeRequired: true,
-        newPassword: newPassword,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (error: any) {
-      console.error("Change host password error:", error);
-      throw new Error(error.message || "Failed to change host password");
-    }
-  }
-
-  async extendHostSubscription(hostUid: string, additionalMonths: number): Promise<void> {
-    try {
-      const hostRef = ref(database, `hosts/${hostUid}`);
-      const snapshot = await get(hostRef);
-      
-      if (snapshot.exists()) {
-        const hostData = snapshot.val() as HostUser;
-        const currentEndDate = new Date(hostData.subscriptionEndDate);
-        const newEndDate = new Date(currentEndDate);
-        newEndDate.setMonth(newEndDate.getMonth() + additionalMonths);
-        
-        await update(hostRef, {
-          subscriptionEndDate: newEndDate.toISOString(),
-          updatedAt: new Date().toISOString()
-        });
-      } else {
-        throw new Error("Host not found");
-      }
-    } catch (error: any) {
-      console.error("Extend subscription error:", error);
-      throw new Error(error.message || "Failed to extend subscription");
-    }
-  }
-
-  async toggleHostStatus(hostUid: string, isActive: boolean): Promise<void> {
-    try {
-      const hostRef = ref(database, `hosts/${hostUid}`);
-      await update(hostRef, {
-        isActive: isActive,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (error: any) {
-      console.error("Toggle host status error:", error);
-      throw new Error(error.message || "Failed to toggle host status");
-    }
-  }
-
-  // Method to load ticket sets from public/data directory
-  async loadTicketSet(setId: string): Promise<any> {
-    try {
-      console.log(`Loading ticket set ${setId} from public/data/${setId}.json`);
-      
-      const response = await fetch(`/data/${setId}.json`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load ticket set ${setId}: ${response.statusText}`);
-      }
-      
-      const ticketSetData = await response.json();
-      console.log(`✅ Loaded ticket set ${setId} with ${ticketSetData.length} rows`);
-      
-      // Transform the data from your format to the expected format
-      const transformedData = this.transformTicketData(ticketSetData);
-      
-      return transformedData;
-    } catch (error: any) {
-      console.error(`❌ Error loading ticket set ${setId}:`, error);
-      throw new Error(`Failed to load ticket set ${setId}: ${error.message}`);
-    }
-  }
-
-  // Transform ticket data from your format to game format
-  private transformTicketData(rawData: any[]): any {
-    const ticketsMap = new Map();
+  // Check subscription status - FIXED: Memoized to prevent infinite loops
+  const isSubscriptionValid = useCallback(() => {
+    console.log('🔍 Checking subscription validity for user:', user.email);
+    console.log('🔍 User isActive:', user.isActive);
+    console.log('🔍 User subscriptionEndDate:', user.subscriptionEndDate);
     
-    // Group rows by ticketId
-    rawData.forEach(row => {
-      const ticketId = `ticket_${row.ticketId}`;
-      if (!ticketsMap.has(ticketId)) {
-        ticketsMap.set(ticketId, {
-          ticketId: ticketId,
-          rows: []
-        });
+    if (!user.isActive) {
+      console.log('❌ User is not active');
+      return false;
+    }
+    
+    if (!user.subscriptionEndDate) {
+      console.log('❌ No subscription end date');
+      return false;
+    }
+    
+    const subscriptionEnd = new Date(user.subscriptionEndDate);
+    const now = new Date();
+    
+    console.log('🔍 Subscription end date:', subscriptionEnd);
+    console.log('🔍 Current date:', now);
+    console.log('🔍 Is subscription valid?', subscriptionEnd > now);
+    
+    return subscriptionEnd > now && user.isActive;
+  }, [user.isActive, user.subscriptionEndDate, user.email]);
+
+  const getSubscriptionStatus = useCallback(() => {
+    console.log('🔍 Getting subscription status for user:', user.email);
+    
+    if (!user.isActive) {
+      console.log('❌ User is inactive');
+      return { status: 'inactive', message: 'Account is deactivated', variant: 'destructive' as const };
+    }
+    
+    if (!user.subscriptionEndDate) {
+      console.log('❌ No subscription end date');
+      return { status: 'no-subscription', message: 'No subscription date', variant: 'destructive' as const };
+    }
+    
+    const subscriptionEnd = new Date(user.subscriptionEndDate);
+    const now = new Date();
+    
+    // Check if date is valid
+    if (isNaN(subscriptionEnd.getTime())) {
+      console.log('❌ Invalid subscription date:', user.subscriptionEndDate);
+      return { status: 'invalid-date', message: 'Invalid subscription date', variant: 'destructive' as const };
+    }
+    
+    const daysLeft = Math.ceil((subscriptionEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    console.log('🔍 Days left:', daysLeft);
+    
+    if (daysLeft < 0) return { status: 'expired', message: 'Subscription expired', variant: 'destructive' as const };
+    if (daysLeft <= 7) return { status: 'expiring', message: `Expires in ${daysLeft} days`, variant: 'secondary' as const };
+    return { status: 'active', message: `Active (${daysLeft} days left)`, variant: 'default' as const };
+  }, [user.isActive, user.subscriptionEndDate, user.email]);
+
+  // Cleanup intervals and subscriptions on unmount
+  useEffect(() => {
+    return () => {
+      if (gameInterval) {
+        clearInterval(gameInterval);
       }
-      
-      const ticket = ticketsMap.get(ticketId);
-      ticket.rows[row.rowId - 1] = row.numbers; // rowId is 1-based, array is 0-based
-    });
-    
-    // Convert map to array and get unique ticket count
-    const tickets = Array.from(ticketsMap.values());
-    const uniqueTicketIds = new Set(rawData.map(row => row.ticketId));
-    
-    return {
-      setId: rawData[0]?.setId || 1,
-      name: `Ticket Set ${rawData[0]?.setId || 1}`,
-      ticketCount: uniqueTicketIds.size,
-      tickets: tickets
+      if (gameUnsubscribe) {
+        gameUnsubscribe();
+      }
     };
-  }
+  }, [gameInterval, gameUnsubscribe]);
 
-  // Host Game Management Methods
-  async createGame(gameData: Partial<GameData>, hostUid: string, ticketSetId?: string, selectedPrizes?: string[]): Promise<GameData> {
+  const loadTicketSetData = async (setId: string) => {
     try {
-      const hostRef = ref(database, `hosts/${hostUid}`);
-      const hostSnapshot = await get(hostRef);
+      return await firebaseService.loadTicketSet(setId);
+    } catch (error) {
+      console.error('Error loading ticket set:', error);
+      throw new Error('Failed to load ticket set data');
+    }
+  };
+
+  const createNewGame = async () => {
+    if (!isSubscriptionValid()) {
+      toast({
+        title: "Access Denied",
+        description: "Your subscription has expired or account is inactive",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!createGameForm.selectedTicketSet) {
+      toast({
+        title: "Validation Error",
+        description: "Please select a ticket set",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (createGameForm.selectedPrizes.length === 0) {
+      toast({
+        title: "Validation Error", 
+        description: "Please select at least one prize",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Load ticket data for selected set
+      const ticketSetData = await loadTicketSetData(createGameForm.selectedTicketSet);
+      const selectedSet = TICKET_SETS.find(set => set.id === createGameForm.selectedTicketSet);
       
-      if (!hostSnapshot.exists()) {
-        throw new Error("Only hosts can create games");
-      }
-      
-      const gameRef = push(ref(database, 'games'));
-      const gameId = gameRef.key!;
-      
-      // Load ticket set data if provided
-      let ticketsData = {};
-      let maxTickets = gameData.maxTickets || 50;
-      
-      if (ticketSetId) {
-        const ticketSet = await this.loadTicketSet(ticketSetId);
-        maxTickets = ticketSet.ticketCount;
-        
-        // Convert ticket set data to the format expected by the game
-        ticketsData = ticketSet.tickets.reduce((acc: any, ticket: any) => {
-          acc[ticket.ticketId] = {
-            ticketId: ticket.ticketId,
-            rows: ticket.rows,
-            isBooked: false,
-            playerName: '',
-            playerPhone: '',
-            bookedAt: undefined
-          };
-          return acc;
-        }, {});
-      }
-      
-      // Create prizes based on selected prizes or use defaults
-      let prizesData = {};
-      if (selectedPrizes && selectedPrizes.length > 0) {
-        // Use only selected prizes
-        const availablePrizes = [
-          {
-            id: 'quickFive',
-            name: 'Quick Five',
-            pattern: 'First 5 numbers',
-            defaultAmount: 500
-          },
-          {
-            id: 'topLine',
-            name: 'Top Line',
-            pattern: 'Complete top row',
-            defaultAmount: 1000
-          },
-          {
-            id: 'middleLine',
-            name: 'Middle Line',
-            pattern: 'Complete middle row', 
-            defaultAmount: 1000
-          },
-          {
-            id: 'bottomLine',
-            name: 'Bottom Line',
-            pattern: 'Complete bottom row',
-            defaultAmount: 1000
-          },
-          {
-            id: 'fourCorners',
-            name: 'Four Corners',
-            pattern: 'All four corner numbers',
-            defaultAmount: 1500
-          },
-          {
-            id: 'fullHouse',
-            name: 'Full House',
-            pattern: 'Complete ticket',
-            defaultAmount: 3000
-          },
-          {
-            id: 'twoLines',
-            name: 'Two Lines',
-            pattern: 'Any two complete rows',
-            defaultAmount: 2000
-          },
-          {
-            id: 'earlyTen',
-            name: 'Early Ten',
-            pattern: 'First 10 numbers',
-            defaultAmount: 800
-          }
-        ];
-        
-        prizesData = selectedPrizes.reduce((acc: any, prizeId: string) => {
-          const prizeInfo = availablePrizes.find(p => p.id === prizeId);
-          if (prizeInfo) {
-            acc[prizeId] = {
-              id: prizeInfo.id,
-              name: prizeInfo.name,
-              pattern: prizeInfo.pattern,
-              won: false,
-              amount: prizeInfo.defaultAmount,
-              winner: null
-            };
-          }
-          return acc;
-        }, {});
-      } else {
-        prizesData = this.getDefaultPrizes();
-      }
-      
-      // Create full game data
-      const fullGameData: GameData = {
-        gameId,
-        hostUid,
-        name: gameData.name || 'New Tambola Game',
-        createdAt: new Date().toISOString(),
-        status: 'waiting',
-        maxTickets,
-        ticketPrice: gameData.ticketPrice || 0, // Set to 0 for free games
-        gameState: {
-          isActive: false,
-          isCountdown: false,
-          countdownTime: 0,
-          calledNumbers: [], // Ensure this is always an array
-          currentNumber: null,
-          gameOver: false,
-          callInterval: 6000
+      // Create the game using the updated createGame method
+      const gameData = await firebaseService.createGame(
+        {
+          name: `${selectedSet?.name} Game`,
+          maxTickets: ticketSetData.ticketCount,
+          ticketPrice: 0, // No ticket price as per requirement
         },
-        prizes: prizesData,
-        tickets: ticketsData
-      };
-      
-      await set(gameRef, fullGameData);
-      
-      console.log('✅ Game created successfully:', fullGameData);
-      return fullGameData;
-    } catch (error: any) {
-      console.error("Create game error:", error);
-      throw new Error(error.message || "Failed to create game");
-    }
-  }
+        user.uid,
+        createGameForm.selectedTicketSet, // Pass ticket set ID
+        createGameForm.selectedPrizes // Pass selected prizes
+      );
 
-  async updateGameState(gameId: string, gameState: any): Promise<void> {
-    try {
-      const gameStateRef = ref(database, `games/${gameId}/gameState`);
-      await update(gameStateRef, gameState);
-    } catch (error: any) {
-      console.error("Update game state error:", error);
-      throw new Error(error.message || "Failed to update game state");
-    }
-  }
+      setCurrentGame(gameData);
+      setCreateGameForm({ selectedTicketSet: '', selectedPrizes: [] });
+      setActiveTab('game-control');
 
-  // Update addCalledNumber method to ensure array handling
-  async addCalledNumber(gameId: string, number: number): Promise<void> {
+      toast({
+        title: "Game Created",
+        description: `Game with ${selectedSet?.name} has been created successfully!`,
+      });
+
+      // Subscribe to real-time game updates
+      const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGame) => {
+        if (updatedGame) {
+          setCurrentGame(updatedGame);
+          const called = updatedGame.gameState.calledNumbers || [];
+          const available = Array.from({ length: 90 }, (_, i) => i + 1)
+            .filter(num => !called.includes(num));
+          setAvailableNumbers(available);
+        }
+      });
+
+      setGameUnsubscribe(() => unsubscribe);
+    } catch (error: any) {
+      console.error('Create game error:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create game",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startGame = async () => {
+    if (!currentGame || !isSubscriptionValid()) return;
+
     try {
-      const calledNumbersRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
-      const snapshot = await get(calledNumbersRef);
-      const currentNumbers = snapshot.val() || []; // Ensure it's always an array
-      
-      // Check if number is already called
-      if (currentNumbers.includes(number)) {
-        console.log(`Number ${number} already called`);
+      // Start countdown
+      await firebaseService.updateGameState(currentGame.gameId, {
+        ...currentGame.gameState,
+        isCountdown: true,
+        countdownTime: 10,
+        isActive: false
+      });
+
+      toast({
+        title: "Game Starting",
+        description: "10 second countdown has begun!",
+      });
+
+      // Start the actual game after countdown
+      setTimeout(async () => {
+        await firebaseService.updateGameState(currentGame.gameId, {
+          ...currentGame.gameState,
+          isCountdown: false,
+          isActive: true,
+          countdownTime: 0
+        });
+
+        // Start number calling
+        startNumberCalling();
+      }, 10000);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to start game",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const startNumberCalling = () => {
+    if (!currentGame) return;
+
+    const interval = setInterval(async () => {
+      if (availableNumbers.length === 0) {
+        clearInterval(interval);
+        await endGame();
         return;
       }
-      
-      const updatedNumbers = [...currentNumbers, number];
-      
-      await set(calledNumbersRef, updatedNumbers);
-      console.log(`✅ Number ${number} added to called numbers`);
-    } catch (error: any) {
-      console.error("Add called number error:", error);
-      throw new Error(error.message || "Failed to add called number");
-    }
-  }
 
-  // Public Ticket Management Methods
-  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<BookingData> {
-    try {
-      const bookingRef = push(ref(database, 'bookings'));
-      const bookingData: BookingData = {
-        ticketId,
-        playerName,
-        playerPhone,
-        gameId,
-        timestamp: new Date().toISOString(),
-        status: 'booked'
-      };
+      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      const numberToBeCalled = availableNumbers[randomIndex];
       
-      await set(bookingRef, bookingData);
+      setAvailableNumbers(prev => prev.filter(n => n !== numberToBeCalled));
       
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      await update(ticketRef, {
-        isBooked: true,
-        playerName,
-        playerPhone,
-        bookedAt: new Date().toISOString()
-      });
-      
-      return bookingData;
-    } catch (error: any) {
-      console.error("Book ticket error:", error);
-      throw new Error(error.message || "Failed to book ticket");
-    }
-  }
+      try {
+        // Add the number to called numbers
+        await firebaseService.addCalledNumber(currentGame.gameId, numberToBeCalled);
+        
+        // Update current number (for display)
+        await firebaseService.updateGameState(currentGame.gameId, {
+          ...currentGame.gameState,
+          currentNumber: numberToBeCalled
+        });
 
-  // Real-time listeners
-  subscribeToGame(gameId: string, callback: (gameData: GameData | null) => void): () => void {
-    const gameRef = ref(database, `games/${gameId}`);
-    
-    const unsubscribe = onValue(gameRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const gameData = snapshot.val() as GameData;
-        // Ensure arrays are properly initialized when received from Firebase
-        if (!gameData.gameState.calledNumbers) {
-          gameData.gameState.calledNumbers = [];
-        }
-        if (!gameData.tickets) {
-          gameData.tickets = {};
-        }
-        if (!gameData.prizes) {
-          gameData.prizes = {};
-        }
-        callback(gameData);
-      } else {
-        callback(null);
+        console.log(`Number called: ${numberToBeCalled}`);
+
+        // Reset current number after 3 seconds
+        setTimeout(async () => {
+          await firebaseService.updateGameState(currentGame.gameId, {
+            ...currentGame.gameState,
+            currentNumber: null
+          });
+        }, 3000);
+      } catch (error) {
+        console.error('Error calling number:', error);
       }
-    }, (error) => {
-      console.error("Game subscription error:", error);
-      callback(null);
-    });
-    
-    return () => off(gameRef, 'value', unsubscribe);
-  }
+    }, currentGame.gameState.callInterval);
 
-  subscribeToTickets(gameId: string, callback: (tickets: { [key: string]: TambolaTicket } | null) => void): () => void {
-    const ticketsRef = ref(database, `games/${gameId}/tickets`);
-    
-    const unsubscribe = onValue(ticketsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        callback(snapshot.val());
-      } else {
-        callback(null);
-      }
-    }, (error) => {
-      console.error("Tickets subscription error:", error);
-      callback(null);
-    });
-    
-    return () => off(ticketsRef, 'value', unsubscribe);
-  }
+    setGameInterval(interval);
+  };
 
-  subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
-    const hostsRef = ref(database, 'hosts');
-    
-    const unsubscribe = onValue(hostsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const hostsData = snapshot.val();
-        callback(Object.values(hostsData) as HostUser[]);
-      } else {
-        callback(null);
-      }
-    }, (error) => {
-      console.error("Hosts subscription error:", error);
-      callback(null);
-    });
-    
-    return () => off(hostsRef, 'value', unsubscribe);
-  }
-
-  subscribeToAuthState(callback: (user: User | null) => void): () => void {
-    return onAuthStateChanged(auth, callback);
-  }
-
-  // Utility Methods - Default prizes only
-  private getDefaultPrizes() {
-    return {
-      quickFive: {
-        id: 'quickFive',
-        name: 'Quick Five',
-        pattern: 'First 5 numbers',
-        won: false,
-        amount: 500,
-        winner: null
-      },
-      topLine: {
-        id: 'topLine',
-        name: 'Top Line',
-        pattern: 'Top row complete',
-        won: false,
-        amount: 1000,
-        winner: null
-      },
-      middleLine: {
-        id: 'middleLine',
-        name: 'Middle Line',
-        pattern: 'Middle row complete',
-        won: false,
-        amount: 1000,
-        winner: null
-      },
-      bottomLine: {
-        id: 'bottomLine',
-        name: 'Bottom Line',
-        pattern: 'Bottom row complete',
-        won: false,
-        amount: 1000,
-        winner: null
-      },
-      fourCorners: {
-        id: 'fourCorners',
-        name: 'Four Corners',
-        pattern: 'All four corners',
-        won: false,
-        amount: 1500,
-        winner: null
-      },
-      fullHouse: {
-        id: 'fullHouse',
-        name: 'Full House',
-        pattern: 'Complete ticket',
-        won: false,
-        amount: 3000,
-        winner: null
-      }
-    };
-  }
-
-  // Get current user role
-  async getCurrentUserRole(): Promise<'admin' | 'host' | null> {
-    const user = auth.currentUser;
-    if (!user) return null;
-    
-    try {
-      const adminRef = ref(database, `admins/${user.uid}`);
-      const adminSnapshot = await get(adminRef);
-      if (adminSnapshot.exists()) {
-        const adminData = adminSnapshot.val();
-        if (adminData.role === 'admin') return 'admin';
-      }
-      
-      const hostRef = ref(database, `hosts/${user.uid}`);
-      const hostSnapshot = await get(hostRef);
-      if (hostSnapshot.exists()) {
-        const hostData = hostSnapshot.val();
-        if (hostData.role === 'host') return 'host';
-      }
-      
-      return null;
-    } catch (error: any) {
-      console.error("Get user role error:", error);
-      return null;
-    }
-  }
-
-  // Get user data
-  async getUserData(): Promise<AdminUser | HostUser | null> {
-    const user = auth.currentUser;
-    if (!user) {
-      console.log('❌ No authenticated user');
-      return null;
+  const pauseGame = async () => {
+    if (gameInterval) {
+      clearInterval(gameInterval);
+      setGameInterval(null);
     }
 
-    try {
-      console.log('🔍 Fetching user data for:', user.uid);
-      
-      // Try admin first
-      const adminRef = ref(database, `admins/${user.uid}`);
-      const adminSnapshot = await get(adminRef);
-      if (adminSnapshot.exists()) {
-        const adminData = adminSnapshot.val();
-        console.log('✅ Found admin data:', adminData);
-        if (adminData.role === 'admin') return adminData as AdminUser;
+    if (currentGame) {
+      try {
+        await firebaseService.updateGameState(currentGame.gameId, {
+          ...currentGame.gameState,
+          isActive: false
+        });
+
+        toast({
+          title: "Game Paused",
+          description: "The game has been paused.",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to pause game",
+          variant: "destructive",
+        });
       }
-      
-      // Try host
-      const hostRef = ref(database, `hosts/${user.uid}`);
-      const hostSnapshot = await get(hostRef);
-      if (hostSnapshot.exists()) {
-        const hostData = hostSnapshot.val();
-        console.log('✅ Found host data:', hostData);
-        if (hostData.role === 'host') return hostData as HostUser;
-      }
-      
-      console.log('❌ No user data found in database');
-      return null;
-    } catch (error: any) {
-      console.error("Get user data error:", error);
-      return null;
     }
+  };
+
+  const endGame = async () => {
+    if (gameInterval) {
+      clearInterval(gameInterval);
+      setGameInterval(null);
+    }
+
+    if (currentGame) {
+      try {
+        await firebaseService.updateGameState(currentGame.gameId, {
+          ...currentGame.gameState,
+          isActive: false,
+          gameOver: true,
+          currentNumber: null
+        });
+
+        toast({
+          title: "Game Ended",
+          description: "The game has been completed.",
+        });
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to end game",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const getBookedTicketsCount = () => {
+    if (!currentGame || !currentGame.tickets) return 0;
+    return Object.values(currentGame.tickets || {}).filter(ticket => ticket.isBooked).length;
+  };
+
+  const handleTicketSetSelect = (setId: string) => {
+    const ticketSet = TICKET_SETS.find(set => set.id === setId);
+    if (ticketSet && ticketSet.available) {
+      setCreateGameForm(prev => ({ ...prev, selectedTicketSet: setId }));
+    }
+  };
+
+  const handlePrizeToggle = (prizeId: string, checked: boolean) => {
+    setCreateGameForm(prev => ({
+      ...prev,
+      selectedPrizes: checked 
+        ? [...prev.selectedPrizes, prizeId]
+        : prev.selectedPrizes.filter(id => id !== prizeId)
+    }));
+  };
+
+  const subscriptionStatus = getSubscriptionStatus();
+
+  // If subscription is invalid, show warning
+  if (!isSubscriptionValid()) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
+            <p className="text-slate-600">
+            Welcome back, {user.name}! Create and manage your Tambola games.
+          </p>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="create-game">Create Game</TabsTrigger>
+            <TabsTrigger value="game-control">Game Control</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="create-game" className="mt-6">
+            {renderCreateGame()}
+          </TabsContent>
+
+          <TabsContent value="game-control" className="mt-6">
+            {renderGameControl()}
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}; className="text-slate-600">Welcome back, {user.name}!</p>
+          </div>
+
+          <Card className="border-red-500">
+            <CardHeader>
+              <CardTitle className="flex items-center text-red-600">
+                <AlertCircle className="w-6 h-6 mr-2" />
+                Account Access Restricted
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {subscriptionStatus.message}. Please contact the administrator to restore access to your account.
+                </AlertDescription>
+              </Alert>
+              
+              <div className="mt-6 space-y-2">
+                <p className="text-sm text-gray-600">
+                  <strong>Account Status:</strong> {user.isActive ? 'Active' : 'Inactive'}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Subscription End:</strong> {user.subscriptionEndDate ? new Date(user.subscriptionEndDate).toLocaleDateString() : 'Not set'}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Created:</strong> {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Not set'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
-}
 
-// Create and export service instance
-export const firebaseService = new FirebaseService();
+  const renderCreateGame = () => (
+    <div className="space-y-6">
+      {/* Subscription Status */}
+      <Card className={`border-l-4 ${
+        subscriptionStatus.status === 'active' ? 'border-l-green-500' :
+        subscriptionStatus.status === 'expiring' ? 'border-l-yellow-500' : 'border-l-red-500'
+      }`}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Subscription Status</p>
+              <Badge variant={subscriptionStatus.variant}>{subscriptionStatus.message}</Badge>
+            </div>
+            <Calendar className="w-8 h-8 text-gray-400" />
+          </div>
+        </CardContent>
+      </Card>
 
-// Utility function to check current user role
-export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
-  return firebaseService.getCurrentUserRole();
-}
+      {/* Create New Game */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Plus className="w-5 h-5 mr-2" />
+            Create New Game
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Ticket Set Selection */}
+          <div>
+            <Label className="text-base font-semibold">Select Ticket Set</Label>
+            <p className="text-sm text-gray-600 mb-4">Choose from available ticket sets</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {TICKET_SETS.map((ticketSet) => (
+                <Card 
+                  key={ticketSet.id}
+                  className={`cursor-pointer transition-all duration-200 ${
+                    !ticketSet.available 
+                      ? 'bg-gray-100 border-gray-300 opacity-60' 
+                      : createGameForm.selectedTicketSet === ticketSet.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-25'
+                  }`}
+                  onClick={() => handleTicketSetSelect(ticketSet.id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center mb-2">
+                          <Ticket className={`w-5 h-5 mr-2 ${
+                            !ticketSet.available ? 'text-gray-400' : 'text-blue-600'
+                          }`} />
+                          <h3 className={`font-semibold ${
+                            !ticketSet.available ? 'text-gray-500' : 'text-gray-800'
+                          }`}>
+                            {ticketSet.name}
+                          </h3>
+                          {!ticketSet.available && (
+                            <Lock className="w-4 h-4 ml-2 text-gray-400" />
+                          )}
+                        </div>
+                        <p className={`text-sm mb-2 ${
+                          !ticketSet.available ? 'text-gray-400' : 'text-gray-600'
+                        }`}>
+                          {ticketSet.description}
+                        </p>
+                        <Badge variant={ticketSet.available ? "default" : "secondary"}>
+                          {ticketSet.ticketCount} Tickets
+                        </Badge>
+                      </div>
+                      {createGameForm.selectedTicketSet === ticketSet.id && (
+                        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
 
-export default firebaseService;
+          {/* Prize Selection */}
+          <div>
+            <Label className="text-base font-semibold">Select Game Prizes</Label>
+            <p className="text-sm text-gray-600 mb-4">Choose which prizes to include in this game</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {AVAILABLE_PRIZES.map((prize) => (
+                <Card key={prize.id} className="border-gray-200">
+                  <CardContent className="p-4">
+                    <div className="flex items-start space-x-3">
+                      <Checkbox
+                        id={`prize-${prize.id}`}
+                        checked={createGameForm.selectedPrizes.includes(prize.id)}
+                        onCheckedChange={(checked) => handlePrizeToggle(prize.id, checked as boolean)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <Label 
+                          htmlFor={`prize-${prize.id}`}
+                          className="cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <h4 className="font-semibold text-gray-800">{prize.name}</h4>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-1">{prize.pattern}</p>
+                          <p className="text-xs text-gray-500">{prize.description}</p>
+                        </Label>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          {/* Create Game Button */}
+          <Button 
+            onClick={createNewGame} 
+            disabled={isLoading || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0}
+            className="w-full bg-blue-600 hover:bg-blue-700"
+            size="lg"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            {isLoading ? 'Creating Game...' : 'Create Game'}
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  const renderGameControl = () => {
+    if (!currentGame) {
+      return (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">No active game. Create a new game to start.</p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              Game Control: {currentGame.name}
+              <Badge variant={currentGame.gameState.isActive ? "default" : "secondary"}>
+                {currentGame.gameState.isActive ? "Active" : 
+                 currentGame.gameState.isCountdown ? "Starting" : "Waiting"}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex space-x-4">
+              {!currentGame.gameState.isActive && !currentGame.gameState.isCountdown && !currentGame.gameState.gameOver && (
+                <Button onClick={startGame} className="bg-green-500 hover:bg-green-600">
+                  <Play className="w-4 h-4 mr-2" />
+                  Start Game
+                </Button>
+              )}
+
+              {currentGame.gameState.isActive && (
+                <Button onClick={pauseGame} variant="outline">
+                  <Pause className="w-4 h-4 mr-2" />
+                  Pause Game
+                </Button>
+              )}
+
+              {(currentGame.gameState.isActive || currentGame.gameState.isCountdown) && (
+                <Button onClick={endGame} variant="destructive">
+                  <Square className="w-4 h-4 mr-2" />
+                  End Game
+                </Button>
+              )}
+            </div>
+
+            {currentGame.gameState.isCountdown && (
+              <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                <Clock className="w-8 h-8 mx-auto mb-2 text-yellow-600" />
+                <p className="text-lg font-bold text-yellow-800">
+                  Game starting in {currentGame.gameState.countdownTime} seconds...
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  {(currentGame.gameState.calledNumbers || []).length}
+                </div>
+                <div className="text-sm text-blue-700">Numbers Called</div>
+              </div>
+
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">
+                  {getBookedTicketsCount()}
+                </div>
+                <div className="text-sm text-green-700">Tickets Booked</div>
+              </div>
+
+              <div className="text-center p-3 bg-yellow-50 rounded-lg">
+                <div className="text-2xl font-bold text-yellow-600">
+                  {Object.values(currentGame.prizes || {}).filter(p => p.won).length}
+                </div>
+                <div className="text-sm text-yellow-700">Prizes Won</div>
+              </div>
+            </div>
+
+            {currentGame.gameState.currentNumber && (
+              <div className="text-center p-6 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg">
+                <p className="text-lg mb-2">Current Number</p>
+                <p className="text-4xl font-bold">{currentGame.gameState.currentNumber}</p>
+              </div>
+            )}
+
+            {/* Selected Prizes Display */}
+            <div>
+              <h4 className="text-lg font-semibold mb-3">Active Prizes</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Object.values(currentGame.prizes || {}).map((prize: any) => (
+                  <div
+                    key={prize.id}
+                    className={`p-3 rounded-lg border-2 transition-all duration-300 ${
+                      prize.won
+                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg'
+                        : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-gray-800'}`}>
+                          {prize.name}
+                        </h3>
+                        <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
+                          {prize.pattern}
+                        </p>
+                        {prize.winner && (
+                          <p className="text-xs text-green-700 font-medium mt-1">
+                            Won by: {prize.winner.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        prize.won 
+                          ? 'bg-green-500 text-white animate-bounce-in' 
+                          : 'bg-gray-200 text-gray-500'
+                      }`}>
+                        {prize.won ? '✓' : '?'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Recent Numbers */}
+            {(currentGame.gameState.calledNumbers || []).length > 0 && (
+              <div>
+                <h4 className="text-lg font-semibold mb-3">Recent Numbers</h4>
+                <div className="flex flex-wrap gap-2">
+                  {(currentGame.gameState.calledNumbers || [])
+                    .slice(-15)
+                    .reverse()
+                    .map((num, index) => (
+                      <div
+                        key={`${num}-${index}`}
+                        className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-white text-sm
+                          ${index === 0 
+                            ? 'bg-gradient-to-br from-red-400 to-red-600 ring-4 ring-red-200 animate-pulse' 
+                            : 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                          }`}
+                      >
+                        {num}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-slate-800">
+            Host Dashboard
+          </h1>
+          <p
