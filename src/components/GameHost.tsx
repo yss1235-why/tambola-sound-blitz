@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Modified Version
+// src/components/GameHost.tsx - Clean Version (No Prize Amounts)
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,7 +45,6 @@ interface GamePrize {
   id: string;
   name: string;
   pattern: string;
-  defaultAmount: number;
   description: string;
 }
 
@@ -86,63 +85,43 @@ const TICKET_SETS: TicketSet[] = [
   }
 ];
 
-// Available game prizes
+// Available game prizes - REMOVED Early Ten, Two Lines, and all prize amounts
 const AVAILABLE_PRIZES: GamePrize[] = [
   {
     id: 'quickFive',
     name: 'Quick Five',
     pattern: 'First 5 numbers',
-    defaultAmount: 500,
     description: 'First player to mark any 5 numbers'
   },
   {
     id: 'topLine',
     name: 'Top Line',
     pattern: 'Complete top row',
-    defaultAmount: 1000,
     description: 'Complete the top row of any ticket'
   },
   {
     id: 'middleLine',
     name: 'Middle Line',
     pattern: 'Complete middle row', 
-    defaultAmount: 1000,
     description: 'Complete the middle row of any ticket'
   },
   {
     id: 'bottomLine',
     name: 'Bottom Line',
     pattern: 'Complete bottom row',
-    defaultAmount: 1000,
     description: 'Complete the bottom row of any ticket'
   },
   {
     id: 'fourCorners',
     name: 'Four Corners',
     pattern: 'All four corner numbers',
-    defaultAmount: 1500,
     description: 'Mark all four corner numbers of any ticket'
   },
   {
     id: 'fullHouse',
     name: 'Full House',
     pattern: 'Complete ticket',
-    defaultAmount: 3000,
     description: 'Complete all numbers on any ticket'
-  },
-  {
-    id: 'twoLines',
-    name: 'Two Lines',
-    pattern: 'Any two complete rows',
-    defaultAmount: 2000,
-    description: 'Complete any two rows on the same ticket'
-  },
-  {
-    id: 'earlyTen',
-    name: 'Early Ten',
-    pattern: 'First 10 numbers',
-    defaultAmount: 800,
-    description: 'First player to mark any 10 numbers'
   }
 ];
 
@@ -603,7 +582,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             </div>
           </div>
 
-          {/* Prize Selection */}
+          {/* Prize Selection - NO PRIZE AMOUNTS */}
           <div>
             <Label className="text-base font-semibold">Select Game Prizes</Label>
             <p className="text-sm text-gray-600 mb-4">Choose which prizes to include in this game</p>
@@ -623,9 +602,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                           htmlFor={`prize-${prize.id}`}
                           className="cursor-pointer"
                         >
-                          <div className="flex items-center justify-between mb-1">
+                          <div className="mb-1">
                             <h4 className="font-semibold text-gray-800">{prize.name}</h4>
-                            <Badge variant="outline">₹{prize.defaultAmount}</Badge>
                           </div>
                           <p className="text-sm text-gray-600 mb-1">{prize.pattern}</p>
                           <p className="text-xs text-gray-500">{prize.description}</p>
@@ -740,7 +718,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
             )}
 
-            {/* Selected Prizes Display */}
+            {/* Selected Prizes Display - NO AMOUNTS */}
             <div>
               <h4 className="text-lg font-semibold mb-3">Active Prizes</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
