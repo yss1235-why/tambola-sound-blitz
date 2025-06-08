@@ -1,8 +1,15 @@
 
-import TambolaGame from "@/components/TambolaGame";
+import React from 'react';
+import { Header } from '@/components/Header';
+import { UserLandingPage } from '@/components/UserLandingPage';
 
 const Index = () => {
-  return <TambolaGame />;
+  return (
+    <div className="min-h-screen">
+      <Header />
+      <UserLandingPage />
+    </div>
+  );
 };
 
 export default Index;
