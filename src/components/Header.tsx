@@ -1,30 +1,136 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Menu } from 'lucide-react';
+import { LogIn, Menu, LogOut, User } from 'lucide-react';
+import { useToast } from '@/components/ui/use-toast';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { firebaseService, getCurrentUserRole, AdminUser, HostUser } from '@/services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from '@/services/firebase';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  onUserLogin?: (user: AdminUser | HostUser, role: 'admin' | 'host') => void;
+  onUserLogout?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => {
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isHostLoginOpen, setIsHostLoginOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AdminUser | HostUser | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'host' | null>(null);
+  const { toast } = useToast();
 
-  const handleAdminLogin = (e: React.FormEvent) => {
+  // Admin login form state
+  const [adminForm, setAdminForm] = useState({
+    email: '',
+    password: ''
+  });
+
+  // Host login form state
+  const [hostForm, setHostForm] = useState({
+    email: '',
+    password: ''
+  });
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const role = await getCurrentUserRole();
+          if (role) {
+            setUserRole(role);
+            // You could fetch more user details here based on role
+            const userData = { uid: user.uid, email: user.email, role } as any;
+            setCurrentUser(userData);
+            onUserLogin?.(userData, role);
+          }
+        } catch (error) {
+          console.error('Error getting user role:', error);
+        }
+      } else {
+        setCurrentUser(null);
+        setUserRole(null);
+        onUserLogout?.();
+      }
+    });
+
+    return () => unsubscribe();
+  }, [onUserLogin, onUserLogout]);
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Admin login attempted');
-    setIsAdminLoginOpen(false);
+    setIsLoading(true);
+    
+    try {
+      const admin = await firebaseService.loginAdmin(adminForm.email, adminForm.password);
+      if (admin) {
+        toast({
+          title: "Admin Login Successful",
+          description: `Welcome back, ${admin.name}!`,
+        });
+        setIsAdminLoginOpen(false);
+        setAdminForm({ email: '', password: '' });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Login Failed",
+        description: error.message || "Invalid admin credentials",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleHostLogin = (e: React.FormEvent) => {
+  const handleHostLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Host login attempted');
-    setIsHostLoginOpen(false);
+    setIsLoading(true);
+    
+    try {
+      const host = await firebaseService.loginHost(hostForm.email, hostForm.password);
+      if (host) {
+        toast({
+          title: "Host Login Successful",
+          description: `Welcome back, ${host.name}!`,
+        });
+        setIsHostLoginOpen(false);
+        setHostForm({ email: '', password: '' });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Login Failed",
+        description: error.message || "Invalid host credentials",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await firebaseService.logout();
+      toast({
+        title: "Logged Out",
+        description: "You have been successfully logged out.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Logout Error",
+        description: error.message || "Failed to logout",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -38,40 +144,69 @@ export const Header: React.FC = () => {
           </div>
           
           <div className="flex items-center">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  className="border-2 border-slate-400 text-slate-600 hover:bg-slate-50 font-semibold"
-                >
-                  <Menu className="w-4 h-4 mr-2" />
-                  Login
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem 
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setIsHostLoginOpen(true);
-                  }}
-                  className="cursor-pointer"
-                >
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Host Login
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onSelect={(e) => {
-                    e.preventDefault();
-                    setIsAdminLoginOpen(true);
-                  }}
-                  className="cursor-pointer"
-                >
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Admin Login
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {currentUser ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="border-2 border-slate-400 text-slate-600 hover:bg-slate-50 font-semibold"
+                  >
+                    <User className="w-4 h-4 mr-2" />
+                    {userRole === 'admin' ? 'Admin' : 'Host'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <div className="px-2 py-2">
+                    <p className="text-sm font-medium">{currentUser.email}</p>
+                    <p className="text-xs text-gray-500 capitalize">{userRole}</p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onSelect={handleLogout}
+                    className="cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="border-2 border-slate-400 text-slate-600 hover:bg-slate-50 font-semibold"
+                  >
+                    <Menu className="w-4 h-4 mr-2" />
+                    Login
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem 
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setIsHostLoginOpen(true);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Host Login
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setIsAdminLoginOpen(true);
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Admin Login
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
 
             {/* Host Login Dialog */}
             <Dialog open={isHostLoginOpen} onOpenChange={setIsHostLoginOpen}>
@@ -87,7 +222,10 @@ export const Header: React.FC = () => {
                       type="email" 
                       placeholder="Enter your email" 
                       required 
+                      value={hostForm.email}
+                      onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
                       className="border-2 border-slate-200 focus:border-slate-400"
+                      disabled={isLoading}
                     />
                   </div>
                   <div>
@@ -97,14 +235,18 @@ export const Header: React.FC = () => {
                       type="password" 
                       placeholder="Enter your password" 
                       required 
+                      value={hostForm.password}
+                      onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
                       className="border-2 border-slate-200 focus:border-slate-400"
+                      disabled={isLoading}
                     />
                   </div>
                   <Button 
                     type="submit" 
                     className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800"
+                    disabled={isLoading}
                   >
-                    Login as Host
+                    {isLoading ? 'Logging in...' : 'Login as Host'}
                   </Button>
                 </form>
               </DialogContent>
@@ -124,7 +266,10 @@ export const Header: React.FC = () => {
                       type="email" 
                       placeholder="Enter your email" 
                       required 
+                      value={adminForm.email}
+                      onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
                       className="border-2 border-slate-200 focus:border-slate-400"
+                      disabled={isLoading}
                     />
                   </div>
                   <div>
@@ -134,16 +279,25 @@ export const Header: React.FC = () => {
                       type="password" 
                       placeholder="Enter your password" 
                       required 
+                      value={adminForm.password}
+                      onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
                       className="border-2 border-slate-200 focus:border-slate-400"
+                      disabled={isLoading}
                     />
                   </div>
                   <Button 
                     type="submit" 
                     className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800"
+                    disabled={isLoading}
                   >
-                    Login as Admin
+                    {isLoading ? 'Logging in...' : 'Login as Admin'}
                   </Button>
                 </form>
+                <div className="text-xs text-gray-500 mt-2">
+                  <p>Default Admin Credentials:</p>
+                  <p>Email: admin@tambola.com</p>
+                  <p>Password: TambolaAdmin123!</p>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
