@@ -7,28 +7,29 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/components/ui/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Play, 
   Pause, 
   Square, 
   Users, 
   Trophy, 
-  Settings, 
   Plus,
   Clock,
-  DollarSign
+  DollarSign,
+  Calendar,
+  AlertCircle
 } from 'lucide-react';
 import { 
   firebaseService, 
   GameData, 
   TambolaTicket, 
-  AdminUser, 
   HostUser 
 } from '@/services/firebase';
 
 interface GameHostProps {
-  user: AdminUser | HostUser;
-  userRole: 'admin' | 'host';
+  user: HostUser;
+  userRole: 'host';
 }
 
 interface CreateGameForm {
@@ -56,9 +57,28 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
   const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
 
+  // Check subscription status
+  const isSubscriptionValid = () => {
+    const subscriptionEnd = new Date(user.subscriptionEndDate);
+    return subscriptionEnd > new Date() && user.isActive;
+  };
+
+  const getSubscriptionStatus = () => {
+    const subscriptionEnd = new Date(user.subscriptionEndDate);
+    const now = new Date();
+    const daysLeft = Math.ceil((subscriptionEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (!user.isActive) return { status: 'inactive', message: 'Account is deactivated', variant: 'destructive' as const };
+    if (daysLeft < 0) return { status: 'expired', message: 'Subscription expired', variant: 'destructive' as const };
+    if (daysLeft <= 7) return { status: 'expiring', message: `Expires in ${daysLeft} days`, variant: 'secondary' as const };
+    return { status: 'active', message: `Active (${daysLeft} days left)`, variant: 'default' as const };
+  };
+
   // Load games when component mounts
   useEffect(() => {
-    loadGames();
+    if (isSubscriptionValid()) {
+      loadGames();
+    }
   }, []);
 
   // Cleanup intervals and subscriptions on unmount
@@ -91,6 +111,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const createNewGame = async () => {
+    if (!isSubscriptionValid()) {
+      toast({
+        title: "Access Denied",
+        description: "Your subscription has expired or account is inactive",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!createGameForm.name.trim()) {
       toast({
         title: "Validation Error",
@@ -146,7 +175,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const startGame = async () => {
-    if (!currentGame) return;
+    if (!currentGame || !isSubscriptionValid()) return;
 
     try {
       // Start countdown
@@ -291,8 +320,69 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return getBookedTicketsCount() * currentGame.ticketPrice;
   };
 
+  const subscriptionStatus = getSubscriptionStatus();
+
+  // If subscription is invalid, show warning
+  if (!isSubscriptionValid()) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
+            <p className="text-slate-600">Welcome back, {user.name}!</p>
+          </div>
+
+          <Card className="border-red-500">
+            <CardHeader>
+              <CardTitle className="flex items-center text-red-600">
+                <AlertCircle className="w-6 h-6 mr-2" />
+                Account Access Restricted
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  {subscriptionStatus.message}. Please contact the administrator to restore access to your account.
+                </AlertDescription>
+              </Alert>
+              
+              <div className="mt-6 space-y-2">
+                <p className="text-sm text-gray-600">
+                  <strong>Account Status:</strong> {user.isActive ? 'Active' : 'Inactive'}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Subscription End:</strong> {new Date(user.subscriptionEndDate).toLocaleDateString()}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Created:</strong> {new Date(user.createdAt).toLocaleDateString()}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   const renderDashboard = () => (
     <div className="space-y-6">
+      {/* Subscription Status */}
+      <Card className={`border-l-4 ${
+        subscriptionStatus.status === 'active' ? 'border-l-green-500' :
+        subscriptionStatus.status === 'expiring' ? 'border-l-yellow-500' : 'border-l-red-500'
+      }`}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Subscription Status</p>
+              <Badge variant={subscriptionStatus.variant}>{subscriptionStatus.message}</Badge>
+            </div>
+            <Calendar className="w-8 h-8 text-gray-400" />
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardContent className="p-6">
@@ -518,7 +608,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-slate-800">
-            Game Host Dashboard
+            Host Dashboard
           </h1>
           <p className="text-slate-600">
             Welcome back, {user.name}! Manage your Tambola games here.
