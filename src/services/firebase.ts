@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Realtime Database Version
+// src/services/firebase.ts - Updated with phone field and game methods
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -72,6 +72,7 @@ export interface HostUser {
   uid: string;
   email: string;
   name: string;
+  phone: string;
   role: 'host';
   createdBy: string;
   createdAt: string;
@@ -265,11 +266,12 @@ class FirebaseService {
     email: string, 
     password: string, 
     name: string, 
+    phone: string,
     adminUid: string, 
     subscriptionMonths: number = 12
   ): Promise<HostUser> {
     try {
-      console.log('🔧 Creating host account:', { email, name, subscriptionMonths });
+      console.log('🔧 Creating host account:', { email, name, phone, subscriptionMonths });
       
       // Create user account
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -285,6 +287,7 @@ class FirebaseService {
         uid: user.uid,
         email,
         name,
+        phone,
         role: 'host',
         createdBy: adminUid,
         createdAt: new Date().toISOString(),
@@ -300,6 +303,34 @@ class FirebaseService {
     } catch (error: any) {
       console.error('❌ Create host error:', error);
       throw new Error(error.message || 'Failed to create host');
+    }
+  }
+
+  async getHostById(hostId: string): Promise<HostUser | null> {
+    try {
+      const hostSnapshot = await get(ref(database, `hosts/${hostId}`));
+      if (!hostSnapshot.exists()) {
+        return null;
+      }
+      return hostSnapshot.val() as HostUser;
+    } catch (error: any) {
+      console.error('Error fetching host:', error);
+      throw new Error(error.message || 'Failed to fetch host');
+    }
+  }
+
+  async getAllActiveGames(): Promise<GameData[]> {
+    try {
+      const gamesSnapshot = await get(ref(database, 'games'));
+      if (!gamesSnapshot.exists()) {
+        return [];
+      }
+      
+      const gamesData = gamesSnapshot.val();
+      return Object.values(gamesData) as GameData[];
+    } catch (error: any) {
+      console.error('Error fetching active games:', error);
+      throw new Error(error.message || 'Failed to fetch active games');
     }
   }
 
@@ -632,6 +663,3 @@ const initializeDefaultAdmin = async () => {
 
 // Initialize on module load
 initializeDefaultAdmin();
-
-// Note: Statistics services have been removed from this project
-// All game data is tracked through Firebase real-time updates
