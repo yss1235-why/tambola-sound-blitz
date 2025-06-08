@@ -2,23 +2,13 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Users, Trophy, Clock, Phone } from 'lucide-react';
 import TambolaGame from './TambolaGame';
 import { TicketBookingGrid } from './TicketBookingGrid';
 
 export const UserLandingPage: React.FC = () => {
-  const [playerName, setPlayerName] = useState('');
   const [hasJoinedGame, setHasJoinedGame] = useState(false);
-  const [showTickets, setShowTickets] = useState(false);
-
-  const handleJoinGame = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (playerName.trim()) {
-      setShowTickets(true);
-    }
-  };
+  const [showTickets, setShowTickets] = useState(true); // Show tickets by default
 
   if (hasJoinedGame) {
     return <TambolaGame />;
@@ -31,13 +21,13 @@ export const UserLandingPage: React.FC = () => {
           <Card className="tambola-card mb-8">
             <CardHeader className="text-center">
               <CardTitle className="text-3xl text-orange-800">
-                🎲 Welcome {playerName}! 🎲
+                🎲 Welcome to Tambola! 🎲
               </CardTitle>
               <p className="text-orange-600">Book your tickets and get ready to play!</p>
             </CardHeader>
           </Card>
           
-          <TicketBookingGrid playerName={playerName} onGameStart={() => setHasJoinedGame(true)} />
+          <TicketBookingGrid playerName="Player" onGameStart={() => setHasJoinedGame(true)} />
         </div>
       </div>
     );
@@ -55,36 +45,6 @@ export const UserLandingPage: React.FC = () => {
             Join the fun and win amazing prizes!
           </p>
         </div>
-
-        {/* Player Entry Card */}
-        <Card className="tambola-card mb-12">
-          <CardHeader className="text-center">
-            <CardTitle className="text-3xl text-orange-800">Ready to Play?</CardTitle>
-            <p className="text-orange-600 text-lg">Enter your name to see available tickets</p>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleJoinGame} className="space-y-6">
-              <div className="max-w-md mx-auto">
-                <Label htmlFor="player-name" className="text-lg font-semibold text-orange-800">Your Name</Label>
-                <Input
-                  id="player-name"
-                  type="text"
-                  placeholder="Enter your name"
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  required
-                  className="mt-2 text-lg p-4 border-2 border-orange-200 focus:border-orange-400"
-                />
-              </div>
-              <div className="text-center">
-                <Button type="submit" size="lg" className="bg-gradient-to-r from-orange-500 to-red-500 text-white px-8 py-4 text-lg font-bold rounded-xl shadow-lg hover:from-orange-600 hover:to-red-600 transition-all duration-200 hover:scale-105">
-                  <Users className="w-6 h-6 mr-3" />
-                  View Available Tickets
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
 
         {/* Demo Game Card */}
         <Card className="tambola-card mb-12">
@@ -141,8 +101,8 @@ export const UserLandingPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-6">
                 <div>
-                  <h4 className="font-bold text-xl text-orange-800 mb-3">1. Enter Your Name</h4>
-                  <p className="text-orange-600 text-lg">Simply enter your name to see all available tickets for the current game.</p>
+                  <h4 className="font-bold text-xl text-orange-800 mb-3">1. View Available Tickets</h4>
+                  <p className="text-orange-600 text-lg">Browse all available tickets for the current game without any registration.</p>
                 </div>
                 
                 <div>
