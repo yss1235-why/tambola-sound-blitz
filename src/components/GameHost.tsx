@@ -198,7 +198,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGame) => {
         if (updatedGame) {
           setCurrentGame(updatedGame);
-          // Update available numbers based on called numbers
+          // FIXED: Ensure calledNumbers is always an array
           const called = updatedGame.gameState.calledNumbers || [];
           const available = Array.from({ length: 90 }, (_, i) => i + 1)
             .filter(num => !called.includes(num));
@@ -208,6 +208,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       setGameUnsubscribe(() => unsubscribe);
     } catch (error: any) {
+      console.error('Create game error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to create game",
@@ -355,8 +356,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const getBookedTicketsCount = () => {
-    if (!currentGame) return 0;
-    return Object.values(currentGame.tickets).filter(ticket => ticket.isBooked).length;
+    if (!currentGame || !currentGame.tickets) return 0;
+    // FIXED: Ensure tickets is defined and is an object
+    return Object.values(currentGame.tickets || {}).filter(ticket => ticket.isBooked).length;
   };
 
   const getTotalRevenue = () => {
@@ -480,11 +482,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </span>
             </div>
             
-            {currentGame.gameState.calledNumbers.length > 0 && (
+            {/* FIXED: Ensure calledNumbers is always an array */}
+            {(currentGame.gameState.calledNumbers || []).length > 0 && (
               <div>
                 <p className="text-sm font-medium mb-2">Recent Numbers:</p>
                 <div className="flex flex-wrap gap-2">
-                  {currentGame.gameState.calledNumbers.slice(-10).map((num, index) => (
+                  {(currentGame.gameState.calledNumbers || []).slice(-10).map((num, index) => (
                     <Badge key={index} variant="outline">{num}</Badge>
                   ))}
                 </div>
@@ -608,7 +611,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
-                  {currentGame.gameState.calledNumbers.length}
+                  {/* FIXED: Ensure calledNumbers is always an array */}
+                  {(currentGame.gameState.calledNumbers || []).length}
                 </div>
                 <div className="text-sm text-blue-700">Numbers Called</div>
               </div>
@@ -629,7 +633,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
               <div className="text-center p-3 bg-yellow-50 rounded-lg">
                 <div className="text-2xl font-bold text-yellow-600">
-                  {Object.values(currentGame.prizes).filter(p => p.won).length}
+                  {/* FIXED: Ensure prizes is always an object */}
+                  {Object.values(currentGame.prizes || {}).filter(p => p.won).length}
                 </div>
                 <div className="text-sm text-yellow-700">Prizes Won</div>
               </div>
