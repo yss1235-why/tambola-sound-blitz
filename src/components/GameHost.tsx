@@ -1,11 +1,11 @@
-// src/components/GameHost.tsx
+// src/components/GameHost.tsx - Modified Version
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -13,12 +13,13 @@ import {
   Pause, 
   Square, 
   Users, 
-  Trophy, 
   Plus,
   Clock,
-  DollarSign,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Trophy,
+  Ticket,
+  Lock
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -32,21 +33,126 @@ interface GameHostProps {
   userRole: 'host';
 }
 
-interface CreateGameForm {
+interface TicketSet {
+  id: string;
   name: string;
-  maxTickets: number;
-  ticketPrice: number;
+  available: boolean;
+  ticketCount: number;
+  description: string;
 }
 
+interface GamePrize {
+  id: string;
+  name: string;
+  pattern: string;
+  defaultAmount: number;
+  description: string;
+}
+
+interface CreateGameForm {
+  selectedTicketSet: string;
+  selectedPrizes: string[];
+}
+
+// Ticket sets data
+const TICKET_SETS: TicketSet[] = [
+  {
+    id: "1",
+    name: "Classic Set 1",
+    available: true,
+    ticketCount: 6,
+    description: "Traditional 6-ticket set with balanced number distribution"
+  },
+  {
+    id: "2", 
+    name: "Premium Set 2",
+    available: true,
+    ticketCount: 8,
+    description: "8-ticket set with optimized winning patterns"
+  },
+  {
+    id: "3",
+    name: "Deluxe Set 3", 
+    available: false,
+    ticketCount: 10,
+    description: "10-ticket deluxe set (Coming Soon)"
+  },
+  {
+    id: "4",
+    name: "Ultimate Set 4",
+    available: false, 
+    ticketCount: 12,
+    description: "12-ticket ultimate set (Coming Soon)"
+  }
+];
+
+// Available game prizes
+const AVAILABLE_PRIZES: GamePrize[] = [
+  {
+    id: 'quickFive',
+    name: 'Quick Five',
+    pattern: 'First 5 numbers',
+    defaultAmount: 500,
+    description: 'First player to mark any 5 numbers'
+  },
+  {
+    id: 'topLine',
+    name: 'Top Line',
+    pattern: 'Complete top row',
+    defaultAmount: 1000,
+    description: 'Complete the top row of any ticket'
+  },
+  {
+    id: 'middleLine',
+    name: 'Middle Line',
+    pattern: 'Complete middle row', 
+    defaultAmount: 1000,
+    description: 'Complete the middle row of any ticket'
+  },
+  {
+    id: 'bottomLine',
+    name: 'Bottom Line',
+    pattern: 'Complete bottom row',
+    defaultAmount: 1000,
+    description: 'Complete the bottom row of any ticket'
+  },
+  {
+    id: 'fourCorners',
+    name: 'Four Corners',
+    pattern: 'All four corner numbers',
+    defaultAmount: 1500,
+    description: 'Mark all four corner numbers of any ticket'
+  },
+  {
+    id: 'fullHouse',
+    name: 'Full House',
+    pattern: 'Complete ticket',
+    defaultAmount: 3000,
+    description: 'Complete all numbers on any ticket'
+  },
+  {
+    id: 'twoLines',
+    name: 'Two Lines',
+    pattern: 'Any two complete rows',
+    defaultAmount: 2000,
+    description: 'Complete any two rows on the same ticket'
+  },
+  {
+    id: 'earlyTen',
+    name: 'Early Ten',
+    pattern: 'First 10 numbers',
+    defaultAmount: 800,
+    description: 'First player to mark any 10 numbers'
+  }
+];
+
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState('create-game');
   const [currentGame, setCurrentGame] = useState<GameData | null>(null);
-  const [gamesList, setGamesList] = useState<GameData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
-    name: '',
-    maxTickets: 50,
-    ticketPrice: 100
+    selectedTicketSet: '',
+    selectedPrizes: []
   });
   const { toast } = useToast();
 
@@ -114,17 +220,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return { status: 'active', message: `Active (${daysLeft} days left)`, variant: 'default' as const };
   }, [user.isActive, user.subscriptionEndDate, user.email]);
 
-  // Load games when component mounts - FIXED: Added proper dependencies
-  useEffect(() => {
-    console.log('🔧 GameHost: Component mounted, checking subscription');
-    if (isSubscriptionValid()) {
-      console.log('✅ GameHost: Subscription valid, loading games');
-      loadGames();
-    } else {
-      console.log('❌ GameHost: Subscription invalid, not loading games');
-    }
-  }, [isSubscriptionValid]);
-
   // Cleanup intervals and subscriptions on unmount
   useEffect(() => {
     return () => {
@@ -137,20 +232,44 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     };
   }, [gameInterval, gameUnsubscribe]);
 
-  const loadGames = async () => {
-    setIsLoading(true);
+  const loadTicketSetData = async (setId: string) => {
     try {
-      // In a real implementation, you'd fetch host's games from Firebase
-      // For now, we'll use an empty list
-      setGamesList([]);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load games",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+      // In a real implementation, you would fetch from public/data/{setId}.json
+      // For now, we'll return mock data based on the set ID
+      console.log(`Loading ticket set ${setId} data...`);
+      
+      // Mock ticket data - replace with actual file loading
+      const mockTickets = {
+        "1": [
+          // 6 tickets for set 1
+          {
+            ticketId: 'set1_ticket_1',
+            rows: [
+              [4, 11, 0, 32, 44, 0, 60, 0, 0],
+              [8, 0, 21, 34, 47, 0, 0, 74, 0],
+              [0, 14, 29, 0, 49, 55, 0, 0, 88]
+            ]
+          },
+          // ... add more tickets
+        ],
+        "2": [
+          // 8 tickets for set 2
+          {
+            ticketId: 'set2_ticket_1',
+            rows: [
+              [2, 0, 25, 0, 0, 52, 63, 0, 85],
+              [0, 16, 0, 31, 0, 0, 67, 78, 0],
+              [9, 0, 0, 35, 48, 0, 0, 79, 90]
+            ]
+          },
+          // ... add more tickets
+        ]
+      };
+
+      return mockTickets[setId as keyof typeof mockTickets] || [];
+    } catch (error) {
+      console.error('Error loading ticket set:', error);
+      throw new Error('Failed to load ticket set data');
     }
   };
 
@@ -164,10 +283,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return;
     }
 
-    if (!createGameForm.name.trim()) {
+    if (!createGameForm.selectedTicketSet) {
       toast({
         title: "Validation Error",
-        description: "Please enter a game name",
+        description: "Please select a ticket set",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (createGameForm.selectedPrizes.length === 0) {
+      toast({
+        title: "Validation Error", 
+        description: "Please select at least one prize",
         variant: "destructive",
       });
       return;
@@ -175,30 +303,63 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsLoading(true);
     try {
+      // Load ticket data for selected set
+      const ticketData = await loadTicketSetData(createGameForm.selectedTicketSet);
+      const selectedSet = TICKET_SETS.find(set => set.id === createGameForm.selectedTicketSet);
+      
+      // Create prizes object with only selected prizes
+      const selectedPrizesData = createGameForm.selectedPrizes.reduce((acc, prizeId) => {
+        const prizeInfo = AVAILABLE_PRIZES.find(p => p.id === prizeId);
+        if (prizeInfo) {
+          acc[prizeId] = {
+            id: prizeInfo.id,
+            name: prizeInfo.name,
+            pattern: prizeInfo.pattern,
+            won: false,
+            amount: prizeInfo.defaultAmount,
+            winner: null
+          };
+        }
+        return acc;
+      }, {} as any);
+
+      // Generate tickets object
+      const ticketsObject = ticketData.reduce((acc, ticket, index) => {
+        acc[ticket.ticketId] = {
+          ticketId: ticket.ticketId,
+          rows: ticket.rows,
+          isBooked: false,
+          playerName: '',
+          playerPhone: '',
+          bookedAt: undefined
+        };
+        return acc;
+      }, {} as any);
+
       const gameData = await firebaseService.createGame(
         {
-          name: createGameForm.name,
-          maxTickets: createGameForm.maxTickets,
-          ticketPrice: createGameForm.ticketPrice
+          name: `${selectedSet?.name} Game`,
+          maxTickets: selectedSet?.ticketCount || 6,
+          ticketPrice: 0, // No ticket price as per requirement
+          prizes: selectedPrizesData,
+          tickets: ticketsObject
         },
         user.uid
       );
 
       setCurrentGame(gameData);
-      setGamesList(prev => [...prev, gameData]);
-      setCreateGameForm({ name: '', maxTickets: 50, ticketPrice: 100 });
+      setCreateGameForm({ selectedTicketSet: '', selectedPrizes: [] });
       setActiveTab('game-control');
 
       toast({
         title: "Game Created",
-        description: `${gameData.name} has been created successfully!`,
+        description: `Game with ${selectedSet?.name} has been created successfully!`,
       });
 
       // Subscribe to real-time game updates
       const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGame) => {
         if (updatedGame) {
           setCurrentGame(updatedGame);
-          // FIXED: Ensure calledNumbers is always an array
           const called = updatedGame.gameState.calledNumbers || [];
           const available = Array.from({ length: 90 }, (_, i) => i + 1)
             .filter(num => !called.includes(num));
@@ -357,13 +518,23 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const getBookedTicketsCount = () => {
     if (!currentGame || !currentGame.tickets) return 0;
-    // FIXED: Ensure tickets is defined and is an object
     return Object.values(currentGame.tickets || {}).filter(ticket => ticket.isBooked).length;
   };
 
-  const getTotalRevenue = () => {
-    if (!currentGame) return 0;
-    return getBookedTicketsCount() * currentGame.ticketPrice;
+  const handleTicketSetSelect = (setId: string) => {
+    const ticketSet = TICKET_SETS.find(set => set.id === setId);
+    if (ticketSet && ticketSet.available) {
+      setCreateGameForm(prev => ({ ...prev, selectedTicketSet: setId }));
+    }
+  };
+
+  const handlePrizeToggle = (prizeId: string, checked: boolean) => {
+    setCreateGameForm(prev => ({
+      ...prev,
+      selectedPrizes: checked 
+        ? [...prev.selectedPrizes, prizeId]
+        : prev.selectedPrizes.filter(id => id !== prizeId)
+    }));
   };
 
   const subscriptionStatus = getSubscriptionStatus();
@@ -411,7 +582,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     );
   }
 
-  const renderDashboard = () => (
+  const renderCreateGame = () => (
     <div className="space-y-6">
       {/* Subscription Status */}
       <Card className={`border-l-4 ${
@@ -429,127 +600,117 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Total Games</p>
-                <p className="text-2xl font-bold">{gamesList.length}</p>
-              </div>
-              <Trophy className="w-8 h-8 text-yellow-500" />
+      {/* Create New Game */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Plus className="w-5 h-5 mr-2" />
+            Create New Game
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Ticket Set Selection */}
+          <div>
+            <Label className="text-base font-semibold">Select Ticket Set</Label>
+            <p className="text-sm text-gray-600 mb-4">Choose from available ticket sets</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {TICKET_SETS.map((ticketSet) => (
+                <Card 
+                  key={ticketSet.id}
+                  className={`cursor-pointer transition-all duration-200 ${
+                    !ticketSet.available 
+                      ? 'bg-gray-100 border-gray-300 opacity-60' 
+                      : createGameForm.selectedTicketSet === ticketSet.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-blue-300 hover:bg-blue-25'
+                  }`}
+                  onClick={() => handleTicketSetSelect(ticketSet.id)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center mb-2">
+                          <Ticket className={`w-5 h-5 mr-2 ${
+                            !ticketSet.available ? 'text-gray-400' : 'text-blue-600'
+                          }`} />
+                          <h3 className={`font-semibold ${
+                            !ticketSet.available ? 'text-gray-500' : 'text-gray-800'
+                          }`}>
+                            {ticketSet.name}
+                          </h3>
+                          {!ticketSet.available && (
+                            <Lock className="w-4 h-4 ml-2 text-gray-400" />
+                          )}
+                        </div>
+                        <p className={`text-sm mb-2 ${
+                          !ticketSet.available ? 'text-gray-400' : 'text-gray-600'
+                        }`}>
+                          {ticketSet.description}
+                        </p>
+                        <Badge variant={ticketSet.available ? "default" : "secondary"}>
+                          {ticketSet.ticketCount} Tickets
+                        </Badge>
+                      </div>
+                      {createGameForm.selectedTicketSet === ticketSet.id && (
+                        <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Active Players</p>
-                <p className="text-2xl font-bold">{currentGame ? getBookedTicketsCount() : 0}</p>
-              </div>
-              <Users className="w-8 h-8 text-blue-500" />
+          {/* Prize Selection */}
+          <div>
+            <Label className="text-base font-semibold">Select Game Prizes</Label>
+            <p className="text-sm text-gray-600 mb-4">Choose which prizes to include in this game</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {AVAILABLE_PRIZES.map((prize) => (
+                <Card key={prize.id} className="border-gray-200">
+                  <CardContent className="p-4">
+                    <div className="flex items-start space-x-3">
+                      <Checkbox
+                        id={`prize-${prize.id}`}
+                        checked={createGameForm.selectedPrizes.includes(prize.id)}
+                        onCheckedChange={(checked) => handlePrizeToggle(prize.id, checked as boolean)}
+                        className="mt-1"
+                      />
+                      <div className="flex-1">
+                        <Label 
+                          htmlFor={`prize-${prize.id}`}
+                          className="cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <h4 className="font-semibold text-gray-800">{prize.name}</h4>
+                            <Badge variant="outline">₹{prize.defaultAmount}</Badge>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-1">{prize.pattern}</p>
+                          <p className="text-xs text-gray-500">{prize.description}</p>
+                        </Label>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Revenue</p>
-                <p className="text-2xl font-bold">₹{getTotalRevenue()}</p>
-              </div>
-              <DollarSign className="w-8 h-8 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {currentGame && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Current Game: {currentGame.name}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center space-x-4">
-              <Badge variant={currentGame.gameState.isActive ? "default" : "secondary"}>
-                {currentGame.gameState.isActive ? "Active" : "Waiting"}
-              </Badge>
-              <span className="text-sm text-gray-600">
-                {getBookedTicketsCount()}/{currentGame.maxTickets} tickets booked
-              </span>
-            </div>
-            
-            {/* FIXED: Ensure calledNumbers is always an array */}
-            {(currentGame.gameState.calledNumbers || []).length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-2">Recent Numbers:</p>
-                <div className="flex flex-wrap gap-2">
-                  {(currentGame.gameState.calledNumbers || []).slice(-10).map((num, index) => (
-                    <Badge key={index} variant="outline">{num}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+          {/* Create Game Button */}
+          <Button 
+            onClick={createNewGame} 
+            disabled={isLoading || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0}
+            className="w-full bg-blue-600 hover:bg-blue-700"
+            size="lg"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            {isLoading ? 'Creating Game...' : 'Create Game'}
+          </Button>
+        </CardContent>
+      </Card>
     </div>
-  );
-
-  const renderCreateGame = () => (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create New Game</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <Label htmlFor="game-name">Game Name</Label>
-          <Input
-            id="game-name"
-            placeholder="Enter game name"
-            value={createGameForm.name}
-            onChange={(e) => setCreateGameForm(prev => ({ ...prev, name: e.target.value }))}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="max-tickets">Max Tickets</Label>
-            <Input
-              id="max-tickets"
-              type="number"
-              min="1"
-              max="100"
-              value={createGameForm.maxTickets}
-              onChange={(e) => setCreateGameForm(prev => ({ ...prev, maxTickets: parseInt(e.target.value) || 50 }))}
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="ticket-price">Ticket Price (₹)</Label>
-            <Input
-              id="ticket-price"
-              type="number"
-              min="10"
-              value={createGameForm.ticketPrice}
-              onChange={(e) => setCreateGameForm(prev => ({ ...prev, ticketPrice: parseInt(e.target.value) || 100 }))}
-            />
-          </div>
-        </div>
-
-        <Button 
-          onClick={createNewGame} 
-          disabled={isLoading || !createGameForm.name.trim()}
-          className="w-full"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          {isLoading ? 'Creating...' : 'Create Game'}
-        </Button>
-      </CardContent>
-    </Card>
   );
 
   const renderGameControl = () => {
@@ -557,6 +718,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return (
         <Card>
           <CardContent className="p-6 text-center">
+            <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-gray-600">No active game. Create a new game to start.</p>
           </CardContent>
         </Card>
@@ -608,10 +770,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center p-3 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
-                  {/* FIXED: Ensure calledNumbers is always an array */}
                   {(currentGame.gameState.calledNumbers || []).length}
                 </div>
                 <div className="text-sm text-blue-700">Numbers Called</div>
@@ -621,19 +782,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <div className="text-2xl font-bold text-green-600">
                   {getBookedTicketsCount()}
                 </div>
-                <div className="text-sm text-green-700">Tickets Sold</div>
-              </div>
-
-              <div className="text-center p-3 bg-purple-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">
-                  ₹{getTotalRevenue()}
-                </div>
-                <div className="text-sm text-purple-700">Revenue</div>
+                <div className="text-sm text-green-700">Tickets Booked</div>
               </div>
 
               <div className="text-center p-3 bg-yellow-50 rounded-lg">
                 <div className="text-2xl font-bold text-yellow-600">
-                  {/* FIXED: Ensure prizes is always an object */}
                   {Object.values(currentGame.prizes || {}).filter(p => p.won).length}
                 </div>
                 <div className="text-sm text-yellow-700">Prizes Won</div>
@@ -644,6 +797,70 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               <div className="text-center p-6 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg">
                 <p className="text-lg mb-2">Current Number</p>
                 <p className="text-4xl font-bold">{currentGame.gameState.currentNumber}</p>
+              </div>
+            )}
+
+            {/* Selected Prizes Display */}
+            <div>
+              <h4 className="text-lg font-semibold mb-3">Active Prizes</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Object.values(currentGame.prizes || {}).map((prize: any) => (
+                  <div
+                    key={prize.id}
+                    className={`p-3 rounded-lg border-2 transition-all duration-300 ${
+                      prize.won
+                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg'
+                        : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-gray-800'}`}>
+                          {prize.name}
+                        </h3>
+                        <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
+                          {prize.pattern}
+                        </p>
+                        {prize.winner && (
+                          <p className="text-xs text-green-700 font-medium mt-1">
+                            Won by: {prize.winner.name}
+                          </p>
+                        )}
+                      </div>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                        prize.won 
+                          ? 'bg-green-500 text-white animate-bounce-in' 
+                          : 'bg-gray-200 text-gray-500'
+                      }`}>
+                        {prize.won ? '✓' : '?'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Recent Numbers */}
+            {(currentGame.gameState.calledNumbers || []).length > 0 && (
+              <div>
+                <h4 className="text-lg font-semibold mb-3">Recent Numbers</h4>
+                <div className="flex flex-wrap gap-2">
+                  {(currentGame.gameState.calledNumbers || [])
+                    .slice(-15)
+                    .reverse()
+                    .map((num, index) => (
+                      <div
+                        key={`${num}-${index}`}
+                        className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-white text-sm
+                          ${index === 0 
+                            ? 'bg-gradient-to-br from-red-400 to-red-600 ring-4 ring-red-200 animate-pulse' 
+                            : 'bg-gradient-to-br from-emerald-400 to-emerald-600'
+                          }`}
+                      >
+                        {num}
+                      </div>
+                    ))}
+                </div>
               </div>
             )}
           </CardContent>
@@ -660,20 +877,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             Host Dashboard
           </h1>
           <p className="text-slate-600">
-            Welcome back, {user.name}! Manage your Tambola games here.
+            Welcome back, {user.name}! Create and manage your Tambola games.
           </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="create-game">Create Game</TabsTrigger>
             <TabsTrigger value="game-control">Game Control</TabsTrigger>
           </TabsList>
-
-          <TabsContent value="dashboard" className="mt-6">
-            {renderDashboard()}
-          </TabsContent>
 
           <TabsContent value="create-game" className="mt-6">
             {renderCreateGame()}
