@@ -1,5 +1,5 @@
 // src/components/AdminDashboard.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,21 +69,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
   const [newPassword, setNewPassword] = useState('');
 
-  // Load hosts on component mount
-  useEffect(() => {
-    loadHosts();
-    
-    // Subscribe to real-time hosts updates
-    const unsubscribe = firebaseService.subscribeToHosts((updatedHosts) => {
-      if (updatedHosts) {
-        setHosts(updatedHosts);
-      }
-    });
-
-    return unsubscribe;
-  }, []);
-
-  const loadHosts = async () => {
+  // Memoize the loadHosts function to prevent unnecessary re-renders
+  const loadHosts = useCallback(async () => {
     setIsLoading(true);
     try {
       const hostsList = await firebaseService.getAllHosts();
@@ -97,9 +84,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [toast]);
 
-  // UPDATED: No need for password prompt or re-authentication
+  // Load hosts on component mount
+  useEffect(() => {
+    console.log('🔧 AdminDashboard: Component mounted, loading hosts');
+    loadHosts();
+    
+    // Subscribe to real-time hosts updates
+    const unsubscribe = firebaseService.subscribeToHosts((updatedHosts) => {
+      if (updatedHosts) {
+        console.log('📝 AdminDashboard: Hosts updated via subscription');
+        setHosts(updatedHosts);
+      }
+    });
+
+    return () => {
+      console.log('🔧 AdminDashboard: Cleaning up hosts subscription');
+      unsubscribe();
+    };
+  }, [loadHosts]);
+
   const handleCreateHost = async () => {
     if (!createForm.name.trim() || !createForm.email.trim() || !createForm.password.trim()) {
       toast({
@@ -295,7 +300,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     setShowPasswordDialog(true);
   };
 
-  const getSubscriptionStatus = (host: HostUser) => {
+  const getSubscriptionStatus = useCallback((host: HostUser) => {
     const subscriptionEnd = new Date(host.subscriptionEndDate);
     const now = new Date();
     const daysLeft = Math.ceil((subscriptionEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -303,7 +308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     if (daysLeft < 0) return { status: 'expired', text: 'Expired', variant: 'destructive' as const };
     if (daysLeft <= 7) return { status: 'expiring', text: `${daysLeft} days left`, variant: 'secondary' as const };
     return { status: 'active', text: `${daysLeft} days left`, variant: 'default' as const };
-  };
+  }, []);
 
   const activeHosts = hosts.filter(h => h.isActive).length;
   const expiredHosts = hosts.filter(h => new Date(h.subscriptionEndDate) < new Date()).length;
