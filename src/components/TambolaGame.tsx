@@ -1,4 +1,4 @@
-// src/components/TambolaGame.tsx - Updated to show max tickets and game info
+// src/components/TambolaGame.tsx - Updated with simple ticket naming and host phone display
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { PrizeTracker } from './PrizeTracker';
 import { AudioManager } from './AudioManager';
 import { WinnerDisplay } from './WinnerDisplay';
 import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
-import { ArrowLeft, Clock, Users, Trophy, Ticket } from 'lucide-react';
+import { ArrowLeft, Clock, Users, Trophy, Ticket, Phone } from 'lucide-react';
 
 export interface CalledNumber {
   number: number;
@@ -107,6 +107,12 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                   </span>
                   {gameData.ticketPrice > 0 && (
                     <span>₹{gameData.ticketPrice} per ticket</span>
+                  )}
+                  {gameData.hostPhone && (
+                    <span className="flex items-center">
+                      <Phone className="w-4 h-4 mr-1" />
+                      WhatsApp: +{gameData.hostPhone}
+                    </span>
                   )}
                 </div>
               </div>
@@ -244,6 +250,15 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                     {Math.round((calledNumbers.length / 90) * 100)}%
                   </span>
                 </div>
+                {gameData.hostPhone && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">WhatsApp:</span>
+                    <span className="font-medium text-blue-600 flex items-center">
+                      <Phone className="w-3 h-3 mr-1" />
+                      +{gameData.hostPhone}
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
             
