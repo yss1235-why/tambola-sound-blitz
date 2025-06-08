@@ -666,26 +666,36 @@ class FirebaseService {
     }
   }
 
-  // Get user data
+  // Get user data - UPDATED WITH ENHANCED LOGGING
   async getUserData(): Promise<AdminUser | HostUser | null> {
     const user = auth.currentUser;
-    if (!user) return null;
+    if (!user) {
+      console.log('❌ No authenticated user');
+      return null;
+    }
 
     try {
+      console.log('🔍 Fetching user data for:', user.uid);
+      
+      // Try admin first
       const adminRef = ref(database, `admins/${user.uid}`);
       const adminSnapshot = await get(adminRef);
       if (adminSnapshot.exists()) {
         const adminData = adminSnapshot.val();
+        console.log('✅ Found admin data:', adminData);
         if (adminData.role === 'admin') return adminData as AdminUser;
       }
       
+      // Try host
       const hostRef = ref(database, `hosts/${user.uid}`);
       const hostSnapshot = await get(hostRef);
       if (hostSnapshot.exists()) {
         const hostData = hostSnapshot.val();
+        console.log('✅ Found host data:', hostData);
         if (hostData.role === 'host') return hostData as HostUser;
       }
       
+      console.log('❌ No user data found in database');
       return null;
     } catch (error: any) {
       console.error("Get user data error:", error);
