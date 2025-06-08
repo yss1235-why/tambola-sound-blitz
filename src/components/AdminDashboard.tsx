@@ -99,6 +99,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     }
   };
 
+  // UPDATED: No need for password prompt or re-authentication
   const handleCreateHost = async () => {
     if (!createForm.name.trim() || !createForm.email.trim() || !createForm.password.trim()) {
       toast({
@@ -111,6 +112,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     setIsLoading(true);
     try {
+      console.log('Creating host account...');
+      
       await firebaseService.createHost(
         createForm.email,
         createForm.password,
@@ -119,14 +122,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         createForm.subscriptionMonths
       );
 
+      console.log('✅ Host created successfully, admin remains logged in');
+      
       setShowCreateDialog(false);
       setCreateForm({ name: '', email: '', password: '', subscriptionMonths: 12 });
       
       toast({
-        title: "Host Created",
-        description: `${createForm.name} has been created successfully!`,
+        title: "Host Created Successfully!",
+        description: `${createForm.name} has been created and you remain logged in as admin.`,
       });
+      
     } catch (error: any) {
+      console.error('❌ Create host error:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to create host",
@@ -309,6 +316,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           <div>
             <h1 className="text-3xl font-bold text-slate-800">Admin Dashboard</h1>
             <p className="text-slate-600">Manage host accounts and user access</p>
+            <p className="text-sm text-green-600 mt-1">✅ Enhanced: Creating hosts won't log you out anymore!</p>
           </div>
           <Button
             onClick={() => setShowCreateDialog(true)}
@@ -506,6 +514,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               <DialogTitle>Create New Host</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
+              <Alert>
+                <AlertDescription>
+                  ✅ You will remain logged in as admin after creating the host account.
+                </AlertDescription>
+              </Alert>
               <div>
                 <Label htmlFor="host-name">Name</Label>
                 <Input
@@ -551,7 +564,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 disabled={isLoading}
                 className="w-full"
               >
-                {isLoading ? 'Creating...' : 'Create Host'}
+                {isLoading ? 'Creating Host...' : 'Create Host Account'}
               </Button>
             </div>
           </DialogContent>
