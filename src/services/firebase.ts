@@ -6,7 +6,8 @@ import {
   createUserWithEmailAndPassword, 
   signOut,
   onAuthStateChanged,
-  User
+  User,
+  updatePassword
 } from "firebase/auth";
 import { 
   getDatabase, 
@@ -48,7 +49,7 @@ if (typeof window !== 'undefined') {
   }
 }
 
-// Type definitions
+// Updated Type definitions with modified admin role
 export interface AdminUser {
   uid: string;
   email: string;
@@ -57,9 +58,7 @@ export interface AdminUser {
   createdAt: string;
   permissions: {
     createHosts: boolean;
-    manageGames: boolean;
-    viewStatistics: boolean;
-    manageUsers: boolean;
+    manageUsers: boolean; // Only user management permissions
   };
 }
 
@@ -70,6 +69,8 @@ export interface HostUser {
   role: 'host';
   createdAt: string;
   createdBy: string;
+  subscriptionEndDate: string; // New: subscription management
+  isActive: boolean; // New: active status
   permissions: {
     createGames: boolean;
     manageGames: boolean;
@@ -126,7 +127,7 @@ class FirebaseService {
     });
   }
 
-  // Authentication Methods
+  // Enhanced Authentication Methods with role separation
   async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -137,8 +138,22 @@ class FirebaseService {
       const adminSnapshot = await get(adminRef);
       
       if (adminSnapshot.exists()) {
-        return adminSnapshot.val() as AdminUser;
+        const adminData = adminSnapshot.val() as AdminUser;
+        // Ensure this is actually an admin role
+        if (adminData.role !== 'admin') {
+          await signOut(auth);
+          throw new Error("Invalid admin credentials");
+        }
+        return adminData;
       } else {
+        // Check if user exists as host to prevent cross-role login
+        const hostRef = ref(database, `hosts/${user.uid}`);
+        const hostSnapshot = await get(hostRef);
+        if (hostSnapshot.exists()) {
+          await signOut(auth);
+          throw new Error("This account is registered as a host. Please use host login.");
+        }
+        
         await signOut(auth);
         throw new Error("User is not an admin");
       }
@@ -158,8 +173,36 @@ class FirebaseService {
       const hostSnapshot = await get(hostRef);
       
       if (hostSnapshot.exists()) {
-        return hostSnapshot.val() as HostUser;
+        const hostData = hostSnapshot.val() as HostUser;
+        // Ensure this is actually a host role
+        if (hostData.role !== 'host') {
+          await signOut(auth);
+          throw new Error("Invalid host credentials");
+        }
+        
+        // Check if host subscription is active
+        if (!hostData.isActive) {
+          await signOut(auth);
+          throw new Error("Your account has been deactivated. Please contact admin.");
+        }
+        
+        // Check subscription expiry
+        const subscriptionEnd = new Date(hostData.subscriptionEndDate);
+        if (subscriptionEnd < new Date()) {
+          await signOut(auth);
+          throw new Error("Your subscription has expired. Please contact admin to renew.");
+        }
+        
+        return hostData;
       } else {
+        // Check if user exists as admin to prevent cross-role login
+        const adminRef = ref(database, `admins/${user.uid}`);
+        const adminSnapshot = await get(adminRef);
+        if (adminSnapshot.exists()) {
+          await signOut(auth);
+          throw new Error("This account is registered as an admin. Please use admin login.");
+        }
+        
         await signOut(auth);
         throw new Error("User is not a host");
       }
@@ -178,7 +221,7 @@ class FirebaseService {
     }
   }
 
-  // Admin Management Methods
+  // Enhanced Admin Management Methods (User Management Only)
   async createAdmin(email: string, password: string, name: string): Promise<AdminUser> {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -192,9 +235,7 @@ class FirebaseService {
         createdAt: new Date().toISOString(),
         permissions: {
           createHosts: true,
-          manageGames: true,
-          viewStatistics: true,
-          manageUsers: true
+          manageUsers: true // Only user management
         }
       };
       
@@ -209,10 +250,14 @@ class FirebaseService {
     }
   }
 
-  async createHost(email: string, password: string, name: string, createdByUid: string): Promise<HostUser> {
+  async createHost(email: string, password: string, name: string, createdByUid: string, subscriptionMonths: number = 12): Promise<HostUser> {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      
+      // Calculate subscription end date
+      const subscriptionEndDate = new Date();
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
       
       const hostData: HostUser = {
         uid: user.uid,
@@ -221,6 +266,8 @@ class FirebaseService {
         role: 'host',
         createdAt: new Date().toISOString(),
         createdBy: createdByUid,
+        subscriptionEndDate: subscriptionEndDate.toISOString(),
+        isActive: true,
         permissions: {
           createGames: true,
           manageGames: true
@@ -238,9 +285,108 @@ class FirebaseService {
     }
   }
 
-  // Game Management Methods
+  // New: Enhanced Host Management for Admins
+  async getAllHosts(): Promise<HostUser[]> {
+    try {
+      const hostsRef = ref(database, 'hosts');
+      const snapshot = await get(hostsRef);
+      
+      if (snapshot.exists()) {
+        const hostsData = snapshot.val();
+        return Object.values(hostsData) as HostUser[];
+      }
+      return [];
+    } catch (error: any) {
+      console.error("Get hosts error:", error);
+      throw new Error(error.message || "Failed to get hosts");
+    }
+  }
+
+  async updateHost(hostUid: string, updates: Partial<HostUser>): Promise<void> {
+    try {
+      const hostRef = ref(database, `hosts/${hostUid}`);
+      await update(hostRef, updates);
+    } catch (error: any) {
+      console.error("Update host error:", error);
+      throw new Error(error.message || "Failed to update host");
+    }
+  }
+
+  async deleteHost(hostUid: string): Promise<void> {
+    try {
+      const hostRef = ref(database, `hosts/${hostUid}`);
+      await remove(hostRef);
+    } catch (error: any) {
+      console.error("Delete host error:", error);
+      throw new Error(error.message || "Failed to delete host");
+    }
+  }
+
+  async changeHostPassword(hostUid: string, newPassword: string): Promise<void> {
+    try {
+      // Note: This is a simplified approach. In a real implementation,
+      // you'd need to use Firebase Admin SDK server-side to change passwords
+      // For now, we'll update a flag in the database to indicate password change needed
+      const hostRef = ref(database, `hosts/${hostUid}`);
+      await update(hostRef, {
+        passwordChangeRequired: true,
+        newPassword: newPassword, // In production, this should be handled securely
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error("Change host password error:", error);
+      throw new Error(error.message || "Failed to change host password");
+    }
+  }
+
+  async extendHostSubscription(hostUid: string, additionalMonths: number): Promise<void> {
+    try {
+      const hostRef = ref(database, `hosts/${hostUid}`);
+      const snapshot = await get(hostRef);
+      
+      if (snapshot.exists()) {
+        const hostData = snapshot.val() as HostUser;
+        const currentEndDate = new Date(hostData.subscriptionEndDate);
+        const newEndDate = new Date(currentEndDate);
+        newEndDate.setMonth(newEndDate.getMonth() + additionalMonths);
+        
+        await update(hostRef, {
+          subscriptionEndDate: newEndDate.toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        throw new Error("Host not found");
+      }
+    } catch (error: any) {
+      console.error("Extend subscription error:", error);
+      throw new Error(error.message || "Failed to extend subscription");
+    }
+  }
+
+  async toggleHostStatus(hostUid: string, isActive: boolean): Promise<void> {
+    try {
+      const hostRef = ref(database, `hosts/${hostUid}`);
+      await update(hostRef, {
+        isActive: isActive,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error("Toggle host status error:", error);
+      throw new Error(error.message || "Failed to toggle host status");
+    }
+  }
+
+  // Game Management Methods (Only for Hosts)
   async createGame(gameData: Partial<GameData>, hostUid: string): Promise<GameData> {
     try {
+      // Verify that the user is a host
+      const hostRef = ref(database, `hosts/${hostUid}`);
+      const hostSnapshot = await get(hostRef);
+      
+      if (!hostSnapshot.exists()) {
+        throw new Error("Only hosts can create games");
+      }
+      
       const gameRef = push(ref(database, 'games'));
       const gameId = gameRef.key!;
       
@@ -363,6 +509,24 @@ class FirebaseService {
     return () => off(ticketsRef, 'value', unsubscribe);
   }
 
+  subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
+    const hostsRef = ref(database, 'hosts');
+    
+    const unsubscribe = onValue(hostsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const hostsData = snapshot.val();
+        callback(Object.values(hostsData) as HostUser[]);
+      } else {
+        callback(null);
+      }
+    }, (error) => {
+      console.error("Hosts subscription error:", error);
+      callback(null);
+    });
+    
+    return () => off(hostsRef, 'value', unsubscribe);
+  }
+
   subscribeToAuthState(callback: (user: User | null) => void): () => void {
     return onAuthStateChanged(auth, callback);
   }
@@ -467,12 +631,18 @@ class FirebaseService {
       // Check if admin
       const adminRef = ref(database, `admins/${user.uid}`);
       const adminSnapshot = await get(adminRef);
-      if (adminSnapshot.exists()) return 'admin';
+      if (adminSnapshot.exists()) {
+        const adminData = adminSnapshot.val();
+        if (adminData.role === 'admin') return 'admin';
+      }
       
       // Check if host
       const hostRef = ref(database, `hosts/${user.uid}`);
       const hostSnapshot = await get(hostRef);
-      if (hostSnapshot.exists()) return 'host';
+      if (hostSnapshot.exists()) {
+        const hostData = hostSnapshot.val();
+        if (hostData.role === 'host') return 'host';
+      }
       
       return null;
     } catch (error: any) {
@@ -490,12 +660,18 @@ class FirebaseService {
       // Check if admin
       const adminRef = ref(database, `admins/${user.uid}`);
       const adminSnapshot = await get(adminRef);
-      if (adminSnapshot.exists()) return adminSnapshot.val() as AdminUser;
+      if (adminSnapshot.exists()) {
+        const adminData = adminSnapshot.val();
+        if (adminData.role === 'admin') return adminData as AdminUser;
+      }
       
       // Check if host
       const hostRef = ref(database, `hosts/${user.uid}`);
       const hostSnapshot = await get(hostRef);
-      if (hostSnapshot.exists()) return hostSnapshot.val() as HostUser;
+      if (hostSnapshot.exists()) {
+        const hostData = hostSnapshot.val();
+        if (hostData.role === 'host') return hostData as HostUser;
+      }
       
       return null;
     } catch (error: any) {
@@ -513,11 +689,11 @@ export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
   return firebaseService.getCurrentUserRole();
 }
 
-// Initial Admin Setup Function - UPDATED CREDENTIALS
+// Initial Admin Setup Function
 export async function setupInitialAdmin(): Promise<AdminUser | null> {
   try {
-    const adminEmail = "yurs@gmai.com";        // CHANGED: Updated email
-    const adminPassword = "Qwe123@";           // CHANGED: Updated password
+    const adminEmail = "admin@tambola.com";
+    const adminPassword = "TambolaAdmin123!";
     const adminName = "Super Admin";
     
     // Check if admin already exists
