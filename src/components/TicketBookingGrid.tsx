@@ -1,9 +1,7 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Search, Phone } from 'lucide-react';
+import { Phone } from 'lucide-react';
 
 interface TicketBookingGridProps {
   playerName: string;
@@ -82,7 +80,6 @@ const sampleTickets = [
 
 export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ playerName, onGameStart }) => {
   const [tickets, setTickets] = useState(sampleTickets);
-  const [searchTerm, setSearchTerm] = useState('');
   const [gameStarted, setGameStarted] = useState(false);
 
   const handleBookTicket = (ticketId: number) => {
@@ -92,15 +89,10 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ playerName
       .filter(num => num !== 0)
       .join(', ') || '';
     
-    const message = `Hi! I want to book Ticket #${ticketId} for ${playerName}. Numbers: ${ticketNumbers}`;
+    const message = `Hi! I want to book Ticket ${ticketId} for ${playerName}. Numbers: ${ticketNumbers}`;
     const whatsappUrl = `https://wa.me/919876543210?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
-
-  const filteredTickets = tickets.filter(ticket => 
-    ticket.ticketId.toString().includes(searchTerm) ||
-    ticket.playerName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const bookedCount = tickets.filter(t => t.isBooked).length;
   const totalCount = tickets.length;
@@ -112,64 +104,43 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ playerName
 
   return (
     <div className="space-y-6">
-      {/* Game Status */}
-      <Card className="tambola-card">
-        <CardContent className="text-center py-6">
-          <h2 className="text-2xl font-bold text-orange-800 mb-2">🎲 Game Ready to Start!</h2>
-          <p className="text-orange-600 mb-4">
+      {/* Welcome Section with booking info */}
+      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200 p-6">
+        <CardHeader className="text-center">
+          <CardTitle className="text-3xl text-slate-800">
+            🎲 Welcome to Tambola! 🎲
+          </CardTitle>
+          <p className="text-slate-600 mt-2">Book your tickets and get ready to play!</p>
+          <p className="text-lg text-slate-700 mt-4 font-semibold">
             {bookedCount} of {totalCount} tickets booked
           </p>
-          <div className="flex justify-center gap-4">
-            <Button 
-              onClick={() => setGameStarted(true)}
-              className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 text-lg font-bold rounded-xl shadow-lg hover:from-green-600 hover:to-emerald-700"
-            >
-              🚀 Join Game Now
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Search */}
-      <Card className="tambola-card">
-        <CardContent className="py-4">
-          <div className="relative max-w-md mx-auto">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-orange-400 w-5 h-5" />
-            <Input
-              type="text"
-              placeholder="Search by ticket number or player name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 border-2 border-orange-200 focus:border-orange-400"
-            />
-          </div>
-        </CardContent>
+        </CardHeader>
       </Card>
 
       {/* Tickets Grid */}
-      <Card className="tambola-card">
+      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200 p-6">
         <CardHeader>
-          <CardTitle className="text-2xl text-orange-800 text-center">Available Tickets</CardTitle>
-          <p className="text-orange-600 text-center">Click on any available ticket to book via WhatsApp</p>
+          <CardTitle className="text-2xl text-slate-800 text-center">Available Tickets</CardTitle>
+          <p className="text-slate-600 text-center">Click on any available ticket to book via WhatsApp</p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTickets.map((ticket) => (
+            {tickets.map((ticket) => (
               <div
                 key={ticket.ticketId}
                 className={`relative rounded-xl border-2 transition-all duration-200 ${
                   ticket.isBooked 
                     ? 'bg-gray-100 border-gray-300' 
-                    : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg'
+                    : 'bg-white border-slate-200 hover:border-slate-400 hover:shadow-lg'
                 }`}
               >
                 {/* Ticket Header */}
                 <div className={`text-center py-3 rounded-t-xl ${
                   ticket.isBooked 
                     ? 'bg-gray-200 text-gray-600' 
-                    : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                    : 'bg-gradient-to-r from-slate-600 to-slate-700 text-white'
                 }`}>
-                  <h3 className="font-bold text-lg">Ticket #{ticket.ticketId}</h3>
+                  <h3 className="font-bold text-lg">Ticket {ticket.ticketId}</h3>
                 </div>
 
                 {/* Ticket Grid */}
@@ -194,17 +165,15 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ playerName
                   {/* Booking Status / Button */}
                   {ticket.isBooked ? (
                     <div className="text-center">
-                      <p className="font-semibold text-gray-600 mb-1">{ticket.playerName}</p>
-                      <p className="text-sm text-gray-500 flex items-center justify-center">
-                        <Phone className="w-4 h-4 mr-1" />
-                        {ticket.playerPhone}
-                      </p>
+                      <p className="font-semibold text-gray-600">{ticket.playerName}</p>
                     </div>
                   ) : (
                     <div className="text-center">
                       <Button
                         onClick={() => handleBookTicket(ticket.ticketId)}
-                        className="book-button w-full"
+                        className="bg-gradient-to-r from-slate-600 to-slate-700 text-white px-4 py-2 rounded-lg
+                                 font-semibold shadow-lg hover:from-slate-700 hover:to-slate-800
+                                 transition-all duration-200 hover:scale-105 w-full"
                       >
                         <Phone className="w-4 h-4 mr-2" />
                         Book via WhatsApp
