@@ -47,17 +47,27 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
+          console.log('🔍 Auth state changed, user logged in:', user.uid);
           const role = await getCurrentUserRole();
+          console.log('🔍 User role:', role);
+          
           if (role) {
             setUserRole(role);
-            const userData = { uid: user.uid, email: user.email, role } as any;
-            setCurrentUser(userData);
-            onUserLogin?.(userData, role);
+            const userData = await firebaseService.getUserData();
+            console.log('🔍 User data from Firebase:', userData);
+            
+            if (userData) {
+              setCurrentUser(userData);
+              onUserLogin?.(userData, role);
+            } else {
+              console.log('❌ No user data found');
+            }
           }
         } catch (error) {
           console.error('Error getting user role:', error);
         }
       } else {
+        console.log('🔍 Auth state changed, user logged out');
         setCurrentUser(null);
         setUserRole(null);
         onUserLogout?.();
@@ -295,8 +305,8 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                 </form>
                 <div className="text-xs text-gray-500 mt-2">
                   <p>Default Admin Credentials:</p>
-                  <p>Email: admin@tambola.com</p>
-                  <p>Password: TambolaAdmin123!</p>
+                  <p>Email: yurs@gmai.com</p>
+                  <p>Password: Qwe123@</p>
                 </div>
               </DialogContent>
             </Dialog>
