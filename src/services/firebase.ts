@@ -840,78 +840,12 @@ class FirebaseService {
   }
 }
 
-// Setup initial admin function
-export async function setupInitialAdmin(): Promise<AdminUser | null> {
-  try {
-    const adminEmail = "yurs@gmai.com";
-    const adminPassword = "Qwe123@";
-    const adminName = "Super Admin";
+// Create and export service instance
+export const firebaseService = new FirebaseService();
 
-    // Check if admin already exists
-    const adminRef = ref(database, 'admins');
-    const adminSnapshot = await get(adminRef);
-    
-    if (adminSnapshot.exists()) {
-      console.log('Admin already exists');
-      return null;
-    }
+// Utility function to check current user role
+export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
+  return firebaseService.getCurrentUserRole();
+}
 
-    // Create admin user account
-    const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
-    const user = userCredential.user;
-    
-    // Create admin data
-    const adminData: AdminUser = {
-      uid: user.uid,
-      email: adminEmail,
-      name: adminName,
-      role: 'admin',
-      createdAt: new Date().toISOString(),
-      permissions: {
-        createHosts: true,
-        manageUsers: true
-      }
-    };
-    
-    // Save admin data to database
-    const adminDocRef = ref(database, `admins/${user.uid}`);
-    await set(adminDocRef, adminData);
-    
-    console.log('✅ Initial admin created successfully!');
-    return adminData;
-    
-  } catch (error: any) {
-    console.error('❌ Setup initial admin error:', error);
-    
-    if (error.code === 'auth/email-already-in-use') {
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, "yurs@gmai.com", "Qwe123@");
-        const user = userCredential.user;
-        
-        const adminRef = ref(database, `admins/${user.uid}`);
-        const adminSnapshot = await get(adminRef);
-        
-        if (!adminSnapshot.exists()) {
-          const adminData: AdminUser = {
-            uid: user.uid,
-            email: "yurs@gmai.com",
-            name: "Super Admin",
-            role: 'admin',
-            createdAt: new Date().toISOString(),
-            permissions: {
-              createHosts: true,
-              manageUsers: true
-            }
-          };
-          
-          await set(adminRef, adminData);
-          console.log('✅ Admin record created for existing user!');
-          return adminData;
-        }
-        
-        return adminSnapshot.val() as AdminUser;
-      } catch (signInError: any) {
-        console.error('Failed to sign in existing user:', signInError);
-        throw new Error(`Admin setup failed: ${signInError.message}`);
-      }
-    }
+export default firebaseService;
