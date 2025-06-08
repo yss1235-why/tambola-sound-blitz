@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -61,6 +62,16 @@ export default {
 					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
+				},
+				tambola: {
+					blue: '#1e40af',
+					'blue-light': '#3b82f6',
+					red: '#dc2626',
+					'red-light': '#ef4444',
+					gold: '#f59e0b',
+					'gold-light': '#fbbf24',
+					green: '#059669',
+					'green-light': '#10b981'
 				}
 			},
 			borderRadius: {
@@ -84,11 +95,56 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'number-call': {
+					'0%': {
+						transform: 'scale(1)',
+						backgroundColor: 'hsl(var(--muted))'
+					},
+					'50%': {
+						transform: 'scale(1.1)',
+						backgroundColor: '#10b981'
+					},
+					'100%': {
+						transform: 'scale(1)',
+						backgroundColor: '#10b981'
+					}
+				},
+				'prize-win': {
+					'0%': {
+						transform: 'scale(1)',
+						boxShadow: '0 0 0 0 rgba(245, 158, 11, 0.7)'
+					},
+					'50%': {
+						transform: 'scale(1.05)',
+						boxShadow: '0 0 0 20px rgba(245, 158, 11, 0)'
+					},
+					'100%': {
+						transform: 'scale(1)',
+						boxShadow: '0 0 0 0 rgba(245, 158, 11, 0)'
+					}
+				},
+				'bounce-in': {
+					'0%': {
+						transform: 'scale(0)',
+						opacity: '0'
+					},
+					'50%': {
+						transform: 'scale(1.1)',
+						opacity: '1'
+					},
+					'100%': {
+						transform: 'scale(1)',
+						opacity: '1'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'number-call': 'number-call 0.6s ease-out',
+				'prize-win': 'prize-win 1s ease-out',
+				'bounce-in': 'bounce-in 0.4s ease-out'
 			}
 		}
 	},
