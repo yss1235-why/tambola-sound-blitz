@@ -212,8 +212,8 @@ export const SetupInstructions: React.FC = () => {
             </p>
             <div className="bg-blue-50 p-3 rounded-lg">
               <p className="text-sm font-medium text-blue-800">Default Admin Credentials:</p>
-              <p className="text-sm text-blue-700">Email: admin@tambola.com</p>
-              <p className="text-sm text-blue-700">Password: TambolaAdmin123!</p>
+              <p className="text-sm text-blue-700">Email: yurs@gmai.com</p>        {/* CHANGED: Updated email */}
+              <p className="text-sm text-blue-700">Password: Qwe123@</p>           {/* CHANGED: Updated password */}
             </div>
             <Button
               onClick={handleSetupAdmin}
