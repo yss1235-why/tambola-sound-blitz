@@ -1,4 +1,4 @@
-// src/services/firebase.ts
+// src/services/firebase.ts - Realtime Database Version
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -9,36 +9,54 @@ import {
   updatePassword
 } from 'firebase/auth';
 import { 
-  getFirestore, 
-  doc, 
-  setDoc, 
-  getDoc, 
-  updateDoc, 
-  deleteDoc, 
-  collection, 
-  getDocs, 
-  onSnapshot, 
-  query, 
-  where, 
-  addDoc,
-  arrayUnion,
-  writeBatch
-} from 'firebase/firestore';
+  getDatabase,
+  ref,
+  set,
+  get,
+  update,
+  remove,
+  push,
+  onValue,
+  off,
+  child
+} from 'firebase/database';
 
-// Firebase configuration
+// Firebase configuration - Replace with your actual Firebase project config
 const firebaseConfig = {
-  apiKey: "AIzaSyBvzZ8_TXxZ2Zp5Q_X1Y2Z3V4W5X6Y7Z8A",
-  authDomain: "tambola-game-host.firebaseapp.com",
-  projectId: "tambola-game-host",
-  storageBucket: "tambola-game-host.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abc123def456ghi789"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
+
+// Validate Firebase configuration
+const validateFirebaseConfig = (config: any) => {
+  const requiredFields = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+  const missingFields = requiredFields.filter(field => 
+    !config[field] || config[field].includes('your-') || config[field].includes('123456')
+  );
+  
+  if (missingFields.length > 0) {
+    console.error('❌ Firebase configuration incomplete. Missing or invalid fields:', missingFields);
+    console.error('📝 Please check your .env file and update with actual Firebase project values.');
+    console.error('🔗 See Firebase Setup Guide for instructions.');
+  }
+  
+  return missingFields.length === 0;
+};
+
+// Validate configuration before initializing
+if (!validateFirebaseConfig(firebaseConfig)) {
+  console.warn('⚠️ Using incomplete Firebase configuration. Some features may not work.');
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-const db = getFirestore(app);
+const database = getDatabase(app);
 
 // Type definitions
 export interface AdminUser {
@@ -117,14 +135,14 @@ export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => 
 
   try {
     // Check if user is admin
-    const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-    if (adminDoc.exists()) {
+    const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
+    if (adminSnapshot.exists()) {
       return 'admin';
     }
 
     // Check if user is host
-    const hostDoc = await getDoc(doc(db, 'hosts', user.uid));
-    if (hostDoc.exists()) {
+    const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
+    if (hostSnapshot.exists()) {
       return 'host';
     }
 
@@ -197,12 +215,12 @@ class FirebaseService {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-      if (!adminDoc.exists()) {
+      const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
+      if (!adminSnapshot.exists()) {
         throw new Error('User is not an admin');
       }
 
-      const adminData = adminDoc.data() as AdminUser;
+      const adminData = adminSnapshot.val() as AdminUser;
       if (!adminData.isActive) {
         throw new Error('Admin account is deactivated');
       }
@@ -220,12 +238,12 @@ class FirebaseService {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      const hostDoc = await getDoc(doc(db, 'hosts', user.uid));
-      if (!hostDoc.exists()) {
+      const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
+      if (!hostSnapshot.exists()) {
         throw new Error('User is not a host');
       }
 
-      const hostData = hostDoc.data() as HostUser;
+      const hostData = hostSnapshot.val() as HostUser;
       if (!hostData.isActive) {
         throw new Error('Host account is deactivated');
       }
@@ -274,9 +292,9 @@ class FirebaseService {
         isActive: true
       };
 
-      // Save to Firestore
-      await setDoc(doc(db, 'hosts', user.uid), hostData);
-      console.log('✅ Host data saved to Firestore');
+      // Save to Realtime Database
+      await set(ref(database, `hosts/${user.uid}`), hostData);
+      console.log('✅ Host data saved to Realtime Database');
 
       return hostData;
     } catch (error: any) {
@@ -287,8 +305,13 @@ class FirebaseService {
 
   async getAllHosts(): Promise<HostUser[]> {
     try {
-      const hostsSnapshot = await getDocs(collection(db, 'hosts'));
-      return hostsSnapshot.docs.map(doc => doc.data() as HostUser);
+      const hostsSnapshot = await get(ref(database, 'hosts'));
+      if (!hostsSnapshot.exists()) {
+        return [];
+      }
+      
+      const hostsData = hostsSnapshot.val();
+      return Object.values(hostsData) as HostUser[];
     } catch (error: any) {
       console.error('Error fetching hosts:', error);
       throw new Error(error.message || 'Failed to fetch hosts');
@@ -297,7 +320,7 @@ class FirebaseService {
 
   async updateHost(hostId: string, updates: Partial<HostUser>): Promise<void> {
     try {
-      await updateDoc(doc(db, 'hosts', hostId), updates);
+      await update(ref(database, `hosts/${hostId}`), updates);
     } catch (error: any) {
       console.error('Error updating host:', error);
       throw new Error(error.message || 'Failed to update host');
@@ -306,7 +329,7 @@ class FirebaseService {
 
   async deleteHost(hostId: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, 'hosts', hostId));
+      await remove(ref(database, `hosts/${hostId}`));
     } catch (error: any) {
       console.error('Error deleting host:', error);
       throw new Error(error.message || 'Failed to delete host');
@@ -329,17 +352,17 @@ class FirebaseService {
 
   async extendHostSubscription(hostId: string, additionalMonths: number): Promise<void> {
     try {
-      const hostDoc = await getDoc(doc(db, 'hosts', hostId));
-      if (!hostDoc.exists()) {
+      const hostSnapshot = await get(ref(database, `hosts/${hostId}`));
+      if (!hostSnapshot.exists()) {
         throw new Error('Host not found');
       }
 
-      const hostData = hostDoc.data() as HostUser;
+      const hostData = hostSnapshot.val() as HostUser;
       const currentEnd = new Date(hostData.subscriptionEndDate);
       const newEnd = new Date(currentEnd);
       newEnd.setMonth(newEnd.getMonth() + additionalMonths);
 
-      await updateDoc(doc(db, 'hosts', hostId), {
+      await update(ref(database, `hosts/${hostId}`), {
         subscriptionEndDate: newEnd.toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -351,7 +374,7 @@ class FirebaseService {
 
   async toggleHostStatus(hostId: string, isActive: boolean): Promise<void> {
     try {
-      await updateDoc(doc(db, 'hosts', hostId), {
+      await update(ref(database, `hosts/${hostId}`), {
         isActive,
         updatedAt: new Date().toISOString()
       });
@@ -369,8 +392,8 @@ class FirebaseService {
     selectedPrizes: string[]
   ): Promise<GameData> {
     try {
-      const gameRef = doc(collection(db, 'games'));
-      const gameId = gameRef.id;
+      const gameRef = push(ref(database, 'games'));
+      const gameId = gameRef.key!;
 
       // Load ticket set data
       const ticketSetData = await this.loadTicketSet(ticketSetId);
@@ -419,7 +442,7 @@ class FirebaseService {
         ticketSetId
       };
 
-      await setDoc(gameRef, gameData);
+      await set(gameRef, gameData);
       return gameData;
     } catch (error: any) {
       console.error('Error creating game:', error);
@@ -440,7 +463,7 @@ class FirebaseService {
 
   async updateGameState(gameId: string, gameState: GameState): Promise<void> {
     try {
-      await updateDoc(doc(db, 'games', gameId), { gameState });
+      await update(ref(database, `games/${gameId}`), { gameState });
     } catch (error: any) {
       console.error('Error updating game state:', error);
       throw new Error(error.message || 'Failed to update game state');
@@ -449,9 +472,14 @@ class FirebaseService {
 
   async addCalledNumber(gameId: string, number: number): Promise<void> {
     try {
-      await updateDoc(doc(db, 'games', gameId), {
-        'gameState.calledNumbers': arrayUnion(number)
-      });
+      const gameRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
+      const snapshot = await get(gameRef);
+      const calledNumbers = snapshot.exists() ? snapshot.val() : [];
+      
+      if (!calledNumbers.includes(number)) {
+        calledNumbers.push(number);
+        await set(gameRef, calledNumbers);
+      }
     } catch (error: any) {
       console.error('Error adding called number:', error);
       throw new Error(error.message || 'Failed to add called number');
@@ -460,31 +488,27 @@ class FirebaseService {
 
   async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<void> {
     try {
-      const gameDoc = await getDoc(doc(db, 'games', gameId));
-      if (!gameDoc.exists()) {
-        throw new Error('Game not found');
-      }
-
-      const gameData = gameDoc.data() as GameData;
-      if (gameData.tickets && gameData.tickets[ticketId]) {
-        if (gameData.tickets[ticketId].isBooked) {
-          throw new Error('Ticket is already booked');
-        }
-
-        gameData.tickets[ticketId] = {
-          ...gameData.tickets[ticketId],
-          isBooked: true,
-          playerName,
-          playerPhone,
-          bookedAt: new Date().toISOString()
-        };
-
-        await updateDoc(doc(db, 'games', gameId), {
-          tickets: gameData.tickets
-        });
-      } else {
+      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
+      const ticketSnapshot = await get(ticketRef);
+      
+      if (!ticketSnapshot.exists()) {
         throw new Error('Ticket not found');
       }
+
+      const ticketData = ticketSnapshot.val() as TambolaTicket;
+      if (ticketData.isBooked) {
+        throw new Error('Ticket is already booked');
+      }
+
+      const updatedTicket = {
+        ...ticketData,
+        isBooked: true,
+        playerName,
+        playerPhone,
+        bookedAt: new Date().toISOString()
+      };
+
+      await set(ticketRef, updatedTicket);
     } catch (error: any) {
       console.error('Error booking ticket:', error);
       throw new Error(error.message || 'Failed to book ticket');
@@ -493,9 +517,11 @@ class FirebaseService {
 
   // Real-time subscriptions
   subscribeToGame(gameId: string, callback: (game: GameData | null) => void): () => void {
-    return onSnapshot(doc(db, 'games', gameId), (doc) => {
-      if (doc.exists()) {
-        callback(doc.data() as GameData);
+    const gameRef = ref(database, `games/${gameId}`);
+    
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.val() as GameData);
       } else {
         callback(null);
       }
@@ -503,13 +529,16 @@ class FirebaseService {
       console.error('Game subscription error:', error);
       callback(null);
     });
+
+    return () => off(gameRef, 'value', unsubscribe);
   }
 
   subscribeToTickets(gameId: string, callback: (tickets: { [key: string]: TambolaTicket } | null) => void): () => void {
-    return onSnapshot(doc(db, 'games', gameId), (doc) => {
-      if (doc.exists()) {
-        const gameData = doc.data() as GameData;
-        callback(gameData.tickets || null);
+    const ticketsRef = ref(database, `games/${gameId}/tickets`);
+    
+    const unsubscribe = onValue(ticketsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.val());
       } else {
         callback(null);
       }
@@ -517,16 +546,27 @@ class FirebaseService {
       console.error('Tickets subscription error:', error);
       callback(null);
     });
+
+    return () => off(ticketsRef, 'value', unsubscribe);
   }
 
   subscribeToHosts(callback: (hosts: HostUser[]) => void): () => void {
-    return onSnapshot(collection(db, 'hosts'), (snapshot) => {
-      const hosts = snapshot.docs.map(doc => doc.data() as HostUser);
-      callback(hosts);
+    const hostsRef = ref(database, 'hosts');
+    
+    const unsubscribe = onValue(hostsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const hostsData = snapshot.val();
+        const hosts = Object.values(hostsData) as HostUser[];
+        callback(hosts);
+      } else {
+        callback([]);
+      }
     }, (error) => {
       console.error('Hosts subscription error:', error);
       callback([]);
     });
+
+    return () => off(hostsRef, 'value', unsubscribe);
   }
 
   // Authentication
@@ -536,15 +576,15 @@ class FirebaseService {
 
     try {
       // Check admin first
-      const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-      if (adminDoc.exists()) {
-        return adminDoc.data() as AdminUser;
+      const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
+      if (adminSnapshot.exists()) {
+        return adminSnapshot.val() as AdminUser;
       }
 
       // Check host
-      const hostDoc = await getDoc(doc(db, 'hosts', user.uid));
-      if (hostDoc.exists()) {
-        return hostDoc.data() as HostUser;
+      const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
+      if (hostSnapshot.exists()) {
+        return hostSnapshot.val() as HostUser;
       }
 
       return null;
@@ -569,21 +609,21 @@ export const firebaseService = new FirebaseService();
 // Initialize default admin on first run
 const initializeDefaultAdmin = async () => {
   try {
-    const adminRef = doc(db, 'admins', 'default-admin');
-    const adminDoc = await getDoc(adminRef);
+    const adminRef = ref(database, 'admins/default-admin');
+    const adminSnapshot = await get(adminRef);
     
-    if (!adminDoc.exists()) {
+    if (!adminSnapshot.exists()) {
       const defaultAdmin: AdminUser = {
         uid: 'default-admin',
-        email: 'yurs@gmai.com',
+        email: 'admin@tambola.com',
         name: 'System Administrator',
         role: 'admin',
         createdAt: new Date().toISOString(),
         isActive: true
       };
       
-      await setDoc(adminRef, defaultAdmin);
-      console.log('✅ Default admin initialized');
+      await set(adminRef, defaultAdmin);
+      console.log('✅ Default admin initialized in Realtime Database');
     }
   } catch (error) {
     console.error('❌ Error initializing default admin:', error);
