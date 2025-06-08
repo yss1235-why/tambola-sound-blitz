@@ -1,97 +1,211 @@
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
+
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Trophy, Clock, Phone } from 'lucide-react';
-import TambolaGame from './TambolaGame';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import { TicketBookingGrid } from './TicketBookingGrid';
+import { TambolaGame } from './TambolaGame';
+import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
+import { Loader2, Users, Trophy, DollarSign } from 'lucide-react';
 
 export const UserLandingPage: React.FC = () => {
-  const [hasJoinedGame, setHasJoinedGame] = useState(false);
-  const [showTickets, setShowTickets] = useState(true); // Show tickets by default
+  const [currentView, setCurrentView] = useState<'tickets' | 'game'>('tickets');
+  const [activeGames, setActiveGames] = useState<GameData[]>([]);
+  const [selectedGame, setSelectedGame] = useState<GameData | null>(null);
+  const [tickets, setTickets] = useState<{ [key: string]: TambolaTicket }>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
 
-  if (hasJoinedGame) {
-    return <TambolaGame />;
-  }
+  useEffect(() => {
+    loadActiveGames();
+  }, []);
 
-  if (showTickets) {
+  useEffect(() => {
+    if (selectedGame) {
+      // Subscribe to real-time ticket updates
+      const unsubscribe = firebaseService.subscribeToTickets(selectedGame.gameId, (updatedTickets) => {
+        if (updatedTickets) {
+          setTickets(updatedTickets);
+        }
+      });
+
+      return unsubscribe;
+    }
+  }, [selectedGame]);
+
+  const loadActiveGames = async () => {
+    setIsLoading(true);
+    try {
+      // In a real implementation, you'd fetch active games from Firebase
+      // For now, we'll check if there are any games and use the first available one
+      // This is a simplified approach - in reality you'd have a games list endpoint
+      
+      // Since we don't have a games list in the current Firebase service,
+      // we'll simulate checking for active games
+      setActiveGames([]);
+      setSelectedGame(null);
+      setTickets({});
+    } catch (error: any) {
+      console.error('Error loading games:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load active games",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
+    if (!selectedGame) return;
+
+    try {
+      await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGame.gameId);
+      
+      toast({
+        title: "Ticket Booked!",
+        description: `Ticket ${ticketId} has been booked successfully.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Booking Failed",
+        description: error.message || "Failed to book ticket",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getBookedTicketsCount = () => {
+    return Object.values(tickets).filter(ticket => ticket.isBooked).length;
+  };
+
+  const getTotalRevenue = () => {
+    if (!selectedGame) return 0;
+    return getBookedTicketsCount() * selectedGame.ticketPrice;
+  };
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100">
-        <div className="max-w-7xl mx-auto px-4 py-8">
-          <TicketBookingGrid playerName="Player" onGameStart={() => setHasJoinedGame(true)} />
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 flex items-center justify-center">
+        <Card className="p-8">
+          <CardContent className="flex items-center space-x-4">
+            <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
+            <p className="text-lg text-gray-700">Loading active games...</p>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
+  if (currentView === 'game' && selectedGame) {
+    return <TambolaGame gameData={selectedGame} />;
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100">
-      <div className="max-w-4xl mx-auto px-4 py-12">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
+      <div className="max-w-7xl mx-auto space-y-6">
         {/* Welcome Section */}
-        <div className="text-center mb-12">
-          <h1 className="text-6xl font-bold text-slate-800 mb-6">
-            🎲 Tambola Time! 🎉
-          </h1>
-          <p className="text-2xl text-slate-600 mb-8">
-            Join the fun and win amazing prizes!
-          </p>
-        </div>
-
-        {/* Features Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-          <Card className="bg-white/80 backdrop-blur-sm border-2 border-slate-200 rounded-2xl shadow-xl">
-            <CardContent className="text-center p-8">
-              <Phone className="w-16 h-16 mx-auto text-slate-600 mb-6" />
-              <h3 className="text-xl font-bold text-slate-800 mb-3">WhatsApp Booking</h3>
-              <p className="text-slate-600">Book tickets easily through WhatsApp - no complex registration needed!</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-2 border-slate-200 rounded-2xl shadow-xl">
-            <CardContent className="text-center p-8">
-              <Clock className="w-16 h-16 mx-auto text-slate-600 mb-6" />
-              <h3 className="text-xl font-bold text-slate-800 mb-3">Live Action</h3>
-              <p className="text-slate-600">Real-time number calling with automatic marking and instant updates.</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white/80 backdrop-blur-sm border-2 border-slate-200 rounded-2xl shadow-xl">
-            <CardContent className="text-center p-8">
-              <Trophy className="w-16 h-16 mx-auto text-slate-600 mb-6" />
-              <h3 className="text-xl font-bold text-slate-800 mb-3">Multiple Prizes</h3>
-              <p className="text-slate-600">Win various prizes including Lines, Corners, and Full House!</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* How to Play */}
-        <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200 p-6">
-          <CardHeader>
-            <CardTitle className="text-3xl text-slate-800 text-center">How to Play</CardTitle>
+        <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+          <CardHeader className="text-center">
+            <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+              🎲 Welcome to Tambola! 🎲
+            </CardTitle>
+            <p className="text-gray-600 text-lg mt-2">
+              Join the excitement! Book your tickets and play live Tambola games.
+            </p>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-bold text-xl text-slate-800 mb-3">1. View Available Tickets</h4>
-                  <p className="text-slate-600 text-lg">Browse all available tickets for the current game without any registration.</p>
+        </Card>
+
+        {/* Game Status */}
+        {selectedGame ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-blue-100">Active Players</p>
+                    <p className="text-2xl font-bold">{getBookedTicketsCount()}</p>
+                  </div>
+                  <Users className="w-8 h-8 text-blue-200" />
                 </div>
-                
-                <div>
-                  <h4 className="font-bold text-xl text-slate-800 mb-3">2. Book Your Tickets</h4>
-                  <p className="text-slate-600 text-lg">Click on any available ticket to book it via WhatsApp instantly.</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-green-100">Total Revenue</p>
+                    <p className="text-2xl font-bold">₹{getTotalRevenue()}</p>
+                  </div>
+                  <DollarSign className="w-8 h-8 text-green-200" />
                 </div>
-              </div>
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-bold text-xl text-slate-800 mb-3">3. Play & Win</h4>
-                  <p className="text-slate-600 text-lg">Numbers are called automatically and marked on your tickets. Complete patterns to win!</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-purple-100">Game Status</p>
+                    <p className="text-2xl font-bold">
+                      {selectedGame.gameState.isActive ? 'Live' : 'Waiting'}
+                    </p>
+                  </div>
+                  <Trophy className="w-8 h-8 text-purple-200" />
                 </div>
-                
-                <div>
-                  <h4 className="font-bold text-xl text-slate-800 mb-3">4. Claim Prizes</h4>
-                  <p className="text-slate-600 text-lg">Prizes are automatically detected and claimed when you complete winning patterns.</p>
-                </div>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+            <CardContent className="p-8 text-center">
+              <div className="text-6xl mb-4">🎯</div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">No Active Games</h2>
+              <p className="text-gray-600 mb-4">
+                There are currently no active Tambola games. Please check back later or contact the host to start a new game.
+              </p>
+              <Button 
+                onClick={loadActiveGames}
+                className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+              >
+                Refresh Games
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Ticket Booking Grid */}
+        {selectedGame && Object.keys(tickets).length > 0 && (
+          <TicketBookingGrid 
+            tickets={tickets}
+            gameData={selectedGame}
+            onBookTicket={handleBookTicket}
+            onGameStart={() => setCurrentView('game')}
+          />
+        )}
+
+        {/* How to Play Section */}
+        <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+          <CardHeader>
+            <CardTitle className="text-2xl text-gray-800 text-center">How to Play</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="text-center p-4">
+              <div className="text-4xl mb-3">📱</div>
+              <h3 className="font-bold text-lg text-gray-800 mb-2">Book via WhatsApp</h3>
+              <p className="text-gray-600">Click on any available ticket to book it through WhatsApp messaging.</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="text-4xl mb-3">🎯</div>
+              <h3 className="font-bold text-lg text-gray-800 mb-2">Mark Numbers</h3>
+              <p className="text-gray-600">Mark the called numbers on your ticket during the live game.</p>
+            </div>
+            <div className="text-center p-4">
+              <div className="text-4xl mb-3">🏆</div>
+              <h3 className="font-bold text-lg text-gray-800 mb-2">Win Prizes</h3>
+              <p className="text-gray-600">Complete patterns like lines, corners, or full house to win exciting prizes!</p>
             </div>
           </CardContent>
         </Card>

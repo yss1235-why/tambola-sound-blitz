@@ -1,160 +1,139 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Phone } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Phone, User, Users } from 'lucide-react';
+import { TambolaTicket, GameData } from '@/services/firebase';
 
 interface TicketBookingGridProps {
-  playerName: string;
+  tickets: { [key: string]: TambolaTicket };
+  gameData: GameData;
+  onBookTicket: (ticketId: string, playerName: string, playerPhone: string) => Promise<void>;
   onGameStart: () => void;
 }
 
-// Sample ticket data - in real app this would come from Firebase
-const sampleTickets = [
-  {
-    ticketId: 1,
-    rows: [
-      [4, 11, 0, 32, 44, 0, 60, 0, 0],
-      [8, 0, 21, 34, 47, 0, 0, 74, 0],
-      [0, 14, 29, 0, 49, 55, 0, 0, 88]
-    ],
-    isBooked: false,
+export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ 
+  tickets, 
+  gameData, 
+  onBookTicket, 
+  onGameStart 
+}) => {
+  const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
+  const [bookingForm, setBookingForm] = useState({
     playerName: '',
     playerPhone: ''
-  },
-  {
-    ticketId: 2,
-    rows: [
-      [2, 0, 25, 0, 0, 52, 63, 0, 85],
-      [0, 16, 0, 31, 0, 0, 67, 78, 0],
-      [9, 0, 0, 35, 48, 0, 0, 79, 90]
-    ],
-    isBooked: true,
-    playerName: 'John Doe',
-    playerPhone: '+91 9876543210'
-  },
-  {
-    ticketId: 3,
-    rows: [
-      [1, 0, 22, 0, 41, 0, 0, 73, 0],
-      [0, 18, 0, 33, 0, 56, 64, 0, 87],
-      [7, 0, 28, 0, 0, 58, 0, 0, 89]
-    ],
-    isBooked: false,
-    playerName: '',
-    playerPhone: ''
-  },
-  {
-    ticketId: 4,
-    rows: [
-      [3, 0, 24, 0, 42, 0, 61, 0, 86],
-      [0, 17, 0, 36, 0, 57, 0, 75, 0],
-      [6, 0, 27, 0, 45, 0, 0, 0, 88]
-    ],
-    isBooked: true,
-    playerName: 'Sarah Smith',
-    playerPhone: '+91 9123456789'
-  },
-  {
-    ticketId: 5,
-    rows: [
-      [5, 0, 23, 0, 43, 0, 62, 0, 87],
-      [0, 19, 0, 37, 0, 58, 0, 76, 0],
-      [9, 0, 26, 0, 46, 59, 0, 0, 89]
-    ],
-    isBooked: false,
-    playerName: '',
-    playerPhone: ''
-  },
-  {
-    ticketId: 6,
-    rows: [
-      [1, 12, 0, 38, 0, 53, 0, 77, 0],
-      [0, 0, 28, 0, 48, 0, 65, 0, 90],
-      [10, 0, 0, 39, 0, 54, 0, 78, 0]
-    ],
-    isBooked: false,
-    playerName: '',
-    playerPhone: ''
-  }
-];
+  });
+  const [isBooking, setIsBooking] = useState(false);
 
-export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ playerName, onGameStart }) => {
-  const [tickets, setTickets] = useState(sampleTickets);
-  const [gameStarted, setGameStarted] = useState(false);
+  const handleBookTicket = (ticketId: string) => {
+    const ticket = tickets[ticketId];
+    if (!ticket || ticket.isBooked) return;
 
-  const handleBookTicket = (ticketId: number) => {
-    const ticketNumbers = tickets
-      .find(t => t.ticketId === ticketId)
-      ?.rows.flat()
+    const ticketNumbers = ticket.rows.flat()
       .filter(num => num !== 0)
-      .join(', ') || '';
+      .join(', ');
     
-    const message = `Hi! I want to book Ticket ${ticketId} for ${playerName}. Numbers: ${ticketNumbers}`;
+    const message = `Hi! I want to book Ticket ${ticketId} for the game "${gameData.name}". Numbers: ${ticketNumbers}. Please confirm my booking.`;
     const whatsappUrl = `https://wa.me/919876543210?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
 
-  const bookedCount = tickets.filter(t => t.isBooked).length;
-  const totalCount = tickets.length;
+  const handleDirectBooking = async () => {
+    if (!selectedTicket || !bookingForm.playerName.trim() || !bookingForm.playerPhone.trim()) {
+      return;
+    }
 
-  if (gameStarted) {
+    setIsBooking(true);
+    try {
+      await onBookTicket(selectedTicket, bookingForm.playerName, bookingForm.playerPhone);
+      setSelectedTicket(null);
+      setBookingForm({ playerName: '', playerPhone: '' });
+    } catch (error) {
+      console.error('Booking error:', error);
+    } finally {
+      setIsBooking(false);
+    }
+  };
+
+  const bookedCount = Object.values(tickets).filter(t => t.isBooked).length;
+  const totalCount = Object.keys(tickets).length;
+  const availableCount = totalCount - bookedCount;
+
+  // Check if game should start (when enough tickets are booked or game is active)
+  if (gameData.gameState.isActive) {
     onGameStart();
     return null;
   }
 
   return (
     <div className="space-y-6">
-      {/* Welcome Section with booking info */}
-      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200 p-6">
+      {/* Game Info Section */}
+      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl text-slate-800">
-            🎲 Welcome to Tambola! 🎲
+          <CardTitle className="text-3xl text-gray-800">
+            {gameData.name}
           </CardTitle>
-          <p className="text-slate-600 mt-2">Book your tickets and get ready to play!</p>
-          <p className="text-lg text-slate-700 mt-4 font-semibold">
-            {bookedCount} of {totalCount} tickets booked
-          </p>
+          <div className="flex justify-center items-center space-x-8 mt-4">
+            <div className="text-center">
+              <div className="text-2xl font-bold text-green-600">{bookedCount}</div>
+              <div className="text-sm text-gray-600">Tickets Booked</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-blue-600">{availableCount}</div>
+              <div className="text-sm text-gray-600">Available</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-purple-600">₹{gameData.ticketPrice}</div>
+              <div className="text-sm text-gray-600">Per Ticket</div>
+            </div>
+          </div>
         </CardHeader>
       </Card>
 
       {/* Tickets Grid */}
-      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200 p-6">
+      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
         <CardHeader>
-          <CardTitle className="text-2xl text-slate-800 text-center">Available Tickets</CardTitle>
-          <p className="text-slate-600 text-center">Click on any available ticket to book via WhatsApp</p>
+          <CardTitle className="text-2xl text-gray-800 text-center">Available Tickets</CardTitle>
+          <p className="text-gray-600 text-center">Click on any available ticket to book via WhatsApp</p>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {tickets.map((ticket) => (
+            {Object.entries(tickets).map(([ticketId, ticket]) => (
               <div
-                key={ticket.ticketId}
+                key={ticketId}
                 className={`relative rounded-xl border-2 transition-all duration-200 ${
                   ticket.isBooked 
                     ? 'bg-gray-100 border-gray-300' 
-                    : 'bg-white border-slate-200 hover:border-slate-400 hover:shadow-lg'
+                    : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
                 }`}
               >
                 {/* Ticket Header */}
                 <div className={`text-center py-3 rounded-t-xl ${
                   ticket.isBooked 
                     ? 'bg-gray-200 text-gray-600' 
-                    : 'bg-gradient-to-r from-slate-600 to-slate-700 text-white'
+                    : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
                 }`}>
-                  <h3 className="font-bold text-lg">Ticket {ticket.ticketId}</h3>
+                  <h3 className="font-bold text-lg">Ticket {ticketId}</h3>
+                  {ticket.isBooked && (
+                    <p className="text-sm">Booked by {ticket.playerName}</p>
+                  )}
                 </div>
 
                 {/* Ticket Grid */}
                 <div className="p-4">
-                  <div className="ticket-grid mb-4">
+                  <div className="grid grid-cols-9 gap-1 mb-4">
                     {ticket.rows.flat().map((number, index) => (
                       <div
                         key={index}
-                        className={`ticket-cell ${
+                        className={`aspect-square flex items-center justify-center text-xs font-bold rounded ${
                           number === 0 
-                            ? 'empty' 
+                            ? 'bg-gray-100' 
                             : ticket.isBooked 
-                              ? 'booked' 
-                              : 'number'
+                              ? 'bg-gray-300 text-gray-600' 
+                              : 'bg-gradient-to-br from-orange-100 to-red-100 text-gray-800 border border-orange-200'
                         }`}
                       >
                         {number !== 0 ? number : ''}
@@ -165,18 +144,29 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ playerName
                   {/* Booking Status / Button */}
                   {ticket.isBooked ? (
                     <div className="text-center">
-                      <p className="font-semibold text-gray-600">{ticket.playerName}</p>
+                      <div className="flex items-center justify-center space-x-2 text-gray-600">
+                        <User className="w-4 h-4" />
+                        <span className="font-medium">{ticket.playerName}</span>
+                      </div>
+                      {ticket.playerPhone && (
+                        <p className="text-xs text-gray-500 mt-1">{ticket.playerPhone}</p>
+                      )}
                     </div>
                   ) : (
-                    <div className="text-center">
+                    <div className="space-y-2">
                       <Button
-                        onClick={() => handleBookTicket(ticket.ticketId)}
-                        className="bg-gradient-to-r from-slate-600 to-slate-700 text-white px-4 py-2 rounded-lg
-                                 font-semibold shadow-lg hover:from-slate-700 hover:to-slate-800
-                                 transition-all duration-200 hover:scale-105 w-full"
+                        onClick={() => handleBookTicket(ticketId)}
+                        className="bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 w-full"
                       >
                         <Phone className="w-4 h-4 mr-2" />
                         Book via WhatsApp
+                      </Button>
+                      <Button
+                        onClick={() => setSelectedTicket(ticketId)}
+                        variant="outline"
+                        className="w-full border-orange-300 text-orange-600 hover:bg-orange-50"
+                      >
+                        Quick Book
                       </Button>
                     </div>
                   )}
@@ -186,6 +176,42 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ playerName
           </div>
         </CardContent>
       </Card>
+
+      {/* Direct Booking Dialog */}
+      <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Book Ticket {selectedTicket}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="player-name">Player Name</Label>
+              <Input
+                id="player-name"
+                placeholder="Enter your name"
+                value={bookingForm.playerName}
+                onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
+              />
+            </div>
+            <div>
+              <Label htmlFor="player-phone">Phone Number</Label>
+              <Input
+                id="player-phone"
+                placeholder="Enter your phone number"
+                value={bookingForm.playerPhone}
+                onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
+              />
+            </div>
+            <Button
+              onClick={handleDirectBooking}
+              disabled={isBooking || !bookingForm.playerName.trim() || !bookingForm.playerPhone.trim()}
+              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+            >
+              {isBooking ? 'Booking...' : 'Confirm Booking'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

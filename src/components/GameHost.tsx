@@ -54,26 +54,30 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [availableNumbers, setAvailableNumbers] = useState<number[]>(
     Array.from({ length: 90 }, (_, i) => i + 1)
   );
+  const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
 
   // Load games when component mounts
   useEffect(() => {
     loadGames();
   }, []);
 
-  // Cleanup intervals on unmount
+  // Cleanup intervals and subscriptions on unmount
   useEffect(() => {
     return () => {
       if (gameInterval) {
         clearInterval(gameInterval);
       }
+      if (gameUnsubscribe) {
+        gameUnsubscribe();
+      }
     };
-  }, [gameInterval]);
+  }, [gameInterval, gameUnsubscribe]);
 
   const loadGames = async () => {
     setIsLoading(true);
     try {
-      // In a real implementation, you'd fetch games from Firebase
-      // For now, we'll use a placeholder
+      // In a real implementation, you'd fetch host's games from Firebase
+      // For now, we'll use an empty list
       setGamesList([]);
     } catch (error: any) {
       toast({
@@ -117,15 +121,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         description: `${gameData.name} has been created successfully!`,
       });
 
-      // Subscribe to game updates
+      // Subscribe to real-time game updates
       const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGame) => {
         if (updatedGame) {
           setCurrentGame(updatedGame);
+          // Update available numbers based on called numbers
+          const called = updatedGame.gameState.calledNumbers || [];
+          const available = Array.from({ length: 90 }, (_, i) => i + 1)
+            .filter(num => !called.includes(num));
+          setAvailableNumbers(available);
         }
       });
 
-      // Store unsubscribe function for cleanup
-      return unsubscribe;
+      setGameUnsubscribe(() => unsubscribe);
     } catch (error: any) {
       toast({
         title: "Error",
@@ -141,6 +149,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     if (!currentGame) return;
 
     try {
+      // Start countdown
       await firebaseService.updateGameState(currentGame.gameId, {
         ...currentGame.gameState,
         isCountdown: true,
@@ -148,7 +157,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         isActive: false
       });
 
-      // Start countdown
+      toast({
+        title: "Game Starting",
+        description: "10 second countdown has begun!",
+      });
+
+      // Start the actual game after countdown
       setTimeout(async () => {
         await firebaseService.updateGameState(currentGame.gameId, {
           ...currentGame.gameState,
@@ -160,11 +174,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         // Start number calling
         startNumberCalling();
       }, 10000);
-
-      toast({
-        title: "Game Starting",
-        description: "10 second countdown has begun!",
-      });
     } catch (error: any) {
       toast({
         title: "Error",
@@ -190,19 +199,24 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setAvailableNumbers(prev => prev.filter(n => n !== numberToBeCalled));
       
       try {
+        // Add the number to called numbers
         await firebaseService.addCalledNumber(currentGame.gameId, numberToBeCalled);
+        
+        // Update current number (for display)
         await firebaseService.updateGameState(currentGame.gameId, {
           ...currentGame.gameState,
           currentNumber: numberToBeCalled
         });
 
-        // Reset current number after 2 seconds
+        console.log(`Number called: ${numberToBeCalled}`);
+
+        // Reset current number after 3 seconds
         setTimeout(async () => {
           await firebaseService.updateGameState(currentGame.gameId, {
             ...currentGame.gameState,
             currentNumber: null
           });
-        }, 2000);
+        }, 3000);
       } catch (error) {
         console.error('Error calling number:', error);
       }
@@ -249,7 +263,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         await firebaseService.updateGameState(currentGame.gameId, {
           ...currentGame.gameState,
           isActive: false,
-          gameOver: true
+          gameOver: true,
+          currentNumber: null
         });
 
         toast({

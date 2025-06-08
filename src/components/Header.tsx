@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Menu, LogOut, User } from 'lucide-react';
+import { LogIn, Menu, LogOut, User, Settings } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import {
   DropdownMenu,
@@ -19,9 +19,10 @@ import { auth } from '@/services/firebase';
 interface HeaderProps {
   onUserLogin?: (user: AdminUser | HostUser, role: 'admin' | 'host') => void;
   onUserLogout?: () => void;
+  onShowSetup?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => {
+export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onShowSetup }) => {
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isHostLoginOpen, setIsHostLoginOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -134,23 +135,36 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
   };
 
   return (
-    <header className="bg-white/90 backdrop-blur-sm shadow-lg border-b-2 border-slate-200">
+    <header className="bg-white/90 backdrop-blur-sm shadow-lg border-b-2 border-orange-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-700 to-slate-900 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
               🎲 Tambola Game
             </h1>
           </div>
           
-          <div className="flex items-center">
+          <div className="flex items-center space-x-2">
+            {/* Firebase Setup Button */}
+            {onShowSetup && (
+              <Button 
+                onClick={onShowSetup}
+                variant="outline" 
+                size="sm"
+                className="border-2 border-orange-300 text-orange-600 hover:bg-orange-50 font-semibold"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Setup
+              </Button>
+            )}
+
             {currentUser ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className="border-2 border-slate-400 text-slate-600 hover:bg-slate-50 font-semibold"
+                    className="border-2 border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold"
                   >
                     <User className="w-4 h-4 mr-2" />
                     {userRole === 'admin' ? 'Admin' : 'Host'}
@@ -177,7 +191,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className="border-2 border-slate-400 text-slate-600 hover:bg-slate-50 font-semibold"
+                    className="border-2 border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold"
                   >
                     <Menu className="w-4 h-4 mr-2" />
                     Login
@@ -210,13 +224,13 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
 
             {/* Host Login Dialog */}
             <Dialog open={isHostLoginOpen} onOpenChange={setIsHostLoginOpen}>
-              <DialogContent className="sm:max-w-md bg-white border-2 border-slate-200">
+              <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
                 <DialogHeader>
-                  <DialogTitle className="text-slate-800">Host Login</DialogTitle>
+                  <DialogTitle className="text-gray-800">Host Login</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleHostLogin} className="space-y-4">
                   <div>
-                    <Label htmlFor="host-email" className="text-slate-700">Email</Label>
+                    <Label htmlFor="host-email" className="text-gray-700">Email</Label>
                     <Input 
                       id="host-email" 
                       type="email" 
@@ -224,12 +238,12 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={hostForm.email}
                       onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="border-2 border-slate-200 focus:border-slate-400"
+                      className="border-2 border-orange-200 focus:border-orange-400"
                       disabled={isLoading}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="host-password" className="text-slate-700">Password</Label>
+                    <Label htmlFor="host-password" className="text-gray-700">Password</Label>
                     <Input 
                       id="host-password" 
                       type="password" 
@@ -237,13 +251,13 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={hostForm.password}
                       onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
-                      className="border-2 border-slate-200 focus:border-slate-400"
+                      className="border-2 border-orange-200 focus:border-orange-400"
                       disabled={isLoading}
                     />
                   </div>
                   <Button 
                     type="submit" 
-                    className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800"
+                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
                     disabled={isLoading}
                   >
                     {isLoading ? 'Logging in...' : 'Login as Host'}
@@ -254,13 +268,13 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
 
             {/* Admin Login Dialog */}
             <Dialog open={isAdminLoginOpen} onOpenChange={setIsAdminLoginOpen}>
-              <DialogContent className="sm:max-w-md bg-white border-2 border-slate-200">
+              <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
                 <DialogHeader>
-                  <DialogTitle className="text-slate-800">Admin Login</DialogTitle>
+                  <DialogTitle className="text-gray-800">Admin Login</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleAdminLogin} className="space-y-4">
                   <div>
-                    <Label htmlFor="admin-email" className="text-slate-700">Email</Label>
+                    <Label htmlFor="admin-email" className="text-gray-700">Email</Label>
                     <Input 
                       id="admin-email" 
                       type="email" 
@@ -268,12 +282,12 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={adminForm.email}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="border-2 border-slate-200 focus:border-slate-400"
+                      className="border-2 border-orange-200 focus:border-orange-400"
                       disabled={isLoading}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="admin-password" className="text-slate-700">Password</Label>
+                    <Label htmlFor="admin-password" className="text-gray-700">Password</Label>
                     <Input 
                       id="admin-password" 
                       type="password" 
@@ -281,13 +295,13 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={adminForm.password}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
-                      className="border-2 border-slate-200 focus:border-slate-400"
+                      className="border-2 border-orange-200 focus:border-orange-400"
                       disabled={isLoading}
                     />
                   </div>
                   <Button 
                     type="submit" 
-                    className="w-full bg-gradient-to-r from-slate-600 to-slate-700 text-white hover:from-slate-700 hover:to-slate-800"
+                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
                     disabled={isLoading}
                   >
                     {isLoading ? 'Logging in...' : 'Login as Admin'}
