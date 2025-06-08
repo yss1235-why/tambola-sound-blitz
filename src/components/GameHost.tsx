@@ -57,9 +57,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
   const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
 
-  // Check subscription status
-  const isSubscriptionValid = () => {
-    console.log('🔍 Checking subscription validity for user:', user);
+  // Check subscription status - FIXED: Memoized to prevent infinite loops
+  const isSubscriptionValid = useCallback(() => {
+    console.log('🔍 Checking subscription validity for user:', user.email);
     console.log('🔍 User isActive:', user.isActive);
     console.log('🔍 User subscriptionEndDate:', user.subscriptionEndDate);
     
@@ -81,10 +81,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     console.log('🔍 Is subscription valid?', subscriptionEnd > now);
     
     return subscriptionEnd > now && user.isActive;
-  };
+  }, [user.isActive, user.subscriptionEndDate, user.email]);
 
-  const getSubscriptionStatus = () => {
-    console.log('🔍 Getting subscription status for user:', user);
+  const getSubscriptionStatus = useCallback(() => {
+    console.log('🔍 Getting subscription status for user:', user.email);
     
     if (!user.isActive) {
       console.log('❌ User is inactive');
@@ -112,14 +112,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     if (daysLeft < 0) return { status: 'expired', message: 'Subscription expired', variant: 'destructive' as const };
     if (daysLeft <= 7) return { status: 'expiring', message: `Expires in ${daysLeft} days`, variant: 'secondary' as const };
     return { status: 'active', message: `Active (${daysLeft} days left)`, variant: 'default' as const };
-  };
+  }, [user.isActive, user.subscriptionEndDate, user.email]);
 
-  // Load games when component mounts
+  // Load games when component mounts - FIXED: Added proper dependencies
   useEffect(() => {
+    console.log('🔧 GameHost: Component mounted, checking subscription');
     if (isSubscriptionValid()) {
+      console.log('✅ GameHost: Subscription valid, loading games');
       loadGames();
+    } else {
+      console.log('❌ GameHost: Subscription invalid, not loading games');
     }
-  }, []);
+  }, [isSubscriptionValid]);
 
   // Cleanup intervals and subscriptions on unmount
   useEffect(() => {
@@ -396,9 +400,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 </p>
                 <p className="text-sm text-gray-600">
                   <strong>Created:</strong> {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Not set'}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <strong>Raw Data:</strong> {JSON.stringify(user, null, 2)}
                 </p>
               </div>
             </CardContent>
