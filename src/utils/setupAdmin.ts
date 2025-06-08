@@ -14,13 +14,13 @@ export async function runInitialSetup() {
     if (admin) {
       console.log('✅ Initial admin created successfully!');
       console.log('📧 Email:', admin.email);
-      console.log('🔑 Password: TambolaAdmin123!');
+      console.log('🔑 Password: Qwe123@');
       console.log('👤 Name:', admin.name);
       console.log('🆔 UID:', admin.uid);
       
       alert(`Initial admin setup complete!
 Email: ${admin.email}
-Password: TambolaAdmin123!
+Password: Qwe123@!
 Please save these credentials safely.`);
     } else {
       console.log('ℹ️ Admin already exists in the system');
