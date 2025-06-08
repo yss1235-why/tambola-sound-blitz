@@ -1,5 +1,5 @@
 // src/components/Header.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,19 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
   const [userRole, setUserRole] = useState<'admin' | 'host' | null>(null);
   const { toast } = useToast();
 
+  // Use refs to store latest callback values to avoid dependency issues
+  const onUserLoginRef = useRef(onUserLogin);
+  const onUserLogoutRef = useRef(onUserLogout);
+
+  // Update refs when callbacks change
+  useEffect(() => {
+    onUserLoginRef.current = onUserLogin;
+  }, [onUserLogin]);
+
+  useEffect(() => {
+    onUserLogoutRef.current = onUserLogout;
+  }, [onUserLogout]);
+
   // Admin login form state
   const [adminForm, setAdminForm] = useState({
     email: '',
@@ -42,12 +55,15 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     password: ''
   });
 
-  // Listen for auth state changes
+  // Listen for auth state changes - FIXED: Removed callback dependencies
   useEffect(() => {
+    console.log('🔧 Header: Setting up auth listener');
+    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('🔍 Auth state changed:', user ? `user logged in: ${user.uid}` : 'user logged out');
+      
       if (user) {
         try {
-          console.log('🔍 Auth state changed, user logged in:', user.uid);
           const role = await getCurrentUserRole();
           console.log('🔍 User role:', role);
           
@@ -58,7 +74,10 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
             
             if (userData) {
               setCurrentUser(userData);
-              onUserLogin?.(userData, role);
+              // Use callback refs to avoid dependency issues
+              if (onUserLoginRef.current) {
+                onUserLoginRef.current(userData, role);
+              }
             } else {
               console.log('❌ No user data found');
             }
@@ -70,12 +89,18 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
         console.log('🔍 Auth state changed, user logged out');
         setCurrentUser(null);
         setUserRole(null);
-        onUserLogout?.();
+        // Use callback refs to avoid dependency issues
+        if (onUserLogoutRef.current) {
+          onUserLogoutRef.current();
+        }
       }
     });
 
-    return () => unsubscribe();
-  }, [onUserLogin, onUserLogout]);
+    return () => {
+      console.log('🔧 Header: Cleaning up auth listener');
+      unsubscribe();
+    };
+  }, []); // Empty dependency array to prevent infinite loop
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
