@@ -1,4 +1,4 @@
-// src/components/TicketDisplay.tsx
+// src/components/TicketDisplay.tsx - Updated with simple ticket naming
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TambolaTicket } from '@/services/firebase';
@@ -8,10 +8,10 @@ interface TicketDisplayProps {
   tickets?: TambolaTicket[];
 }
 
-// Sample ticket data for demo purposes
+// Sample ticket data for demo purposes with simple naming
 const sampleTickets = [
   {
-    ticketId: 'ticket_1',
+    ticketId: '1',
     rows: [
       [4, 11, 0, 32, 44, 0, 60, 0, 0],
       [8, 0, 21, 34, 47, 0, 0, 74, 0],
@@ -22,7 +22,7 @@ const sampleTickets = [
     playerPhone: '9876543210'
   },
   {
-    ticketId: 'ticket_2',
+    ticketId: '2',
     rows: [
       [2, 0, 25, 0, 0, 52, 63, 0, 85],
       [0, 16, 0, 31, 0, 0, 67, 78, 0],
@@ -33,7 +33,7 @@ const sampleTickets = [
     playerPhone: '9876543211'
   },
   {
-    ticketId: 'ticket_3',
+    ticketId: '3',
     rows: [
       [1, 0, 22, 0, 41, 0, 0, 73, 0],
       [0, 18, 0, 33, 0, 56, 64, 0, 87],
@@ -66,7 +66,7 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({ calledNumbers, tic
       {displayTickets.map((ticket) => (
         <Card key={ticket.ticketId} className="bg-white border-2 border-blue-200 shadow-lg hover:shadow-xl transition-shadow">
           <CardHeader className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-center py-3">
-            <CardTitle className="text-lg">Ticket #{ticket.ticketId}</CardTitle>
+            <CardTitle className="text-lg">Ticket {ticket.ticketId}</CardTitle>
             {ticket.isBooked && ticket.playerName && (
               <p className="text-blue-100 text-sm">Player: {ticket.playerName}</p>
             )}
