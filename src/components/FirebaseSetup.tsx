@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -63,8 +62,8 @@ export const FirebaseSetup: React.FC = () => {
           </p>
           <div className="bg-green-50 p-3 rounded-lg text-left">
             <p className="text-sm font-medium text-green-800">Admin Credentials:</p>
-            <p className="text-sm text-green-700">Email: admin@tambola.com</p>
-            <p className="text-sm text-green-700">Password: TambolaAdmin123!</p>
+            <p className="text-sm text-green-700">Email: yurs@gmai.com</p>        {/* CHANGED: Updated email */}
+            <p className="text-sm text-green-700">Password: Qwe123@</p>           {/* CHANGED: Updated password */}
           </div>
           <p className="text-xs text-green-600 mt-3">
             You can now login as admin using the header login options.
