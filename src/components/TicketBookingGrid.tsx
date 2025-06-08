@@ -1,10 +1,7 @@
-// src/components/TicketBookingGrid.tsx - Updated with host phone integration
+// src/components/TicketBookingGrid.tsx - Updated without quick book and with simple ticket naming
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Phone, User, Users, Loader2 } from 'lucide-react';
 import { TambolaTicket, GameData, firebaseService } from '@/services/firebase';
 
@@ -21,26 +18,27 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
   onBookTicket, 
   onGameStart 
 }) => {
-  const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
   const [hostPhone, setHostPhone] = useState<string>('');
   const [isLoadingHost, setIsLoadingHost] = useState(true);
-  const [bookingForm, setBookingForm] = useState({
-    playerName: '',
-    playerPhone: ''
-  });
-  const [isBooking, setIsBooking] = useState(false);
 
   // Load host phone number
   useEffect(() => {
     const loadHostInfo = async () => {
       setIsLoadingHost(true);
       try {
-        const host = await firebaseService.getHostById(gameData.hostId);
-        if (host && host.phone) {
-          setHostPhone(host.phone);
-          console.log('✅ Host phone loaded:', host.phone);
+        // First try to get phone from game data
+        if (gameData.hostPhone) {
+          setHostPhone(gameData.hostPhone);
+          console.log('✅ Host phone loaded from game data:', gameData.hostPhone);
         } else {
-          console.log('❌ No host phone found');
+          // Fallback to host profile
+          const host = await firebaseService.getHostById(gameData.hostId);
+          if (host && host.phone) {
+            setHostPhone(host.phone);
+            console.log('✅ Host phone loaded from profile:', host.phone);
+          } else {
+            console.log('❌ No host phone found');
+          }
         }
       } catch (error) {
         console.error('Error loading host info:', error);
@@ -50,7 +48,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
     };
 
     loadHostInfo();
-  }, [gameData.hostId]);
+  }, [gameData.hostId, gameData.hostPhone]);
 
   const handleBookTicket = (ticketId: string) => {
     const ticket = tickets[ticketId];
@@ -68,23 +66,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
     const message = `Hi! I want to book Ticket ${ticketId} for the game "${gameData.name}". Numbers: ${ticketNumbers}. Please confirm my booking.`;
     const whatsappUrl = `https://wa.me/${hostPhone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
-  };
-
-  const handleDirectBooking = async () => {
-    if (!selectedTicket || !bookingForm.playerName.trim() || !bookingForm.playerPhone.trim()) {
-      return;
-    }
-
-    setIsBooking(true);
-    try {
-      await onBookTicket(selectedTicket, bookingForm.playerName, bookingForm.playerPhone);
-      setSelectedTicket(null);
-      setBookingForm({ playerName: '', playerPhone: '' });
-    } catch (error) {
-      console.error('Booking error:', error);
-    } finally {
-      setIsBooking(false);
-    }
   };
 
   const bookedCount = Object.values(tickets).filter(t => t.isBooked).length;
@@ -225,13 +206,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                         <Phone className="w-4 h-4 mr-2" />
                         {isLoadingHost ? 'Loading...' : 'Book via WhatsApp'}
                       </Button>
-                      <Button
-                        onClick={() => setSelectedTicket(ticketId)}
-                        variant="outline"
-                        className="w-full border-orange-300 text-orange-600 hover:bg-orange-50"
-                      >
-                        Quick Book
-                      </Button>
                     </div>
                   )}
                 </div>
@@ -250,42 +224,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
           )}
         </CardContent>
       </Card>
-
-      {/* Direct Booking Dialog */}
-      <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Book Ticket {selectedTicket}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="player-name">Player Name</Label>
-              <Input
-                id="player-name"
-                placeholder="Enter your name"
-                value={bookingForm.playerName}
-                onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-              />
-            </div>
-            <div>
-              <Label htmlFor="player-phone">Phone Number</Label>
-              <Input
-                id="player-phone"
-                placeholder="Enter your phone number"
-                value={bookingForm.playerPhone}
-                onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-              />
-            </div>
-            <Button
-              onClick={handleDirectBooking}
-              disabled={isBooking || !bookingForm.playerName.trim() || !bookingForm.playerPhone.trim()}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
-            >
-              {isBooking ? 'Booking...' : 'Confirm Booking'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
