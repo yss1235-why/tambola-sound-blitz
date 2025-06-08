@@ -33,10 +33,14 @@ const firebaseConfig = {
   measurementId: "G-MP72F136BH"
 };
 
-// Initialize Firebase
+// Initialize Firebase - Main app for admin/host login
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const database = getDatabase(app);
+
+// Initialize secondary app for creating users without affecting main auth state
+const secondaryApp = initializeApp(firebaseConfig, "secondary");
+const secondaryAuth = getAuth(secondaryApp);
 
 // Initialize analytics only in browser environment
 let analytics: any = null;
@@ -239,16 +243,44 @@ class FirebaseService {
     }
   }
 
+  // UPDATED: Create host without affecting main auth state
   async createHost(email: string, password: string, name: string, createdByUid: string, subscriptionMonths: number = 12): Promise<HostUser> {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      // Verify current user is admin
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error("Must be logged in as admin to create hosts");
+      }
       
+      const adminRef = ref(database, `admins/${currentUser.uid}`);
+      const adminSnapshot = await get(adminRef);
+      
+      if (!adminSnapshot.exists()) {
+        throw new Error("Only admins can create hosts");
+      }
+      
+      const adminData = adminSnapshot.val();
+      if (adminData.role !== 'admin') {
+        throw new Error("Only admins can create hosts");
+      }
+      
+      console.log('✅ Admin verification passed, creating host...');
+      
+      // Use secondary auth instance to create user without affecting main session
+      const userCredential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+      const newUser = userCredential.user;
+      
+      console.log('✅ Host auth user created:', newUser.uid);
+      
+      // Sign out from secondary auth to clean up
+      await signOut(secondaryAuth);
+      
+      // Create host data
       const subscriptionEndDate = new Date();
       subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
       
       const hostData: HostUser = {
-        uid: user.uid,
+        uid: newUser.uid,
         email: email,
         name: name,
         role: 'host',
@@ -262,10 +294,15 @@ class FirebaseService {
         }
       };
       
-      const hostRef = ref(database, `hosts/${user.uid}`);
+      // Write host data using main auth (admin is still logged in)
+      const hostRef = ref(database, `hosts/${newUser.uid}`);
       await set(hostRef, hostData);
       
+      console.log('✅ Host record created successfully');
+      console.log('✅ Admin remains logged in');
+      
       return hostData;
+      
     } catch (error: any) {
       console.error("Create host error:", error);
       throw new Error(error.message || "Failed to create host");
@@ -654,6 +691,86 @@ class FirebaseService {
       console.error("Get user data error:", error);
       return null;
     }
+  }
+}
+
+// Setup initial admin function
+export async function setupInitialAdmin(): Promise<AdminUser | null> {
+  try {
+    const adminEmail = "yurs@gmai.com";
+    const adminPassword = "Qwe123@";
+    const adminName = "Super Admin";
+
+    // Check if admin already exists
+    const adminRef = ref(database, 'admins');
+    const adminSnapshot = await get(adminRef);
+    
+    if (adminSnapshot.exists()) {
+      console.log('Admin already exists');
+      return null;
+    }
+
+    // Create admin user account
+    const userCredential = await createUserWithEmailAndPassword(auth, adminEmail, adminPassword);
+    const user = userCredential.user;
+    
+    // Create admin data
+    const adminData: AdminUser = {
+      uid: user.uid,
+      email: adminEmail,
+      name: adminName,
+      role: 'admin',
+      createdAt: new Date().toISOString(),
+      permissions: {
+        createHosts: true,
+        manageUsers: true
+      }
+    };
+    
+    // Save admin data to database
+    const adminDocRef = ref(database, `admins/${user.uid}`);
+    await set(adminDocRef, adminData);
+    
+    console.log('✅ Initial admin created successfully!');
+    return adminData;
+    
+  } catch (error: any) {
+    console.error('❌ Setup initial admin error:', error);
+    
+    if (error.code === 'auth/email-already-in-use') {
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, "yurs@gmai.com", "Qwe123@");
+        const user = userCredential.user;
+        
+        const adminRef = ref(database, `admins/${user.uid}`);
+        const adminSnapshot = await get(adminRef);
+        
+        if (!adminSnapshot.exists()) {
+          const adminData: AdminUser = {
+            uid: user.uid,
+            email: "yurs@gmai.com",
+            name: "Super Admin",
+            role: 'admin',
+            createdAt: new Date().toISOString(),
+            permissions: {
+              createHosts: true,
+              manageUsers: true
+            }
+          };
+          
+          await set(adminRef, adminData);
+          console.log('✅ Admin record created for existing user!');
+          return adminData;
+        }
+        
+        return adminSnapshot.val() as AdminUser;
+      } catch (signInError: any) {
+        console.error('Failed to sign in existing user:', signInError);
+        throw new Error(`Admin setup failed: ${signInError.message}`);
+      }
+    }
+    
+    throw new Error(`Admin setup failed: ${error.message}`);
   }
 }
 
