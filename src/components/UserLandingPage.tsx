@@ -1,4 +1,4 @@
-
+// src/components/UserLandingPage.tsx - Updated with working game loading
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { TicketBookingGrid } from './TicketBookingGrid';
 import { TambolaGame } from './TambolaGame';
 import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
-import { Loader2, Users, Trophy, DollarSign } from 'lucide-react';
+import { Loader2, Users, Trophy, DollarSign, Gamepad2, RefreshCw } from 'lucide-react';
 
 export const UserLandingPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<'tickets' | 'game'>('tickets');
@@ -36,15 +36,29 @@ export const UserLandingPage: React.FC = () => {
   const loadActiveGames = async () => {
     setIsLoading(true);
     try {
-      // In a real implementation, you'd fetch active games from Firebase
-      // For now, we'll check if there are any games and use the first available one
-      // This is a simplified approach - in reality you'd have a games list endpoint
+      const games = await firebaseService.getAllActiveGames();
+      console.log('🔍 Loaded games:', games);
       
-      // Since we don't have a games list in the current Firebase service,
-      // we'll simulate checking for active games
-      setActiveGames([]);
-      setSelectedGame(null);
-      setTickets({});
+      // Filter for games that are not over and have available tickets
+      const activeGames = games.filter(game => 
+        !game.gameState.gameOver && 
+        game.tickets && 
+        Object.keys(game.tickets).length > 0
+      );
+      
+      console.log('🔍 Active games:', activeGames);
+      setActiveGames(activeGames);
+      
+      // Set the first active game as selected
+      if (activeGames.length > 0) {
+        const firstGame = activeGames[0];
+        setSelectedGame(firstGame);
+        
+        // Load tickets for the first game
+        if (firstGame.tickets) {
+          setTickets(firstGame.tickets);
+        }
+      }
     } catch (error: any) {
       console.error('Error loading games:', error);
       toast({
@@ -82,7 +96,20 @@ export const UserLandingPage: React.FC = () => {
 
   const getTotalRevenue = () => {
     if (!selectedGame) return 0;
-    return getBookedTicketsCount() * selectedGame.ticketPrice;
+    return getBookedTicketsCount() * (selectedGame.ticketPrice || 0);
+  };
+
+  const getAvailableTicketsCount = () => {
+    if (!selectedGame) return 0;
+    const totalTickets = Math.min(selectedGame.maxTickets, Object.keys(tickets).length);
+    return totalTickets - getBookedTicketsCount();
+  };
+
+  const handleGameSelect = (game: GameData) => {
+    setSelectedGame(game);
+    if (game.tickets) {
+      setTickets(game.tickets);
+    }
   };
 
   if (isLoading) {
@@ -99,7 +126,7 @@ export const UserLandingPage: React.FC = () => {
   }
 
   if (currentView === 'game' && selectedGame) {
-    return <TambolaGame gameData={selectedGame} />;
+    return <TambolaGame gameData={selectedGame} onBackToTickets={() => setCurrentView('tickets')} />;
   }
 
   return (
@@ -117,9 +144,63 @@ export const UserLandingPage: React.FC = () => {
           </CardHeader>
         </Card>
 
+        {/* Active Games List */}
+        {activeGames.length > 1 && (
+          <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+            <CardHeader>
+              <CardTitle className="text-2xl text-gray-800 text-center">Available Games</CardTitle>
+              <p className="text-gray-600 text-center">Choose a game to join</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeGames.map((game) => (
+                  <Card 
+                    key={game.gameId}
+                    className={`cursor-pointer transition-all duration-200 ${
+                      selectedGame?.gameId === game.gameId
+                        ? 'border-orange-500 bg-orange-50'
+                        : 'border-gray-200 hover:border-orange-300 hover:bg-orange-25'
+                    }`}
+                    onClick={() => handleGameSelect(game)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-bold text-gray-800">{game.name}</h3>
+                        <Gamepad2 className="w-5 h-5 text-orange-500" />
+                      </div>
+                      <div className="space-y-2 text-sm text-gray-600">
+                        <div className="flex justify-between">
+                          <span>Max Tickets:</span>
+                          <span className="font-medium">{game.maxTickets}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Booked:</span>
+                          <span className="font-medium text-green-600">
+                            {game.tickets ? Object.values(game.tickets).filter(t => t.isBooked).length : 0}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Status:</span>
+                          <span className={`font-medium ${
+                            game.gameState.isActive ? 'text-green-600' : 
+                            game.gameState.isCountdown ? 'text-yellow-600' : 'text-blue-600'
+                          }`}>
+                            {game.gameState.isActive ? 'Live' : 
+                             game.gameState.isCountdown ? 'Starting' : 'Waiting'}
+                          </span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Game Status */}
         {selectedGame ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -136,10 +217,10 @@ export const UserLandingPage: React.FC = () => {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-green-100">Total Revenue</p>
-                    <p className="text-2xl font-bold">₹{getTotalRevenue()}</p>
+                    <p className="text-green-100">Available Tickets</p>
+                    <p className="text-2xl font-bold">{getAvailableTicketsCount()}</p>
                   </div>
-                  <DollarSign className="w-8 h-8 text-green-200" />
+                  <Trophy className="w-8 h-8 text-green-200" />
                 </div>
               </CardContent>
             </Card>
@@ -150,10 +231,23 @@ export const UserLandingPage: React.FC = () => {
                   <div>
                     <p className="text-purple-100">Game Status</p>
                     <p className="text-2xl font-bold">
-                      {selectedGame.gameState.isActive ? 'Live' : 'Waiting'}
+                      {selectedGame.gameState.isActive ? 'Live' : 
+                       selectedGame.gameState.isCountdown ? 'Starting' : 'Waiting'}
                     </p>
                   </div>
-                  <Trophy className="w-8 h-8 text-purple-200" />
+                  <Gamepad2 className="w-8 h-8 text-purple-200" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-yellow-100">Max Tickets</p>
+                    <p className="text-2xl font-bold">{selectedGame.maxTickets}</p>
+                  </div>
+                  <Trophy className="w-8 h-8 text-yellow-200" />
                 </div>
               </CardContent>
             </Card>
@@ -170,6 +264,7 @@ export const UserLandingPage: React.FC = () => {
                 onClick={loadActiveGames}
                 className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
               >
+                <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh Games
               </Button>
             </CardContent>
@@ -195,7 +290,7 @@ export const UserLandingPage: React.FC = () => {
             <div className="text-center p-4">
               <div className="text-4xl mb-3">📱</div>
               <h3 className="font-bold text-lg text-gray-800 mb-2">Book via WhatsApp</h3>
-              <p className="text-gray-600">Click on any available ticket to book it through WhatsApp messaging.</p>
+              <p className="text-gray-600">Click on any available ticket to book it through WhatsApp messaging with the host.</p>
             </div>
             <div className="text-center p-4">
               <div className="text-4xl mb-3">🎯</div>
