@@ -309,8 +309,8 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout, onSho
                 </form>
                 <div className="text-xs text-gray-500 mt-2">
                   <p>Default Admin Credentials:</p>
-                  <p>Email: admin@tambola.com</p>
-                  <p>Password: TambolaAdmin123!</p>
+                  <p>Email: yurs@gmai.com</p>                    {/* CHANGED: Updated email */}
+                  <p>Password: Qwe123@</p>                       {/* CHANGED: Updated password */}
                 </div>
               </DialogContent>
             </Dialog>
