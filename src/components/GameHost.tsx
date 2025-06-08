@@ -60,29 +60,29 @@ const TICKET_SETS: TicketSet[] = [
     id: "1",
     name: "Classic Set 1",
     available: true,
-    ticketCount: 6,
-    description: "Traditional 6-ticket set with balanced number distribution"
+    ticketCount: 600,
+    description: "Traditional ticket set with balanced number distribution"
   },
   {
     id: "2", 
     name: "Premium Set 2",
     available: true,
-    ticketCount: 8,
-    description: "8-ticket set with optimized winning patterns"
+    ticketCount: 600,
+    description: "Premium ticket set with optimized winning patterns"
   },
   {
     id: "3",
     name: "Deluxe Set 3", 
     available: false,
-    ticketCount: 10,
-    description: "10-ticket deluxe set (Coming Soon)"
+    ticketCount: 600,
+    description: "Deluxe ticket set (Coming Soon)"
   },
   {
     id: "4",
     name: "Ultimate Set 4",
     available: false, 
-    ticketCount: 12,
-    description: "12-ticket ultimate set (Coming Soon)"
+    ticketCount: 600,
+    description: "Ultimate ticket set (Coming Soon)"
   }
 ];
 
@@ -151,7 +151,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [currentGame, setCurrentGame] = useState<GameData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
-    selectedTicketSet: '',
+    selectedTicketSet: '1', // Default to ticket set 1
     selectedPrizes: []
   });
   const { toast } = useToast();
@@ -234,39 +234,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const loadTicketSetData = async (setId: string) => {
     try {
-      // In a real implementation, you would fetch from public/data/{setId}.json
-      // For now, we'll return mock data based on the set ID
-      console.log(`Loading ticket set ${setId} data...`);
-      
-      // Mock ticket data - replace with actual file loading
-      const mockTickets = {
-        "1": [
-          // 6 tickets for set 1
-          {
-            ticketId: 'set1_ticket_1',
-            rows: [
-              [4, 11, 0, 32, 44, 0, 60, 0, 0],
-              [8, 0, 21, 34, 47, 0, 0, 74, 0],
-              [0, 14, 29, 0, 49, 55, 0, 0, 88]
-            ]
-          },
-          // ... add more tickets
-        ],
-        "2": [
-          // 8 tickets for set 2
-          {
-            ticketId: 'set2_ticket_1',
-            rows: [
-              [2, 0, 25, 0, 0, 52, 63, 0, 85],
-              [0, 16, 0, 31, 0, 0, 67, 78, 0],
-              [9, 0, 0, 35, 48, 0, 0, 79, 90]
-            ]
-          },
-          // ... add more tickets
-        ]
-      };
-
-      return mockTickets[setId as keyof typeof mockTickets] || [];
+      return await firebaseService.loadTicketSet(setId);
     } catch (error) {
       console.error('Error loading ticket set:', error);
       throw new Error('Failed to load ticket set data');
@@ -304,47 +272,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     setIsLoading(true);
     try {
       // Load ticket data for selected set
-      const ticketData = await loadTicketSetData(createGameForm.selectedTicketSet);
+      const ticketSetData = await loadTicketSetData(createGameForm.selectedTicketSet);
       const selectedSet = TICKET_SETS.find(set => set.id === createGameForm.selectedTicketSet);
       
-      // Create prizes object with only selected prizes
-      const selectedPrizesData = createGameForm.selectedPrizes.reduce((acc, prizeId) => {
-        const prizeInfo = AVAILABLE_PRIZES.find(p => p.id === prizeId);
-        if (prizeInfo) {
-          acc[prizeId] = {
-            id: prizeInfo.id,
-            name: prizeInfo.name,
-            pattern: prizeInfo.pattern,
-            won: false,
-            amount: prizeInfo.defaultAmount,
-            winner: null
-          };
-        }
-        return acc;
-      }, {} as any);
-
-      // Generate tickets object
-      const ticketsObject = ticketData.reduce((acc, ticket, index) => {
-        acc[ticket.ticketId] = {
-          ticketId: ticket.ticketId,
-          rows: ticket.rows,
-          isBooked: false,
-          playerName: '',
-          playerPhone: '',
-          bookedAt: undefined
-        };
-        return acc;
-      }, {} as any);
-
+      // Create the game using the updated createGame method
       const gameData = await firebaseService.createGame(
         {
           name: `${selectedSet?.name} Game`,
-          maxTickets: selectedSet?.ticketCount || 6,
+          maxTickets: ticketSetData.ticketCount,
           ticketPrice: 0, // No ticket price as per requirement
-          prizes: selectedPrizesData,
-          tickets: ticketsObject
         },
-        user.uid
+        user.uid,
+        createGameForm.selectedTicketSet, // Pass ticket set ID
+        createGameForm.selectedPrizes // Pass selected prizes
       );
 
       setCurrentGame(gameData);
