@@ -1,4 +1,4 @@
-
+// src/components/TambolaGame.tsx - Updated to show max tickets and game info
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { PrizeTracker } from './PrizeTracker';
 import { AudioManager } from './AudioManager';
 import { WinnerDisplay } from './WinnerDisplay';
 import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
-import { ArrowLeft, Clock } from 'lucide-react';
+import { ArrowLeft, Clock, Users, Trophy, Ticket } from 'lucide-react';
 
 export interface CalledNumber {
   number: number;
@@ -75,7 +75,12 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
   };
 
   const getTotalRevenue = () => {
-    return getBookedTicketsCount() * gameData.ticketPrice;
+    return getBookedTicketsCount() * (gameData.ticketPrice || 0);
+  };
+
+  const getAvailableTicketsCount = () => {
+    const totalAvailable = Math.min(gameData.maxTickets, Object.keys(tickets).length);
+    return totalAvailable - getBookedTicketsCount();
   };
 
   // Convert called numbers to CalledNumber format for compatibility
@@ -95,6 +100,15 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
               <div>
                 <CardTitle className="text-4xl font-bold">🎲 {gameData.name} 🎲</CardTitle>
                 <p className="text-blue-100">Live Tambola Game in Progress</p>
+                <div className="flex items-center space-x-4 mt-2 text-sm">
+                  <span className="flex items-center">
+                    <Ticket className="w-4 h-4 mr-1" />
+                    Max: {gameData.maxTickets} tickets
+                  </span>
+                  {gameData.ticketPrice > 0 && (
+                    <span>₹{gameData.ticketPrice} per ticket</span>
+                  )}
+                </div>
               </div>
               {onBackToTickets && (
                 <Button 
@@ -111,7 +125,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
         </Card>
 
         {/* Game Status */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
             <CardContent className="p-4 text-center">
               <div className="text-2xl font-bold">{calledNumbers.length}</div>
@@ -128,8 +142,15 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           
           <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
             <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold">₹{getTotalRevenue()}</div>
-              <div className="text-purple-100">Total Revenue</div>
+              <div className="text-2xl font-bold">{getAvailableTicketsCount()}</div>
+              <div className="text-purple-100">Available</div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold">{gameData.maxTickets}</div>
+              <div className="text-orange-100">Max Tickets</div>
             </CardContent>
           </Card>
           
@@ -192,6 +213,40 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           <div className="space-y-4">
             <PrizeTracker prizes={prizes} />
             
+            {/* Game Statistics */}
+            <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
+              <CardHeader>
+                <CardTitle className="text-gray-800 flex items-center">
+                  <Trophy className="w-5 h-5 mr-2" />
+                  Game Stats
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Game Status:</span>
+                  <span className={`font-medium ${
+                    gameData.gameState.isActive ? 'text-green-600' : 
+                    gameData.gameState.isCountdown ? 'text-yellow-600' : 'text-blue-600'
+                  }`}>
+                    {gameData.gameState.isActive ? 'Live' : 
+                     gameData.gameState.isCountdown ? 'Starting' : 'Waiting'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Total Revenue:</span>
+                  <span className="font-medium text-green-600">
+                    {gameData.ticketPrice > 0 ? `₹${getTotalRevenue()}` : 'Free Game'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Completion:</span>
+                  <span className="font-medium text-blue-600">
+                    {Math.round((calledNumbers.length / 90) * 100)}%
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+            
             {/* Recent Numbers */}
             {calledNumbers.length > 0 && (
               <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
@@ -226,11 +281,17 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
         {Object.keys(tickets).length > 0 && (
           <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
             <CardHeader>
-              <CardTitle className="text-gray-800">Player Tickets</CardTitle>
+              <CardTitle className="text-gray-800 flex items-center">
+                <Users className="w-5 h-5 mr-2" />
+                Player Tickets ({getBookedTicketsCount()} booked of {gameData.maxTickets} max)
+              </CardTitle>
               <p className="text-gray-600">Numbers are automatically marked as they are called</p>
             </CardHeader>
             <CardContent>
-              <TicketDisplay calledNumbers={calledNumbers} tickets={Object.values(tickets)} />
+              <TicketDisplay 
+                calledNumbers={calledNumbers} 
+                tickets={Object.values(tickets).filter(ticket => ticket.isBooked)} 
+              />
             </CardContent>
           </Card>
         )}
