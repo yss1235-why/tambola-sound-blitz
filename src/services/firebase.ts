@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete Fixed Version
+// src/services/firebase.ts - Complete Updated Version
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
@@ -243,7 +243,7 @@ class FirebaseService {
     }
   }
 
-  // UPDATED: Create host without affecting main auth state
+  // Create host without affecting main auth state
   async createHost(email: string, password: string, name: string, createdByUid: string, subscriptionMonths: number = 12): Promise<HostUser> {
     try {
       // Verify current user is admin
@@ -396,8 +396,62 @@ class FirebaseService {
     }
   }
 
-  // FIXED: Host Game Management Methods
-  async createGame(gameData: Partial<GameData>, hostUid: string): Promise<GameData> {
+  // Method to load ticket sets from public/data directory
+  async loadTicketSet(setId: string): Promise<any> {
+    try {
+      console.log(`Loading ticket set ${setId} from public/data/${setId}.json`);
+      
+      const response = await fetch(`/data/${setId}.json`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load ticket set ${setId}: ${response.statusText}`);
+      }
+      
+      const ticketSetData = await response.json();
+      console.log(`✅ Loaded ticket set ${setId} with ${ticketSetData.length} rows`);
+      
+      // Transform the data from your format to the expected format
+      const transformedData = this.transformTicketData(ticketSetData);
+      
+      return transformedData;
+    } catch (error: any) {
+      console.error(`❌ Error loading ticket set ${setId}:`, error);
+      throw new Error(`Failed to load ticket set ${setId}: ${error.message}`);
+    }
+  }
+
+  // Transform ticket data from your format to game format
+  private transformTicketData(rawData: any[]): any {
+    const ticketsMap = new Map();
+    
+    // Group rows by ticketId
+    rawData.forEach(row => {
+      const ticketId = `ticket_${row.ticketId}`;
+      if (!ticketsMap.has(ticketId)) {
+        ticketsMap.set(ticketId, {
+          ticketId: ticketId,
+          rows: []
+        });
+      }
+      
+      const ticket = ticketsMap.get(ticketId);
+      ticket.rows[row.rowId - 1] = row.numbers; // rowId is 1-based, array is 0-based
+    });
+    
+    // Convert map to array and get unique ticket count
+    const tickets = Array.from(ticketsMap.values());
+    const uniqueTicketIds = new Set(rawData.map(row => row.ticketId));
+    
+    return {
+      setId: rawData[0]?.setId || 1,
+      name: `Ticket Set ${rawData[0]?.setId || 1}`,
+      ticketCount: uniqueTicketIds.size,
+      tickets: tickets
+    };
+  }
+
+  // Host Game Management Methods
+  async createGame(gameData: Partial<GameData>, hostUid: string, ticketSetId?: string, selectedPrizes?: string[]): Promise<GameData> {
     try {
       const hostRef = ref(database, `hosts/${hostUid}`);
       const hostSnapshot = await get(hostRef);
@@ -409,26 +463,121 @@ class FirebaseService {
       const gameRef = push(ref(database, 'games'));
       const gameId = gameRef.key!;
       
-      // FIXED: Ensure all required arrays and objects are properly initialized
+      // Load ticket set data if provided
+      let ticketsData = {};
+      let maxTickets = gameData.maxTickets || 50;
+      
+      if (ticketSetId) {
+        const ticketSet = await this.loadTicketSet(ticketSetId);
+        maxTickets = ticketSet.ticketCount;
+        
+        // Convert ticket set data to the format expected by the game
+        ticketsData = ticketSet.tickets.reduce((acc: any, ticket: any) => {
+          acc[ticket.ticketId] = {
+            ticketId: ticket.ticketId,
+            rows: ticket.rows,
+            isBooked: false,
+            playerName: '',
+            playerPhone: '',
+            bookedAt: undefined
+          };
+          return acc;
+        }, {});
+      }
+      
+      // Create prizes based on selected prizes or use defaults
+      let prizesData = {};
+      if (selectedPrizes && selectedPrizes.length > 0) {
+        // Use only selected prizes
+        const availablePrizes = [
+          {
+            id: 'quickFive',
+            name: 'Quick Five',
+            pattern: 'First 5 numbers',
+            defaultAmount: 500
+          },
+          {
+            id: 'topLine',
+            name: 'Top Line',
+            pattern: 'Complete top row',
+            defaultAmount: 1000
+          },
+          {
+            id: 'middleLine',
+            name: 'Middle Line',
+            pattern: 'Complete middle row', 
+            defaultAmount: 1000
+          },
+          {
+            id: 'bottomLine',
+            name: 'Bottom Line',
+            pattern: 'Complete bottom row',
+            defaultAmount: 1000
+          },
+          {
+            id: 'fourCorners',
+            name: 'Four Corners',
+            pattern: 'All four corner numbers',
+            defaultAmount: 1500
+          },
+          {
+            id: 'fullHouse',
+            name: 'Full House',
+            pattern: 'Complete ticket',
+            defaultAmount: 3000
+          },
+          {
+            id: 'twoLines',
+            name: 'Two Lines',
+            pattern: 'Any two complete rows',
+            defaultAmount: 2000
+          },
+          {
+            id: 'earlyTen',
+            name: 'Early Ten',
+            pattern: 'First 10 numbers',
+            defaultAmount: 800
+          }
+        ];
+        
+        prizesData = selectedPrizes.reduce((acc: any, prizeId: string) => {
+          const prizeInfo = availablePrizes.find(p => p.id === prizeId);
+          if (prizeInfo) {
+            acc[prizeId] = {
+              id: prizeInfo.id,
+              name: prizeInfo.name,
+              pattern: prizeInfo.pattern,
+              won: false,
+              amount: prizeInfo.defaultAmount,
+              winner: null
+            };
+          }
+          return acc;
+        }, {});
+      } else {
+        prizesData = this.getDefaultPrizes();
+      }
+      
+      // Create full game data
       const fullGameData: GameData = {
         gameId,
         hostUid,
         name: gameData.name || 'New Tambola Game',
         createdAt: new Date().toISOString(),
         status: 'waiting',
-        maxTickets: gameData.maxTickets || 50,
-        ticketPrice: gameData.ticketPrice || 100,
+        maxTickets,
+        ticketPrice: gameData.ticketPrice || 0, // Set to 0 for free games
         gameState: {
           isActive: false,
           isCountdown: false,
           countdownTime: 0,
-          calledNumbers: [], // FIXED: Ensure this is always an array
+          calledNumbers: [], // Ensure this is always an array
           currentNumber: null,
           gameOver: false,
           callInterval: 6000
         },
-        prizes: gameData.prizes || this.getDefaultPrizes(),
-        tickets: gameData.tickets || this.generateDefaultTickets()
+        prizes: prizesData,
+        tickets: ticketsData
       };
       
       await set(gameRef, fullGameData);
@@ -451,12 +600,12 @@ class FirebaseService {
     }
   }
 
-  // FIXED: Update addCalledNumber method to ensure array handling
+  // Update addCalledNumber method to ensure array handling
   async addCalledNumber(gameId: string, number: number): Promise<void> {
     try {
       const calledNumbersRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
       const snapshot = await get(calledNumbersRef);
-      const currentNumbers = snapshot.val() || []; // FIXED: Ensure it's always an array
+      const currentNumbers = snapshot.val() || []; // Ensure it's always an array
       
       // Check if number is already called
       if (currentNumbers.includes(number)) {
@@ -511,7 +660,7 @@ class FirebaseService {
     const unsubscribe = onValue(gameRef, (snapshot) => {
       if (snapshot.exists()) {
         const gameData = snapshot.val() as GameData;
-        // FIXED: Ensure arrays are properly initialized when received from Firebase
+        // Ensure arrays are properly initialized when received from Firebase
         if (!gameData.gameState.calledNumbers) {
           gameData.gameState.calledNumbers = [];
         }
@@ -572,7 +721,7 @@ class FirebaseService {
     return onAuthStateChanged(auth, callback);
   }
 
-  // FIXED: Utility Methods with proper initialization
+  // Utility Methods - Default prizes only
   private getDefaultPrizes() {
     return {
       quickFive: {
@@ -607,8 +756,8 @@ class FirebaseService {
         amount: 1000,
         winner: null
       },
-      corners: {
-        id: 'corners',
+      fourCorners: {
+        id: 'fourCorners',
         name: 'Four Corners',
         pattern: 'All four corners',
         won: false,
@@ -624,68 +773,6 @@ class FirebaseService {
         winner: null
       }
     };
-  }
-
-  // FIXED: generateDefaultTickets with proper structure
-  private generateDefaultTickets(): { [key: string]: TambolaTicket } {
-    const tickets: { [key: string]: TambolaTicket } = {};
-    
-    const sampleTickets = [
-      {
-        ticketId: 'ticket_1',
-        rows: [
-          [4, 11, 0, 32, 44, 0, 60, 0, 0],
-          [8, 0, 21, 34, 47, 0, 0, 74, 0],
-          [0, 14, 29, 0, 49, 55, 0, 0, 88]
-        ]
-      },
-      {
-        ticketId: 'ticket_2',
-        rows: [
-          [2, 0, 25, 0, 0, 52, 63, 0, 85],
-          [0, 16, 0, 31, 0, 0, 67, 78, 0],
-          [9, 0, 0, 35, 48, 0, 0, 79, 90]
-        ]
-      },
-      {
-        ticketId: 'ticket_3',
-        rows: [
-          [1, 0, 22, 0, 41, 0, 0, 73, 0],
-          [0, 18, 0, 33, 0, 56, 64, 0, 87],
-          [7, 0, 28, 0, 0, 58, 0, 0, 89]
-        ]
-      },
-      {
-        ticketId: 'ticket_4',
-        rows: [
-          [3, 0, 23, 0, 42, 0, 61, 0, 86],
-          [0, 17, 0, 36, 0, 53, 0, 75, 0],
-          [6, 0, 27, 0, 45, 0, 68, 0, 90]
-        ]
-      },
-      {
-        ticketId: 'ticket_5',
-        rows: [
-          [5, 12, 0, 38, 0, 54, 0, 76, 0],
-          [0, 0, 24, 0, 46, 0, 65, 0, 88],
-          [9, 0, 0, 39, 0, 57, 0, 77, 0]
-        ]
-      }
-    ];
-
-    // FIXED: Ensure each ticket has all required properties
-    sampleTickets.forEach(ticket => {
-      tickets[ticket.ticketId] = {
-        ticketId: ticket.ticketId,
-        rows: ticket.rows,
-        isBooked: false,
-        playerName: '',
-        playerPhone: '',
-        bookedAt: undefined
-      };
-    });
-
-    return tickets;
   }
 
   // Get current user role
@@ -715,7 +802,7 @@ class FirebaseService {
     }
   }
 
-  // Get user data - UPDATED WITH ENHANCED LOGGING
+  // Get user data
   async getUserData(): Promise<AdminUser | HostUser | null> {
     const user = auth.currentUser;
     if (!user) {
@@ -828,17 +915,3 @@ export async function setupInitialAdmin(): Promise<AdminUser | null> {
         throw new Error(`Admin setup failed: ${signInError.message}`);
       }
     }
-    
-    throw new Error(`Admin setup failed: ${error.message}`);
-  }
-}
-
-// Create and export service instance
-export const firebaseService = new FirebaseService();
-
-// Utility function to check current user role
-export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
-  return firebaseService.getCurrentUserRole();
-}
-
-export default firebaseService;
