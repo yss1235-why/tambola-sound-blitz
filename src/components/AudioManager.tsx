@@ -7,111 +7,134 @@ interface AudioManagerProps {
   prizes: Prize[];
 }
 
-// Traditional Tambola number calls
+// Traditional Tambola number calls with more natural phrasing
 const numberCalls: { [key: number]: string } = {
-  1: "Kelly's Eyes! Number 1",
-  2: "One Little Duck! Number 2",
-  3: "Cup of Tea! Number 3",
-  4: "Knock at the Door! Number 4",
-  5: "Man Alive! Number 5",
-  6: "Half a Dozen! Number 6",
-  7: "Lucky Seven! Number 7",
-  8: "One Fat Lady! Number 8",
-  9: "Doctor's Orders! Number 9",
-  10: "Uncle Ben! Number 10",
-  11: "Legs Eleven! Number 11",
-  12: "One Dozen! Number 12",
-  13: "Unlucky for Some! Number 13",
-  14: "Valentine's Day! Number 14",
-  15: "Young and Keen! Number 15",
-  16: "Sweet Sixteen! Number 16",
-  17: "Dancing Queen! Number 17",
-  18: "Now You Can Vote! Number 18",
-  19: "Goodbye Teens! Number 19",
-  20: "One Score! Number 20",
-  21: "Key of the Door! Number 21",
-  22: "Two Little Ducks! Number 22",
-  23: "Thee and Me! Number 23",
-  24: "Two Dozen! Number 24",
-  25: "Quarter Century! Number 25",
-  26: "Pick and Mix! Number 26",
-  27: "Duck and a Crutch! Number 27",
-  28: "Overweight! Number 28",
-  29: "Rise and Shine! Number 29",
-  30: "Dirty Thirty! Number 30",
-  31: "Get Up and Run! Number 31",
-  32: "Buckle My Shoe! Number 32",
-  33: "All the Threes! Number 33",
-  34: "Ask for More! Number 34",
-  35: "Jump and Jive! Number 35",
-  36: "Three Dozen! Number 36",
-  37: "A Flea in Heaven! Number 37",
-  38: "Christmas Cake! Number 38",
-  39: "Steps and Climb! Number 39",
-  40: "Life Begins! Number 40",
-  41: "Time for Fun! Number 41",
-  42: "Winnie the Pooh! Number 42",
-  43: "Down on Your Knees! Number 43",
-  44: "Droopy Drawers! Number 44",
-  45: "Halfway There! Number 45",
-  46: "Up to Tricks! Number 46",
-  47: "Four and Seven! Number 47",
-  48: "Four Dozen! Number 48",
-  49: "Rise and Shine! Number 49",
-  50: "Half a Century! Number 50",
-  51: "Tweak of the Thumb! Number 51",
-  52: "Weeks in a Year! Number 52",
-  53: "Here Comes Herbie! Number 53",
-  54: "Clean the Floor! Number 54",
-  55: "Snakes Alive! Number 55",
-  56: "Was She Worth It? Number 56",
-  57: "Heinz Varieties! Number 57",
-  58: "Make Them Wait! Number 58",
-  59: "Brighton Line! Number 59",
-  60: "Five Dozen! Number 60",
-  61: "Baker's Bun! Number 61",
-  62: "Turn on the Screw! Number 62",
-  63: "Tickle Me! Number 63",
-  64: "Red Raw! Number 64",
-  65: "Old Age Pension! Number 65",
-  66: "Clickety Click! Number 66",
-  67: "Stairway to Heaven! Number 67",
-  68: "Saving Grace! Number 68",
-  69: "Either Way Up! Number 69",
-  70: "Three Score and Ten! Number 70",
-  71: "Bang on the Drum! Number 71",
-  72: "Six Dozen! Number 72",
-  73: "Queen Bee! Number 73",
-  74: "Candy Store! Number 74",
-  75: "Strive and Strive! Number 75",
-  76: "Trombones! Number 76",
-  77: "Sunset Strip! Number 77",
-  78: "Heaven's Gate! Number 78",
-  79: "One More Time! Number 79",
-  80: "Gandhi's Breakfast! Number 80",
-  81: "Stop and Run! Number 81",
-  82: "Fat Lady Sings! Number 82",
-  83: "Time for Tea! Number 83",
-  84: "Seven Dozen! Number 84",
-  85: "Staying Alive! Number 85",
-  86: "Between the Sticks! Number 86",
-  87: "Torquay in Devon! Number 87",
-  88: "Two Fat Ladies! Number 88",
-  89: "Nearly There! Number 89",
-  90: "Top of the Shop! Number 90"
+  1: "Kelly's Eyes, number one!",
+  2: "One little duck, number two!",
+  3: "Cup of tea, number three!",
+  4: "Knock at the door, number four!",
+  5: "Man alive, number five!",
+  6: "Half a dozen, number six!",
+  7: "Lucky seven!",
+  8: "One fat lady, number eight!",
+  9: "Doctor's orders, number nine!",
+  10: "Uncle Ben, number ten!",
+  11: "Legs eleven!",
+  12: "One dozen, number twelve!",
+  13: "Unlucky for some, thirteen!",
+  14: "Valentine's day, fourteen!",
+  15: "Young and keen, fifteen!",
+  16: "Sweet sixteen!",
+  17: "Dancing queen, seventeen!",
+  18: "Now you can vote, eighteen!",
+  19: "Goodbye teens, nineteen!",
+  20: "One score, twenty!",
+  21: "Key of the door, twenty-one!",
+  22: "Two little ducks, twenty-two!",
+  23: "Thee and me, twenty-three!",
+  24: "Two dozen, twenty-four!",
+  25: "Quarter century, twenty-five!",
+  26: "Pick and mix, twenty-six!",
+  27: "Duck and a crutch, twenty-seven!",
+  28: "Overweight, twenty-eight!",
+  29: "Rise and shine, twenty-nine!",
+  30: "Dirty thirty!",
+  31: "Get up and run, thirty-one!",
+  32: "Buckle my shoe, thirty-two!",
+  33: "All the threes, thirty-three!",
+  34: "Ask for more, thirty-four!",
+  35: "Jump and jive, thirty-five!",
+  36: "Three dozen, thirty-six!",
+  37: "A flea in heaven, thirty-seven!",
+  38: "Christmas cake, thirty-eight!",
+  39: "Steps and climb, thirty-nine!",
+  40: "Life begins at forty!",
+  41: "Time for fun, forty-one!",
+  42: "Winnie the Pooh, forty-two!",
+  43: "Down on your knees, forty-three!",
+  44: "Droopy drawers, forty-four!",
+  45: "Halfway there, forty-five!",
+  46: "Up to tricks, forty-six!",
+  47: "Four and seven, forty-seven!",
+  48: "Four dozen, forty-eight!",
+  49: "Rise and shine, forty-nine!",
+  50: "Half a century, fifty!",
+  51: "Tweak of the thumb, fifty-one!",
+  52: "Weeks in a year, fifty-two!",
+  53: "Here comes Herbie, fifty-three!",
+  54: "Clean the floor, fifty-four!",
+  55: "Snakes alive, fifty-five!",
+  56: "Was she worth it? Fifty-six!",
+  57: "Heinz varieties, fifty-seven!",
+  58: "Make them wait, fifty-eight!",
+  59: "Brighton line, fifty-nine!",
+  60: "Five dozen, sixty!",
+  61: "Baker's bun, sixty-one!",
+  62: "Turn on the screw, sixty-two!",
+  63: "Tickle me, sixty-three!",
+  64: "Red raw, sixty-four!",
+  65: "Old age pension, sixty-five!",
+  66: "Clickety click, sixty-six!",
+  67: "Stairway to heaven, sixty-seven!",
+  68: "Saving grace, sixty-eight!",
+  69: "Either way up, sixty-nine!",
+  70: "Three score and ten, seventy!",
+  71: "Bang on the drum, seventy-one!",
+  72: "Six dozen, seventy-two!",
+  73: "Queen bee, seventy-three!",
+  74: "Candy store, seventy-four!",
+  75: "Strive and strive, seventy-five!",
+  76: "Trombones, seventy-six!",
+  77: "Sunset strip, seventy-seven!",
+  78: "Heaven's gate, seventy-eight!",
+  79: "One more time, seventy-nine!",
+  80: "Gandhi's breakfast, eighty!",
+  81: "Stop and run, eighty-one!",
+  82: "Fat lady sings, eighty-two!",
+  83: "Time for tea, eighty-three!",
+  84: "Seven dozen, eighty-four!",
+  85: "Staying alive, eighty-five!",
+  86: "Between the sticks, eighty-six!",
+  87: "Torquay in Devon, eighty-seven!",
+  88: "Two fat ladies, eighty-eight!",
+  89: "Nearly there, eighty-nine!",
+  90: "Top of the shop, ninety!"
 };
 
 export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prizes }) => {
   const lastCalledNumber = useRef<number | null>(null);
   const lastPrizeCount = useRef<number>(0);
 
-  // Text-to-speech functionality
+  // Enhanced text-to-speech functionality
   const speak = (text: string) => {
     if ('speechSynthesis' in window) {
+      // Cancel any ongoing speech
+      speechSynthesis.cancel();
+      
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.8;
-      utterance.pitch = 1.1;
-      utterance.volume = 0.8;
+      
+      // Try to get a more natural voice
+      const voices = speechSynthesis.getVoices();
+      const preferredVoices = voices.filter(voice => 
+        voice.lang.startsWith('en') && 
+        (voice.name.includes('Google') || voice.name.includes('Microsoft') || voice.name.includes('Natural'))
+      );
+      
+      if (preferredVoices.length > 0) {
+        utterance.voice = preferredVoices[0];
+      } else if (voices.length > 0) {
+        // Fallback to first English voice
+        const englishVoices = voices.filter(voice => voice.lang.startsWith('en'));
+        if (englishVoices.length > 0) {
+          utterance.voice = englishVoices[0];
+        }
+      }
+      
+      // Optimize speech settings for more natural sound
+      utterance.rate = 0.9;
+      utterance.pitch = 1.0;
+      utterance.volume = 0.9;
+      
       speechSynthesis.speak(utterance);
     }
   };
@@ -119,8 +142,13 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
   // Handle number calling
   useEffect(() => {
     if (currentNumber && currentNumber !== lastCalledNumber.current) {
-      const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
-      speak(callText);
+      const callText = numberCalls[currentNumber] || `Number ${currentNumber}!`;
+      
+      // Add a slight delay to make it feel more natural
+      setTimeout(() => {
+        speak(callText);
+      }, 300);
+      
       lastCalledNumber.current = currentNumber;
       console.log(`🔊 Called: ${callText}`);
     }
@@ -132,13 +160,26 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
     if (currentPrizeCount > lastPrizeCount.current) {
       const newlyWonPrizes = prizes.filter(p => p.won).slice(-1);
       newlyWonPrizes.forEach(prize => {
-        const announcement = `${prize.name} correct and gone!`;
-        setTimeout(() => speak(announcement), 1000);
+        const announcement = `Congratulations! ${prize.name} has been won!`;
+        setTimeout(() => speak(announcement), 1500);
         console.log(`🏆 Prize Won: ${announcement}`);
       });
       lastPrizeCount.current = currentPrizeCount;
     }
   }, [prizes]);
+
+  // Load voices when component mounts
+  useEffect(() => {
+    const loadVoices = () => {
+      speechSynthesis.getVoices();
+    };
+    
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+      speechSynthesis.onvoiceschanged = loadVoices;
+    }
+    
+    loadVoices();
+  }, []);
 
   return null; // This component doesn't render anything
 };

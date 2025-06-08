@@ -45,64 +45,75 @@
   }
 
   body {
-    @apply bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 text-foreground min-h-screen;
+    @apply bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 text-gray-800 min-h-screen;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
   }
 }
 
 @layer components {
   .tambola-card {
-    @apply bg-white rounded-xl shadow-2xl border-2 border-gray-200 p-4;
+    @apply bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200 p-6;
   }
   
   .number-grid {
-    @apply grid grid-cols-10 gap-1 p-4 bg-white rounded-xl shadow-lg;
+    @apply grid grid-cols-10 gap-2 p-6 bg-gradient-to-br from-white to-orange-50 rounded-2xl shadow-lg border border-orange-200;
   }
   
   .number-cell {
-    @apply aspect-square flex items-center justify-center rounded-lg font-bold text-sm
+    @apply aspect-square flex items-center justify-center rounded-xl font-bold text-sm
            transition-all duration-300 cursor-pointer hover:scale-105
-           bg-gradient-to-br from-slate-100 to-slate-200 text-slate-700
-           border border-slate-300;
+           bg-gradient-to-br from-orange-100 to-orange-200 text-orange-800
+           border-2 border-orange-300 hover:border-orange-400;
   }
   
   .number-cell.called {
-    @apply bg-gradient-to-br from-emerald-400 to-emerald-600 text-white
-           shadow-lg transform scale-105 border-emerald-300;
+    @apply bg-gradient-to-br from-emerald-400 to-emerald-500 text-white
+           shadow-lg transform scale-105 border-emerald-400;
   }
   
   .number-cell.current {
-    @apply animate-number-call ring-4 ring-yellow-400 ring-opacity-75;
+    @apply animate-number-call ring-4 ring-yellow-400 ring-opacity-75 
+           bg-gradient-to-br from-yellow-400 to-yellow-500 text-white;
   }
   
   .ticket-grid {
-    @apply grid grid-cols-9 gap-1 p-3 bg-white rounded-lg shadow-md border-2 border-blue-200;
+    @apply grid grid-cols-9 gap-1 p-4 bg-gradient-to-br from-white to-blue-50 rounded-xl shadow-md border-2 border-blue-200;
   }
   
   .ticket-cell {
-    @apply aspect-square flex items-center justify-center rounded text-xs font-bold
-           border border-gray-300 transition-all duration-200;
+    @apply aspect-square flex items-center justify-center rounded-lg text-sm font-semibold
+           border-2 border-gray-200 transition-all duration-200;
   }
   
   .ticket-cell.number {
-    @apply bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800 hover:from-blue-100 hover:to-blue-200;
+    @apply bg-gradient-to-br from-blue-50 to-blue-100 text-blue-800 hover:from-blue-100 hover:to-blue-200 border-blue-300;
   }
   
   .ticket-cell.empty {
-    @apply bg-gray-100;
+    @apply bg-gray-50 border-gray-200;
   }
   
   .ticket-cell.marked {
-    @apply bg-gradient-to-br from-red-400 to-red-600 text-white shadow-md;
+    @apply bg-gradient-to-br from-red-400 to-red-500 text-white shadow-md border-red-400;
+  }
+  
+  .ticket-cell.booked {
+    @apply bg-gradient-to-br from-gray-300 to-gray-400 text-gray-600 border-gray-400;
   }
   
   .prize-badge {
-    @apply inline-flex items-center px-3 py-1 rounded-full text-sm font-medium
-           bg-gradient-to-r from-yellow-400 to-yellow-600 text-yellow-900
+    @apply inline-flex items-center px-4 py-2 rounded-full text-sm font-medium
+           bg-gradient-to-r from-amber-400 to-orange-500 text-white
            shadow-lg transform transition-transform hover:scale-105;
   }
   
   .prize-badge.won {
-    @apply from-green-400 to-green-600 text-white animate-prize-win;
+    @apply from-green-400 to-green-500 text-white animate-prize-win;
+  }
+
+  .book-button {
+    @apply bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg
+           font-semibold shadow-lg hover:from-green-600 hover:to-emerald-700
+           transition-all duration-200 hover:scale-105;
   }
 }
