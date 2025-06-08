@@ -1,7 +1,8 @@
-// src/components/GameHost.tsx - Clean Version (No Prize Amounts)
+// src/components/GameHost.tsx - Updated with game name and max tickets
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +50,8 @@ interface GamePrize {
 }
 
 interface CreateGameForm {
+  gameName: string;
+  maxTickets: number;
   selectedTicketSet: string;
   selectedPrizes: string[];
 }
@@ -85,7 +88,7 @@ const TICKET_SETS: TicketSet[] = [
   }
 ];
 
-// Available game prizes - REMOVED Early Ten, Two Lines, and all prize amounts
+// Available game prizes
 const AVAILABLE_PRIZES: GamePrize[] = [
   {
     id: 'quickFive',
@@ -130,6 +133,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [currentGame, setCurrentGame] = useState<GameData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
+    gameName: '',
+    maxTickets: 100,
     selectedTicketSet: '1', // Default to ticket set 1
     selectedPrizes: []
   });
@@ -142,7 +147,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
   const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
 
-  // Check subscription status - FIXED: Memoized to prevent infinite loops
+  // Check subscription status
   const isSubscriptionValid = useCallback(() => {
     console.log('🔍 Checking subscription validity for user:', user.email);
     console.log('🔍 User isActive:', user.isActive);
@@ -230,6 +235,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return;
     }
 
+    if (!createGameForm.gameName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a game name",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!createGameForm.selectedTicketSet) {
       toast({
         title: "Validation Error",
@@ -248,17 +262,25 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return;
     }
 
+    if (createGameForm.maxTickets < 1 || createGameForm.maxTickets > 600) {
+      toast({
+        title: "Validation Error",
+        description: "Max tickets must be between 1 and 600",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
     try {
       // Load ticket data for selected set
       const ticketSetData = await loadTicketSetData(createGameForm.selectedTicketSet);
-      const selectedSet = TICKET_SETS.find(set => set.id === createGameForm.selectedTicketSet);
       
-      // Create the game using the updated createGame method
+      // Create the game using the form values
       const gameData = await firebaseService.createGame(
         {
-          name: `${selectedSet?.name} Game`,
-          maxTickets: ticketSetData.ticketCount,
+          name: createGameForm.gameName,
+          maxTickets: createGameForm.maxTickets,
           ticketPrice: 0, // No ticket price as per requirement
         },
         user.uid,
@@ -267,12 +289,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       );
 
       setCurrentGame(gameData);
-      setCreateGameForm({ selectedTicketSet: '', selectedPrizes: [] });
+      setCreateGameForm({ 
+        gameName: '',
+        maxTickets: 100,
+        selectedTicketSet: '', 
+        selectedPrizes: [] 
+      });
       setActiveTab('game-control');
 
       toast({
         title: "Game Created",
-        description: `Game with ${selectedSet?.name} has been created successfully!`,
+        description: `"${createGameForm.gameName}" has been created successfully with ${createGameForm.maxTickets} tickets!`,
       });
 
       // Subscribe to real-time game updates
@@ -528,6 +555,39 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Game Details */}
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="game-name" className="text-base font-semibold">Game Name</Label>
+              <p className="text-sm text-gray-600 mb-2">Enter a name for your game</p>
+              <Input
+                id="game-name"
+                placeholder="e.g., Sunday Evening Tambola"
+                value={createGameForm.gameName}
+                onChange={(e) => setCreateGameForm(prev => ({ ...prev, gameName: e.target.value }))}
+                className="border-2 border-gray-200 focus:border-blue-400"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="max-tickets" className="text-base font-semibold">Maximum Tickets</Label>
+              <p className="text-sm text-gray-600 mb-2">Set the maximum number of tickets to sell (1-600)</p>
+              <Input
+                id="max-tickets"
+                type="number"
+                min="1"
+                max="600"
+                placeholder="100"
+                value={createGameForm.maxTickets}
+                onChange={(e) => setCreateGameForm(prev => ({ 
+                  ...prev, 
+                  maxTickets: parseInt(e.target.value) || 1 
+                }))}
+                className="border-2 border-gray-200 focus:border-blue-400"
+              />
+            </div>
+          </div>
+
           {/* Ticket Set Selection */}
           <div>
             <Label className="text-base font-semibold">Select Ticket Set</Label>
@@ -582,7 +642,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             </div>
           </div>
 
-          {/* Prize Selection - NO PRIZE AMOUNTS */}
+          {/* Prize Selection */}
           <div>
             <Label className="text-base font-semibold">Select Game Prizes</Label>
             <p className="text-sm text-gray-600 mb-4">Choose which prizes to include in this game</p>
@@ -619,7 +679,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           {/* Create Game Button */}
           <Button 
             onClick={createNewGame} 
-            disabled={isLoading || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0}
+            disabled={isLoading || !createGameForm.gameName.trim() || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0}
             className="w-full bg-blue-600 hover:bg-blue-700"
             size="lg"
           >
@@ -688,7 +748,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="text-center p-3 bg-blue-50 rounded-lg">
                 <div className="text-2xl font-bold text-blue-600">
                   {(currentGame.gameState.calledNumbers || []).length}
@@ -701,6 +761,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   {getBookedTicketsCount()}
                 </div>
                 <div className="text-sm text-green-700">Tickets Booked</div>
+              </div>
+
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="text-2xl font-bold text-purple-600">
+                  {currentGame.maxTickets}
+                </div>
+                <div className="text-sm text-purple-700">Max Tickets</div>
               </div>
 
               <div className="text-center p-3 bg-yellow-50 rounded-lg">
@@ -718,7 +785,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
             )}
 
-            {/* Selected Prizes Display - NO AMOUNTS */}
+            {/* Selected Prizes Display */}
             <div>
               <h4 className="text-lg font-semibold mb-3">Active Prizes</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
