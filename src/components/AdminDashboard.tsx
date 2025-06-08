@@ -1,4 +1,4 @@
-// src/components/AdminDashboard.tsx
+// src/components/AdminDashboard.tsx - Updated with phone field
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,8 @@ import {
   UserCheck,
   UserX,
   Mail,
-  User
+  User,
+  Phone
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -33,6 +34,7 @@ interface AdminDashboardProps {
 interface CreateHostForm {
   name: string;
   email: string;
+  phone: string;
   password: string;
   subscriptionMonths: number;
 }
@@ -40,6 +42,7 @@ interface CreateHostForm {
 interface EditHostForm {
   name: string;
   email: string;
+  phone: string;
   subscriptionMonths: number;
   isActive: boolean;
 }
@@ -56,6 +59,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [createForm, setCreateForm] = useState<CreateHostForm>({
     name: '',
     email: '',
+    phone: '',
     password: '',
     subscriptionMonths: 12
   });
@@ -63,6 +67,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [editForm, setEditForm] = useState<EditHostForm>({
     name: '',
     email: '',
+    phone: '',
     subscriptionMonths: 12,
     isActive: true
   });
@@ -106,7 +111,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   }, [loadHosts]);
 
   const handleCreateHost = async () => {
-    if (!createForm.name.trim() || !createForm.email.trim() || !createForm.password.trim()) {
+    if (!createForm.name.trim() || !createForm.email.trim() || !createForm.phone.trim() || !createForm.password.trim()) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields",
@@ -123,6 +128,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         createForm.email,
         createForm.password,
         createForm.name,
+        createForm.phone,
         user.uid,
         createForm.subscriptionMonths
       );
@@ -130,7 +136,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       console.log('✅ Host created successfully, admin remains logged in');
       
       setShowCreateDialog(false);
-      setCreateForm({ name: '', email: '', password: '', subscriptionMonths: 12 });
+      setCreateForm({ name: '', email: '', phone: '', password: '', subscriptionMonths: 12 });
       
       toast({
         title: "Host Created Successfully!",
@@ -160,6 +166,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       await firebaseService.updateHost(selectedHost.uid, {
         name: editForm.name,
         email: editForm.email,
+        phone: editForm.phone,
         isActive: editForm.isActive,
         subscriptionEndDate: subscriptionEndDate.toISOString(),
         updatedAt: new Date().toISOString()
@@ -288,6 +295,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     setEditForm({
       name: host.name,
       email: host.email,
+      phone: host.phone || '',
       subscriptionMonths: monthsLeft,
       isActive: host.isActive
     });
@@ -426,6 +434,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                               <div>
                                 <p className="font-medium">{host.name}</p>
                                 <p className="text-sm text-gray-600">{host.email}</p>
+                                {host.phone && (
+                                  <p className="text-xs text-gray-500 flex items-center">
+                                    <Phone className="w-3 h-3 mr-1" />
+                                    {host.phone}
+                                  </p>
+                                )}
                               </div>
                             </div>
                           </td>
@@ -544,6 +558,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 />
               </div>
               <div>
+                <Label htmlFor="host-phone">Phone Number</Label>
+                <Input
+                  id="host-phone"
+                  type="tel"
+                  placeholder="Enter phone number (e.g., 919876543210)"
+                  value={createForm.phone}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, phone: e.target.value }))}
+                />
+              </div>
+              <div>
                 <Label htmlFor="host-password">Password</Label>
                 <Input
                   id="host-password"
@@ -597,6 +621,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                   type="email"
                   value={editForm.email}
                   onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-phone">Phone Number</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
                 />
               </div>
               <div>
