@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Updated with phone field and game methods
+// src/services/firebase.ts - Updated with phone field and game management
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -18,7 +18,10 @@ import {
   push,
   onValue,
   off,
-  child
+  child,
+  query,
+  orderByChild,
+  equalTo
 } from 'firebase/database';
 
 // Firebase configuration - Replace with your actual Firebase project config
@@ -115,6 +118,7 @@ export interface GameData {
   gameId: string;
   name: string;
   hostId: string;
+  hostPhone?: string;
   maxTickets: number;
   ticketPrice: number;
   gameState: GameState;
@@ -127,6 +131,13 @@ export interface GameData {
 export interface TicketSetData {
   ticketCount: number;
   tickets: { [key: string]: TambolaTicket };
+}
+
+export interface HostSettings {
+  hostPhone: string;
+  maxTickets: number;
+  selectedTicketSet: string;
+  selectedPrizes: string[];
 }
 
 // Get current user role
@@ -154,13 +165,13 @@ export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => 
   }
 };
 
-// Generate ticket data for a set
+// Generate ticket data for a set with simple numbering
 const generateTicketSet = (setId: string): TicketSetData => {
   const tickets: { [key: string]: TambolaTicket } = {};
   
-  // Generate 600 tickets for each set
+  // Generate 600 tickets for each set with simple numbering
   for (let i = 1; i <= 600; i++) {
-    const ticketId = `${setId}_${i.toString().padStart(3, '0')}`;
+    const ticketId = i.toString();
     tickets[ticketId] = generateSingleTicket(ticketId);
   }
 
@@ -415,9 +426,35 @@ class FirebaseService {
     }
   }
 
+  // Host settings operations
+  async saveHostSettings(hostId: string, settings: HostSettings): Promise<void> {
+    try {
+      await set(ref(database, `hostSettings/${hostId}`), {
+        ...settings,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error('Error saving host settings:', error);
+      throw new Error(error.message || 'Failed to save host settings');
+    }
+  }
+
+  async getHostSettings(hostId: string): Promise<HostSettings | null> {
+    try {
+      const settingsSnapshot = await get(ref(database, `hostSettings/${hostId}`));
+      if (!settingsSnapshot.exists()) {
+        return null;
+      }
+      return settingsSnapshot.val() as HostSettings;
+    } catch (error: any) {
+      console.error('Error getting host settings:', error);
+      return null;
+    }
+  }
+
   // Game operations
   async createGame(
-    gameConfig: { name: string; maxTickets: number; ticketPrice: number },
+    gameConfig: { name: string; maxTickets: number; ticketPrice: number; hostPhone?: string },
     hostId: string,
     ticketSetId: string,
     selectedPrizes: string[]
@@ -456,6 +493,7 @@ class FirebaseService {
         gameId,
         name: gameConfig.name,
         hostId,
+        hostPhone: gameConfig.hostPhone,
         maxTickets: gameConfig.maxTickets,
         ticketPrice: gameConfig.ticketPrice,
         gameState: {
@@ -478,6 +516,106 @@ class FirebaseService {
     } catch (error: any) {
       console.error('Error creating game:', error);
       throw new Error(error.message || 'Failed to create game');
+    }
+  }
+
+  async getHostGames(hostId: string): Promise<GameData[]> {
+    try {
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('hostId'),
+        equalTo(hostId)
+      );
+      
+      const gamesSnapshot = await get(gamesQuery);
+      if (!gamesSnapshot.exists()) {
+        return [];
+      }
+      
+      const gamesData = gamesSnapshot.val();
+      return Object.values(gamesData) as GameData[];
+    } catch (error: any) {
+      console.error('Error fetching host games:', error);
+      throw new Error(error.message || 'Failed to fetch host games');
+    }
+  }
+
+  async updateGameConfig(
+    gameId: string, 
+    updates: { 
+      maxTickets?: number; 
+      hostPhone?: string; 
+      selectedPrizes?: string[] 
+    }
+  ): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      const gameSnapshot = await get(gameRef);
+      
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+
+      const gameData = gameSnapshot.val() as GameData;
+      
+      // Prepare update object
+      const updateData: any = {
+        updatedAt: new Date().toISOString()
+      };
+
+      if (updates.maxTickets !== undefined) {
+        updateData.maxTickets = updates.maxTickets;
+      }
+
+      if (updates.hostPhone !== undefined) {
+        updateData.hostPhone = updates.hostPhone;
+      }
+
+      if (updates.selectedPrizes) {
+        // Update prizes
+        const prizes: { [key: string]: Prize } = {};
+        const prizeDefinitions = {
+          quickFive: { name: 'Quick Five', pattern: 'First 5 numbers' },
+          topLine: { name: 'Top Line', pattern: 'Complete top row' },
+          middleLine: { name: 'Middle Line', pattern: 'Complete middle row' },
+          bottomLine: { name: 'Bottom Line', pattern: 'Complete bottom row' },
+          fourCorners: { name: 'Four Corners', pattern: 'All four corner numbers' },
+          fullHouse: { name: 'Full House', pattern: 'Complete ticket' }
+        };
+
+        updates.selectedPrizes.forEach(prizeId => {
+          if (prizeDefinitions[prizeId as keyof typeof prizeDefinitions]) {
+            const prizeDef = prizeDefinitions[prizeId as keyof typeof prizeDefinitions];
+            
+            // Keep existing prize data if it was already won
+            const existingPrize = gameData.prizes[prizeId];
+            
+            prizes[prizeId] = {
+              id: prizeId,
+              name: prizeDef.name,
+              pattern: prizeDef.pattern,
+              won: existingPrize?.won || false,
+              winner: existingPrize?.winner
+            };
+          }
+        });
+
+        updateData.prizes = prizes;
+      }
+
+      await update(gameRef, updateData);
+    } catch (error: any) {
+      console.error('Error updating game config:', error);
+      throw new Error(error.message || 'Failed to update game config');
+    }
+  }
+
+  async deleteGame(gameId: string): Promise<void> {
+    try {
+      await remove(ref(database, `games/${gameId}`));
+    } catch (error: any) {
+      console.error('Error deleting game:', error);
+      throw new Error(error.message || 'Failed to delete game');
     }
   }
 
