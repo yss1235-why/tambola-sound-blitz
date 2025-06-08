@@ -513,11 +513,11 @@ export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
   return firebaseService.getCurrentUserRole();
 }
 
-// Initial Admin Setup Function
+// Initial Admin Setup Function - UPDATED CREDENTIALS
 export async function setupInitialAdmin(): Promise<AdminUser | null> {
   try {
-    const adminEmail = "admin@tambola.com";
-    const adminPassword = "TambolaAdmin123!";
+    const adminEmail = "yurs@gmai.com";        // CHANGED: Updated email
+    const adminPassword = "Qwe123@";           // CHANGED: Updated password
     const adminName = "Super Admin";
     
     // Check if admin already exists
