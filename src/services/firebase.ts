@@ -1,4 +1,4 @@
-// src/services/firebase.ts
+// src/services/firebase.ts - Complete Fixed Version
 import { initializeApp } from "firebase/app";
 import { 
   getAuth, 
@@ -396,7 +396,7 @@ class FirebaseService {
     }
   }
 
-  // Host Game Management Methods
+  // FIXED: Host Game Management Methods
   async createGame(gameData: Partial<GameData>, hostUid: string): Promise<GameData> {
     try {
       const hostRef = ref(database, `hosts/${hostUid}`);
@@ -409,6 +409,7 @@ class FirebaseService {
       const gameRef = push(ref(database, 'games'));
       const gameId = gameRef.key!;
       
+      // FIXED: Ensure all required arrays and objects are properly initialized
       const fullGameData: GameData = {
         gameId,
         hostUid,
@@ -421,7 +422,7 @@ class FirebaseService {
           isActive: false,
           isCountdown: false,
           countdownTime: 0,
-          calledNumbers: [],
+          calledNumbers: [], // FIXED: Ensure this is always an array
           currentNumber: null,
           gameOver: false,
           callInterval: 6000
@@ -431,6 +432,8 @@ class FirebaseService {
       };
       
       await set(gameRef, fullGameData);
+      
+      console.log('✅ Game created successfully:', fullGameData);
       return fullGameData;
     } catch (error: any) {
       console.error("Create game error:", error);
@@ -448,14 +451,23 @@ class FirebaseService {
     }
   }
 
+  // FIXED: Update addCalledNumber method to ensure array handling
   async addCalledNumber(gameId: string, number: number): Promise<void> {
     try {
       const calledNumbersRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
       const snapshot = await get(calledNumbersRef);
-      const currentNumbers = snapshot.val() || [];
+      const currentNumbers = snapshot.val() || []; // FIXED: Ensure it's always an array
+      
+      // Check if number is already called
+      if (currentNumbers.includes(number)) {
+        console.log(`Number ${number} already called`);
+        return;
+      }
+      
       const updatedNumbers = [...currentNumbers, number];
       
       await set(calledNumbersRef, updatedNumbers);
+      console.log(`✅ Number ${number} added to called numbers`);
     } catch (error: any) {
       console.error("Add called number error:", error);
       throw new Error(error.message || "Failed to add called number");
@@ -498,7 +510,18 @@ class FirebaseService {
     
     const unsubscribe = onValue(gameRef, (snapshot) => {
       if (snapshot.exists()) {
-        callback(snapshot.val() as GameData);
+        const gameData = snapshot.val() as GameData;
+        // FIXED: Ensure arrays are properly initialized when received from Firebase
+        if (!gameData.gameState.calledNumbers) {
+          gameData.gameState.calledNumbers = [];
+        }
+        if (!gameData.tickets) {
+          gameData.tickets = {};
+        }
+        if (!gameData.prizes) {
+          gameData.prizes = {};
+        }
+        callback(gameData);
       } else {
         callback(null);
       }
@@ -549,7 +572,7 @@ class FirebaseService {
     return onAuthStateChanged(auth, callback);
   }
 
-  // Utility Methods
+  // FIXED: Utility Methods with proper initialization
   private getDefaultPrizes() {
     return {
       quickFive: {
@@ -557,46 +580,53 @@ class FirebaseService {
         name: 'Quick Five',
         pattern: 'First 5 numbers',
         won: false,
-        amount: 500
+        amount: 500,
+        winner: null
       },
       topLine: {
         id: 'topLine',
         name: 'Top Line',
         pattern: 'Top row complete',
         won: false,
-        amount: 1000
+        amount: 1000,
+        winner: null
       },
       middleLine: {
         id: 'middleLine',
         name: 'Middle Line',
         pattern: 'Middle row complete',
         won: false,
-        amount: 1000
+        amount: 1000,
+        winner: null
       },
       bottomLine: {
         id: 'bottomLine',
         name: 'Bottom Line',
         pattern: 'Bottom row complete',
         won: false,
-        amount: 1000
+        amount: 1000,
+        winner: null
       },
       corners: {
         id: 'corners',
         name: 'Four Corners',
         pattern: 'All four corners',
         won: false,
-        amount: 1500
+        amount: 1500,
+        winner: null
       },
       fullHouse: {
         id: 'fullHouse',
         name: 'Full House',
         pattern: 'Complete ticket',
         won: false,
-        amount: 3000
+        amount: 3000,
+        winner: null
       }
     };
   }
 
+  // FIXED: generateDefaultTickets with proper structure
   private generateDefaultTickets(): { [key: string]: TambolaTicket } {
     const tickets: { [key: string]: TambolaTicket } = {};
     
@@ -624,15 +654,34 @@ class FirebaseService {
           [0, 18, 0, 33, 0, 56, 64, 0, 87],
           [7, 0, 28, 0, 0, 58, 0, 0, 89]
         ]
+      },
+      {
+        ticketId: 'ticket_4',
+        rows: [
+          [3, 0, 23, 0, 42, 0, 61, 0, 86],
+          [0, 17, 0, 36, 0, 53, 0, 75, 0],
+          [6, 0, 27, 0, 45, 0, 68, 0, 90]
+        ]
+      },
+      {
+        ticketId: 'ticket_5',
+        rows: [
+          [5, 12, 0, 38, 0, 54, 0, 76, 0],
+          [0, 0, 24, 0, 46, 0, 65, 0, 88],
+          [9, 0, 0, 39, 0, 57, 0, 77, 0]
+        ]
       }
     ];
 
+    // FIXED: Ensure each ticket has all required properties
     sampleTickets.forEach(ticket => {
       tickets[ticket.ticketId] = {
-        ...ticket,
+        ticketId: ticket.ticketId,
+        rows: ticket.rows,
         isBooked: false,
         playerName: '',
-        playerPhone: ''
+        playerPhone: '',
+        bookedAt: undefined
       };
     });
 
