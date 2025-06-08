@@ -1,10 +1,27 @@
 // src/services/firebase.ts
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "firebase/auth";
-import { getDatabase, ref, set, get, push, onValue, off } from "firebase/database";
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut,
+  onAuthStateChanged,
+  User
+} from "firebase/auth";
+import { 
+  getDatabase, 
+  ref, 
+  set, 
+  get, 
+  push, 
+  onValue, 
+  off,
+  update,
+  remove
+} from "firebase/database";
 import { getAnalytics } from "firebase/analytics";
 
-// Your web app's Firebase configuration
+// Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyCH2WtQ2y3ln8ToHcapIsEMIXJ78Hsg7Bg",
   authDomain: "tambola-74046.firebaseapp.com",
@@ -20,9 +37,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const database = getDatabase(app);
-const analytics = getAnalytics(app);
 
-// Admin and Host Interfaces
+// Initialize analytics only in browser environment
+let analytics: any = null;
+if (typeof window !== 'undefined') {
+  try {
+    analytics = getAnalytics(app);
+  } catch (error) {
+    console.warn("Analytics initialization failed:", error);
+  }
+}
+
+// Type definitions
 export interface AdminUser {
   uid: string;
   email: string;
@@ -43,16 +69,63 @@ export interface HostUser {
   name: string;
   role: 'host';
   createdAt: string;
-  createdBy: string; // Admin UID who created this host
+  createdBy: string;
   permissions: {
     createGames: boolean;
     manageGames: boolean;
   };
 }
 
+export interface TambolaTicket {
+  ticketId: string;
+  rows: number[][];
+  isBooked: boolean;
+  playerName: string;
+  playerPhone: string;
+  bookedAt?: string;
+}
+
+export interface GameData {
+  gameId: string;
+  hostUid: string;
+  name: string;
+  createdAt: string;
+  status: 'waiting' | 'active' | 'completed';
+  maxTickets: number;
+  ticketPrice: number;
+  gameState: {
+    isActive: boolean;
+    isCountdown: boolean;
+    countdownTime: number;
+    calledNumbers: number[];
+    currentNumber: number | null;
+    gameOver: boolean;
+    callInterval: number;
+  };
+  prizes: { [key: string]: any };
+  tickets: { [key: string]: TambolaTicket };
+}
+
+export interface BookingData {
+  ticketId: string;
+  playerName: string;
+  playerPhone: string;
+  gameId: string;
+  timestamp: string;
+  status: 'booked' | 'cancelled';
+}
+
 // Firebase Service Class
 class FirebaseService {
-  
+  private currentUser: User | null = null;
+
+  constructor() {
+    // Listen to auth state changes
+    onAuthStateChanged(auth, (user) => {
+      this.currentUser = user;
+    });
+  }
+
   // Authentication Methods
   async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
     try {
@@ -69,9 +142,9 @@ class FirebaseService {
         await signOut(auth);
         throw new Error("User is not an admin");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Admin login error:", error);
-      throw error;
+      throw new Error(error.message || "Invalid admin credentials");
     }
   }
 
@@ -90,18 +163,18 @@ class FirebaseService {
         await signOut(auth);
         throw new Error("User is not a host");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Host login error:", error);
-      throw error;
+      throw new Error(error.message || "Invalid host credentials");
     }
   }
 
   async logout(): Promise<void> {
     try {
       await signOut(auth);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Logout error:", error);
-      throw error;
+      throw new Error(error.message || "Failed to logout");
     }
   }
 
@@ -130,9 +203,9 @@ class FirebaseService {
       await set(adminRef, adminData);
       
       return adminData;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Create admin error:", error);
-      throw error;
+      throw new Error(error.message || "Failed to create admin");
     }
   }
 
@@ -159,39 +232,76 @@ class FirebaseService {
       await set(hostRef, hostData);
       
       return hostData;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Create host error:", error);
-      throw error;
+      throw new Error(error.message || "Failed to create host");
     }
   }
 
   // Game Management Methods
-  async createGame(gameData: any, hostUid: string) {
+  async createGame(gameData: Partial<GameData>, hostUid: string): Promise<GameData> {
     try {
       const gameRef = push(ref(database, 'games'));
-      const gameId = gameRef.key;
+      const gameId = gameRef.key!;
       
-      const fullGameData = {
-        ...gameData,
+      const fullGameData: GameData = {
         gameId,
         hostUid,
+        name: gameData.name || 'New Tambola Game',
         createdAt: new Date().toISOString(),
-        status: 'waiting' // waiting, active, completed
+        status: 'waiting',
+        maxTickets: gameData.maxTickets || 50,
+        ticketPrice: gameData.ticketPrice || 100,
+        gameState: {
+          isActive: false,
+          isCountdown: false,
+          countdownTime: 0,
+          calledNumbers: [],
+          currentNumber: null,
+          gameOver: false,
+          callInterval: 6000
+        },
+        prizes: gameData.prizes || this.getDefaultPrizes(),
+        tickets: gameData.tickets || this.generateDefaultTickets()
       };
       
       await set(gameRef, fullGameData);
-      return { gameId, ...fullGameData };
-    } catch (error) {
+      return fullGameData;
+    } catch (error: any) {
       console.error("Create game error:", error);
-      throw error;
+      throw new Error(error.message || "Failed to create game");
+    }
+  }
+
+  async updateGameState(gameId: string, gameState: any): Promise<void> {
+    try {
+      const gameStateRef = ref(database, `games/${gameId}/gameState`);
+      await update(gameStateRef, gameState);
+    } catch (error: any) {
+      console.error("Update game state error:", error);
+      throw new Error(error.message || "Failed to update game state");
+    }
+  }
+
+  async addCalledNumber(gameId: string, number: number): Promise<void> {
+    try {
+      const calledNumbersRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
+      const snapshot = await get(calledNumbersRef);
+      const currentNumbers = snapshot.val() || [];
+      const updatedNumbers = [...currentNumbers, number];
+      
+      await set(calledNumbersRef, updatedNumbers);
+    } catch (error: any) {
+      console.error("Add called number error:", error);
+      throw new Error(error.message || "Failed to add called number");
     }
   }
 
   // Ticket Management Methods
-  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string) {
+  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<BookingData> {
     try {
       const bookingRef = push(ref(database, 'bookings'));
-      const bookingData = {
+      const bookingData: BookingData = {
         ticketId,
         playerName,
         playerPhone,
@@ -204,8 +314,7 @@ class FirebaseService {
       
       // Update ticket status
       const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      await set(ticketRef, {
-        ...ticketRef,
+      await update(ticketRef, {
         isBooked: true,
         playerName,
         playerPhone,
@@ -213,40 +322,199 @@ class FirebaseService {
       });
       
       return bookingData;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Book ticket error:", error);
-      throw error;
+      throw new Error(error.message || "Failed to book ticket");
     }
   }
 
   // Real-time listeners
-  subscribeToGame(gameId: string, callback: (gameData: any) => void) {
+  subscribeToGame(gameId: string, callback: (gameData: GameData | null) => void): () => void {
     const gameRef = ref(database, `games/${gameId}`);
-    onValue(gameRef, (snapshot) => {
+    
+    const unsubscribe = onValue(gameRef, (snapshot) => {
       if (snapshot.exists()) {
-        callback(snapshot.val());
+        callback(snapshot.val() as GameData);
+      } else {
+        callback(null);
       }
+    }, (error) => {
+      console.error("Game subscription error:", error);
+      callback(null);
     });
     
-    return () => off(gameRef);
+    return () => off(gameRef, 'value', unsubscribe);
   }
 
-  subscribeToTickets(gameId: string, callback: (tickets: any) => void) {
+  subscribeToTickets(gameId: string, callback: (tickets: { [key: string]: TambolaTicket } | null) => void): () => void {
     const ticketsRef = ref(database, `games/${gameId}/tickets`);
-    onValue(ticketsRef, (snapshot) => {
+    
+    const unsubscribe = onValue(ticketsRef, (snapshot) => {
       if (snapshot.exists()) {
         callback(snapshot.val());
+      } else {
+        callback(null);
       }
+    }, (error) => {
+      console.error("Tickets subscription error:", error);
+      callback(null);
     });
     
-    return () => off(ticketsRef);
+    return () => off(ticketsRef, 'value', unsubscribe);
+  }
+
+  subscribeToAuthState(callback: (user: User | null) => void): () => void {
+    return onAuthStateChanged(auth, callback);
+  }
+
+  // Utility Methods
+  private getDefaultPrizes() {
+    return {
+      quickFive: {
+        id: 'quickFive',
+        name: 'Quick Five',
+        pattern: 'First 5 numbers',
+        won: false,
+        amount: 500
+      },
+      topLine: {
+        id: 'topLine',
+        name: 'Top Line',
+        pattern: 'Top row complete',
+        won: false,
+        amount: 1000
+      },
+      middleLine: {
+        id: 'middleLine',
+        name: 'Middle Line',
+        pattern: 'Middle row complete',
+        won: false,
+        amount: 1000
+      },
+      bottomLine: {
+        id: 'bottomLine',
+        name: 'Bottom Line',
+        pattern: 'Bottom row complete',
+        won: false,
+        amount: 1000
+      },
+      corners: {
+        id: 'corners',
+        name: 'Four Corners',
+        pattern: 'All four corners',
+        won: false,
+        amount: 1500
+      },
+      fullHouse: {
+        id: 'fullHouse',
+        name: 'Full House',
+        pattern: 'Complete ticket',
+        won: false,
+        amount: 3000
+      }
+    };
+  }
+
+  private generateDefaultTickets(): { [key: string]: TambolaTicket } {
+    const tickets: { [key: string]: TambolaTicket } = {};
+    
+    // Sample tickets data
+    const sampleTickets = [
+      {
+        ticketId: 'ticket_1',
+        rows: [
+          [4, 11, 0, 32, 44, 0, 60, 0, 0],
+          [8, 0, 21, 34, 47, 0, 0, 74, 0],
+          [0, 14, 29, 0, 49, 55, 0, 0, 88]
+        ]
+      },
+      {
+        ticketId: 'ticket_2',
+        rows: [
+          [2, 0, 25, 0, 0, 52, 63, 0, 85],
+          [0, 16, 0, 31, 0, 0, 67, 78, 0],
+          [9, 0, 0, 35, 48, 0, 0, 79, 90]
+        ]
+      },
+      {
+        ticketId: 'ticket_3',
+        rows: [
+          [1, 0, 22, 0, 41, 0, 0, 73, 0],
+          [0, 18, 0, 33, 0, 56, 64, 0, 87],
+          [7, 0, 28, 0, 0, 58, 0, 0, 89]
+        ]
+      }
+    ];
+
+    sampleTickets.forEach(ticket => {
+      tickets[ticket.ticketId] = {
+        ...ticket,
+        isBooked: false,
+        playerName: '',
+        playerPhone: ''
+      };
+    });
+
+    return tickets;
+  }
+
+  // Get current user role
+  async getCurrentUserRole(): Promise<'admin' | 'host' | null> {
+    const user = auth.currentUser;
+    if (!user) return null;
+    
+    try {
+      // Check if admin
+      const adminRef = ref(database, `admins/${user.uid}`);
+      const adminSnapshot = await get(adminRef);
+      if (adminSnapshot.exists()) return 'admin';
+      
+      // Check if host
+      const hostRef = ref(database, `hosts/${user.uid}`);
+      const hostSnapshot = await get(hostRef);
+      if (hostSnapshot.exists()) return 'host';
+      
+      return null;
+    } catch (error: any) {
+      console.error("Get user role error:", error);
+      return null;
+    }
+  }
+
+  // Get user data
+  async getUserData(): Promise<AdminUser | HostUser | null> {
+    const user = auth.currentUser;
+    if (!user) return null;
+
+    try {
+      // Check if admin
+      const adminRef = ref(database, `admins/${user.uid}`);
+      const adminSnapshot = await get(adminRef);
+      if (adminSnapshot.exists()) return adminSnapshot.val() as AdminUser;
+      
+      // Check if host
+      const hostRef = ref(database, `hosts/${user.uid}`);
+      const hostSnapshot = await get(hostRef);
+      if (hostSnapshot.exists()) return hostSnapshot.val() as HostUser;
+      
+      return null;
+    } catch (error: any) {
+      console.error("Get user data error:", error);
+      return null;
+    }
   }
 }
 
+// Create and export service instance
 export const firebaseService = new FirebaseService();
 
-// Initial Admin Setup Function (Run once to create first admin)
-export async function setupInitialAdmin() {
+// Utility function to check current user role
+export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
+  return firebaseService.getCurrentUserRole();
+}
+
+// Initial Admin Setup Function
+export async function setupInitialAdmin(): Promise<AdminUser | null> {
   try {
     const adminEmail = "admin@tambola.com";
     const adminPassword = "TambolaAdmin123!";
@@ -256,7 +524,7 @@ export async function setupInitialAdmin() {
     const adminRef = ref(database, 'admins');
     const adminSnapshot = await get(adminRef);
     
-    if (!adminSnapshot.exists() || Object.keys(adminSnapshot.val()).length === 0) {
+    if (!adminSnapshot.exists() || Object.keys(adminSnapshot.val() || {}).length === 0) {
       console.log("Creating initial admin...");
       const admin = await firebaseService.createAdmin(adminEmail, adminPassword, adminName);
       console.log("Initial admin created:", admin);
@@ -265,31 +533,10 @@ export async function setupInitialAdmin() {
       console.log("Admin already exists");
       return null;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Setup initial admin error:", error);
-    throw error;
+    throw new Error(error.message || "Failed to setup initial admin");
   }
 }
 
-// Utility function to check current user role
-export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
-  const user = auth.currentUser;
-  if (!user) return null;
-  
-  try {
-    // Check if admin
-    const adminRef = ref(database, `admins/${user.uid}`);
-    const adminSnapshot = await get(adminRef);
-    if (adminSnapshot.exists()) return 'admin';
-    
-    // Check if host
-    const hostRef = ref(database, `hosts/${user.uid}`);
-    const hostSnapshot = await get(hostRef);
-    if (hostSnapshot.exists()) return 'host';
-    
-    return null;
-  } catch (error) {
-    console.error("Get user role error:", error);
-    return null;
-  }
-}
+export default firebaseService;
