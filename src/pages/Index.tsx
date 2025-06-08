@@ -1,8 +1,9 @@
-
+// src/pages/Index.tsx
 import React, { useState } from 'react';
 import { Header } from '@/components/Header';
 import { UserLandingPage } from '@/components/UserLandingPage';
 import { GameHost } from '@/components/GameHost';
+import { AdminDashboard } from '@/components/AdminDashboard';
 import { FirebaseSetup } from '@/components/FirebaseSetup';
 import { AdminUser, HostUser } from '@/services/firebase';
 
@@ -47,9 +48,15 @@ const Index = () => {
       );
     }
 
-    // If user is logged in as admin or host, show game management interface
-    if (currentUser && userRole && (userRole === 'admin' || userRole === 'host')) {
-      return <GameHost user={currentUser} userRole={userRole} />;
+    // Role-based content rendering
+    if (currentUser && userRole) {
+      if (userRole === 'admin') {
+        // Admin Dashboard - Only user management
+        return <AdminDashboard user={currentUser as AdminUser} />;
+      } else if (userRole === 'host') {
+        // Host Dashboard - Game management only
+        return <GameHost user={currentUser as HostUser} userRole={userRole} />;
+      }
     }
 
     // Default: show public landing page for players
