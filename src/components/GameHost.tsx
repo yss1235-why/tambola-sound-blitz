@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Updated with Ticket Management
+// src/components/GameHost.tsx - Updated with integrated ticket management
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,7 +26,8 @@ import {
   Edit,
   Trash2,
   Settings,
-  Phone
+  Phone,
+  ArrowLeft
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -144,6 +145,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [activeTab, setActiveTab] = useState('create-game');
   const [currentGame, setCurrentGame] = useState<GameData | null>(null);
+  const [selectedGameInMyGames, setSelectedGameInMyGames] = useState<GameData | null>(null);
   const [allGames, setAllGames] = useState<GameData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -370,7 +372,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       await savePreviousSettings();
 
       setCurrentGame(gameData);
-      setActiveTab('ticket-management');
+      setSelectedGameInMyGames(gameData);
+      setActiveTab('my-games');
       await loadHostGames();
 
       toast({
@@ -381,6 +384,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGame) => {
         if (updatedGame) {
           setCurrentGame(updatedGame);
+          setSelectedGameInMyGames(updatedGame);
           const called = updatedGame.gameState.calledNumbers || [];
           const available = Array.from({ length: 90 }, (_, i) => i + 1)
             .filter(num => !called.includes(num));
@@ -442,7 +446,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       
       if (currentGame?.gameId === gameId) {
         setCurrentGame(null);
-        setActiveTab('create-game');
+      }
+      
+      if (selectedGameInMyGames?.gameId === gameId) {
+        setSelectedGameInMyGames(null);
       }
 
       toast({
@@ -461,8 +468,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const selectGame = (game: GameData) => {
+    setSelectedGameInMyGames(game);
     setCurrentGame(game);
-    setActiveTab('ticket-management');
 
     if (gameUnsubscribe) {
       gameUnsubscribe();
@@ -471,6 +478,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
       if (updatedGame) {
         setCurrentGame(updatedGame);
+        setSelectedGameInMyGames(updatedGame);
         const called = updatedGame.gameState.calledNumbers || [];
         const available = Array.from({ length: 90 }, (_, i) => i + 1)
           .filter(num => !called.includes(num));
@@ -698,100 +706,126 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const renderMyGames = () => (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Settings className="w-5 h-5 mr-2" />
-            My Games
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {allGames.length === 0 ? (
-            <div className="text-center py-8">
-              <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No games created yet</p>
-              <Button
-                onClick={() => setActiveTab('create-game')}
-                className="mt-4"
-                variant="outline"
-              >
-                Create First Game
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {allGames.map((game) => (
-                <Card key={game.gameId} className="border-gray-200">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-bold text-gray-800">{game.name}</h3>
-                      <Badge variant={game.gameState.isActive ? "default" : "secondary"}>
-                        {game.gameState.isActive ? "Active" : 
-                         game.gameState.gameOver ? "Completed" : "Waiting"}
-                      </Badge>
-                    </div>
-                    
-                    <div className="space-y-2 text-sm text-gray-600 mb-4">
-                      <div className="flex justify-between">
-                        <span>Max Tickets:</span>
-                        <span className="font-medium">{game.maxTickets}</span>
+      {/* Back button when game is selected */}
+      {selectedGameInMyGames && (
+        <div className="flex items-center mb-4">
+          <Button
+            variant="outline"
+            onClick={() => setSelectedGameInMyGames(null)}
+            className="mr-4"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Games List
+          </Button>
+          <h2 className="text-xl font-semibold text-gray-800">
+            Managing: {selectedGameInMyGames.name}
+          </h2>
+        </div>
+      )}
+
+      {!selectedGameInMyGames ? (
+        // Games list view
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Settings className="w-5 h-5 mr-2" />
+              My Games
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {allGames.length === 0 ? (
+              <div className="text-center py-8">
+                <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600">No games created yet</p>
+                <Button
+                  onClick={() => setActiveTab('create-game')}
+                  className="mt-4"
+                  variant="outline"
+                >
+                  Create First Game
+                </Button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {allGames.map((game) => (
+                  <Card key={game.gameId} className="border-gray-200">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-bold text-gray-800">{game.name}</h3>
+                        <Badge variant={game.gameState.isActive ? "default" : "secondary"}>
+                          {game.gameState.isActive ? "Active" : 
+                           game.gameState.gameOver ? "Completed" : "Waiting"}
+                        </Badge>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Booked:</span>
-                        <span className="font-medium text-green-600">
-                          {getBookedTicketsCount(game)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Prizes:</span>
-                        <span className="font-medium text-purple-600">
-                          {Object.values(game.prizes).filter(p => p.won).length} / {Object.keys(game.prizes).length}
-                        </span>
-                      </div>
-                      {game.hostPhone && (
+                      
+                      <div className="space-y-2 text-sm text-gray-600 mb-4">
                         <div className="flex justify-between">
-                          <span>WhatsApp:</span>
-                          <span className="font-medium text-blue-600 flex items-center">
-                            <Phone className="w-3 h-3 mr-1" />
-                            {game.hostPhone}
+                          <span>Max Tickets:</span>
+                          <span className="font-medium">{game.maxTickets}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Booked:</span>
+                          <span className="font-medium text-green-600">
+                            {getBookedTicketsCount(game)}
                           </span>
                         </div>
-                      )}
-                    </div>
+                        <div className="flex justify-between">
+                          <span>Prizes:</span>
+                          <span className="font-medium text-purple-600">
+                            {Object.values(game.prizes).filter(p => p.won).length} / {Object.keys(game.prizes).length}
+                          </span>
+                        </div>
+                        {game.hostPhone && (
+                          <div className="flex justify-between">
+                            <span>WhatsApp:</span>
+                            <span className="font-medium text-blue-600 flex items-center">
+                              <Phone className="w-3 h-3 mr-1" />
+                              {game.hostPhone}
+                            </span>
+                          </div>
+                        )}
+                      </div>
 
-                    <div className="flex space-x-2">
-                      <Button
-                        size="sm"
-                        onClick={() => selectGame(game)}
-                        className="flex-1"
-                      >
-                        Select
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openEditDialog(game)}
-                        disabled={game.gameState.isActive}
-                      >
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => deleteGame(game.gameId, game.name)}
-                        disabled={game.gameState.isActive}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                      <div className="flex space-x-2">
+                        <Button
+                          size="sm"
+                          onClick={() => selectGame(game)}
+                          className="flex-1"
+                        >
+                          Manage Tickets
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEditDialog(game)}
+                          disabled={game.gameState.isActive}
+                        >
+                          <Edit className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => deleteGame(game.gameId, game.name)}
+                          disabled={game.gameState.isActive}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      ) : (
+        // Selected game ticket management view
+        <TicketManagementGrid 
+          gameData={selectedGameInMyGames}
+          onRefreshGame={loadHostGames}
+        />
+      )}
     </div>
   );
 
@@ -958,42 +992,20 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     </div>
   );
 
-  const renderTicketManagement = () => {
-    if (!currentGame) {
-      return (
-        <Card>
-          <CardContent className="p-6 text-center">
-            <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No game selected. Create or select a game to manage tickets.</p>
-            <Button
-              onClick={() => setActiveTab('create-game')}
-              className="mt-4"
-              variant="outline"
-            >
-              Create New Game
-            </Button>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    return (
-      <div className="space-y-6">
-        <TicketManagementGrid 
-          gameData={currentGame}
-          onRefreshGame={loadHostGames}
-        />
-      </div>
-    );
-  };
-
   const renderGameControl = () => {
     if (!currentGame) {
       return (
         <Card>
           <CardContent className="p-6 text-center">
             <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No game selected. Create or select a game to start.</p>
+            <p className="text-gray-600">No game selected. Select a game from "My Games" tab first.</p>
+            <Button
+              onClick={() => setActiveTab('my-games')}
+              className="mt-4"
+              variant="outline"
+            >
+              Go to My Games
+            </Button>
           </CardContent>
         </Card>
       );
@@ -1123,10 +1135,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="create-game">Create Game</TabsTrigger>
             <TabsTrigger value="my-games">My Games</TabsTrigger>
-            <TabsTrigger value="ticket-management">Ticket Management</TabsTrigger>
             <TabsTrigger value="game-control">Game Control</TabsTrigger>
           </TabsList>
 
@@ -1136,10 +1147,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
           <TabsContent value="my-games" className="mt-6">
             {renderMyGames()}
-          </TabsContent>
-
-          <TabsContent value="ticket-management" className="mt-6">
-            {renderTicketManagement()}
           </TabsContent>
 
           <TabsContent value="game-control" className="mt-6">
