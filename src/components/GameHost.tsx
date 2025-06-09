@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Updated with Automatic Prize Validation
+// src/components/GameHost.tsx - Complete updated component with fixed winner announcement tracking
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -34,7 +34,8 @@ import {
   Timer,
   RefreshCw,
   Zap,
-  Target
+  Target,
+  Eye
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -225,9 +226,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
   const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
   
-  // ✅ NEW: Prize notification state
-  const [lastWinnerAnnouncement, setLastWinnerAnnouncement] = useState<string>('');
-  const [winnerNotificationCount, setWinnerNotificationCount] = useState<number>(0);
+  // ✅ FIXED: Track announced winners to prevent repeated notifications
+  const [announcedWinners, setAnnouncedWinners] = useState<Set<string>>(new Set());
   
   // Game control states
   const [callInterval, setCallInterval] = useState<number>(5);
@@ -316,7 +316,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return null;
   }, []);
 
-  // Auto-resume function
+  // ✅ FIXED: Auto-resume function with proper winner tracking reset
   const autoResumeFromGame = useCallback(async (game: GameData) => {
     console.log('🔄 Auto-resuming game:', game.name);
     
@@ -325,6 +325,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setSelectedGameInMyGames(game);
       setAutoResumeGame(game);
       setActiveTab('game-control');
+      
+      // ✅ Reset announced winners when resuming
+      setAnnouncedWinners(new Set());
       
       const called = game.gameState.calledNumbers || [];
       const available = Array.from({ length: 90 }, (_, i) => i + 1)
@@ -340,17 +343,20 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             .filter(num => !calledNums.includes(num));
           setAvailableNumbers(availableNums);
           
-          // ✅ NEW: Handle winner announcements
+          // ✅ FIXED: Only announce NEW winners using timestamp
           if (updatedGame.lastWinnerAnnouncement && 
-              updatedGame.lastWinnerAnnouncement !== lastWinnerAnnouncement) {
-            setLastWinnerAnnouncement(updatedGame.lastWinnerAnnouncement);
-            setWinnerNotificationCount(prev => prev + 1);
+              updatedGame.lastWinnerAt && 
+              !announcedWinners.has(updatedGame.lastWinnerAt)) {
+            
+            setAnnouncedWinners(prev => new Set([...prev, updatedGame.lastWinnerAt!]));
             
             toast({
               title: "🎉 NEW WINNER!",
               description: updatedGame.lastWinnerAnnouncement,
               duration: 8000,
             });
+            
+            console.log('🎉 NEW winner notification:', updatedGame.lastWinnerAnnouncement);
           }
         }
       });
@@ -390,7 +396,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     } finally {
       setIsAutoResuming(false);
     }
-  }, [toast, lastWinnerAnnouncement]);
+  }, [toast, announcedWinners]);
 
   // Load host games and check for auto-resume
   const loadHostGames = useCallback(async () => {
@@ -580,6 +586,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       setAvailableNumbers(Array.from({ length: 90 }, (_, i) => i + 1));
 
+      // ✅ Reset announced winners for new game
+      setAnnouncedWinners(new Set());
+
       toast({
         title: "Game Created with Auto Prize Validation!",
         description: `Game created successfully with ${createGameForm.maxTickets} tickets and automatic winner detection!`,
@@ -594,11 +603,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             .filter(num => !called.includes(num));
           setAvailableNumbers(available);
           
-          // ✅ NEW: Handle winner announcements
+          // ✅ FIXED: Handle winner announcements with timestamp tracking
           if (updatedGame.lastWinnerAnnouncement && 
-              updatedGame.lastWinnerAnnouncement !== lastWinnerAnnouncement) {
-            setLastWinnerAnnouncement(updatedGame.lastWinnerAnnouncement);
-            setWinnerNotificationCount(prev => prev + 1);
+              updatedGame.lastWinnerAt && 
+              !announcedWinners.has(updatedGame.lastWinnerAt)) {
+            
+            setAnnouncedWinners(prev => new Set([...prev, updatedGame.lastWinnerAt!]));
             
             toast({
               title: "🎉 NEW WINNER!",
@@ -735,7 +745,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           announcements: result.announcements
         });
 
-        // Show winner notifications immediately
+        // Show winner notifications immediately (these will be filtered by timestamp)
         if (result.announcements && result.announcements.length > 0) {
           for (const announcement of result.announcements) {
             toast({
@@ -875,6 +885,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  // ✅ FIXED: Reset game function clears announced winners
   const resetGame = async () => {
     const confirmed = window.confirm('Are you sure you want to reset the game? This will clear all called numbers, prizes, and restart the game.');
     if (!confirmed) return;
@@ -891,6 +902,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsGamePaused(false);
     setAvailableNumbers(Array.from({ length: 90 }, (_, i) => i + 1));
+    
+    // ✅ Clear announced winners when resetting
+    setAnnouncedWinners(new Set());
 
     if (currentGame) {
       try {
@@ -1223,8 +1237,299 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     </div>
   );
 
-  // Continue with remaining render functions and main component return...
-  // [Rest of the component implementation remains the same but with enhanced game control section]
+  const renderMyGames = () => (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center">
+              <Trophy className="w-6 h-6 mr-2" />
+              My Games ({allGames.length})
+            </div>
+            <Button onClick={loadHostGames} variant="outline" size="sm">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {allGames.length === 0 ? (
+            <div className="text-center py-8">
+              <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 text-lg">No games created yet</p>
+              <p className="text-gray-500 text-sm mt-2">Create your first game with automatic prize validation to get started!</p>
+              <Button
+                onClick={() => setActiveTab('create-game')}
+                className="mt-4"
+                variant="outline"
+              >
+                Create First Game
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {allGames.map((game) => {
+                const wonPrizes = Object.values(game.prizes).filter(p => p.won);
+                const totalWinners = wonPrizes.reduce((total, prize) => 
+                  total + (prize.winners ? prize.winners.length : 0), 0
+                );
+                const bookedTickets = getBookedTicketsCount(game);
+                
+                return (
+                  <Card 
+                    key={game.gameId}
+                    className={`cursor-pointer transition-all duration-200 ${
+                      selectedGameInMyGames?.gameId === game.gameId
+                        ? 'border-blue-500 bg-blue-50 shadow-lg'
+                        : 'border-gray-200 hover:border-blue-300 hover:shadow-md'
+                    }`}
+                    onClick={() => {
+                      setSelectedGameInMyGames(game);
+                      setCurrentGame(game);
+                    }}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-lg text-gray-800 mb-1">{game.name}</h3>
+                          <p className="text-sm text-gray-600">
+                            Created: {new Date(game.createdAt).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-end space-y-2">
+                          <Badge 
+                            variant={
+                              game.gameState.isActive ? "default" : 
+                              game.gameState.isCountdown ? "secondary" : 
+                              game.gameState.gameOver ? "outline" : "secondary"
+                            }
+                          >
+                            {game.gameState.isActive ? "🟢 Live" : 
+                             game.gameState.isCountdown ? "🟡 Starting" : 
+                             game.gameState.gameOver ? "🔴 Completed" : "⚪ Waiting"}
+                          </Badge>
+                          {selectedGameInMyGames?.gameId === game.gameId && (
+                            <Eye className="w-5 h-5 text-blue-500" />
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                          <div className="text-xl font-bold text-blue-600">{bookedTickets}</div>
+                          <div className="text-xs text-blue-700">Players</div>
+                        </div>
+                        <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                          <div className="text-xl font-bold text-green-600">
+                            {(game.gameState.calledNumbers || []).length}
+                          </div>
+                          <div className="text-xs text-green-700">Numbers Called</div>
+                        </div>
+                        <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <div className="text-xl font-bold text-purple-600">{wonPrizes.length}</div>
+                          <div className="text-xs text-purple-700">Prizes Won</div>
+                        </div>
+                        <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+                          <div className="text-xl font-bold text-orange-600">{totalWinners}</div>
+                          <div className="text-xs text-orange-700">Total Winners</div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        <Badge variant="outline">Max: {game.maxTickets} tickets</Badge>
+                        <Badge variant="outline">Set: {game.ticketSetId}</Badge>
+                        <Badge variant="outline">{Object.keys(game.prizes).length} prizes</Badge>
+                        {game.hostPhone && (
+                          <Badge variant="outline">
+                            <Phone className="w-3 h-3 mr-1" />
+                            WhatsApp
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between items-center">
+                        <div className="text-sm text-gray-600">
+                          Auto Prize Validation: 
+                          <span className="text-green-600 font-medium ml-1">✅ Enabled</span>
+                        </div>
+                        <div className="flex space-x-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedGameForEdit(game);
+                              setEditGameForm({
+                                gameId: game.gameId,
+                                hostPhone: game.hostPhone || '',
+                                maxTickets: game.maxTickets,
+                                selectedPrizes: Object.keys(game.prizes)
+                              });
+                              setShowEditDialog(true);
+                            }}
+                          >
+                            <Edit className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Are you sure you want to delete "${game.name}"?`)) {
+                                firebaseService.deleteGame(game.gameId).then(() => {
+                                  toast({
+                                    title: "Game Deleted",
+                                    description: `${game.name} has been deleted.`,
+                                  });
+                                  loadHostGames();
+                                });
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Selected Game Actions */}
+      {selectedGameInMyGames && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Game Actions: {selectedGameInMyGames.name}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={() => setActiveTab('game-control')}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Settings className="w-4 h-4 mr-2" />
+                Game Control & Prize Management
+              </Button>
+              
+              {!selectedGameInMyGames.gameState.gameOver && (
+                <Button
+                  onClick={() => {
+                    // Set current game and switch tabs
+                    setCurrentGame(selectedGameInMyGames);
+                    setActiveTab('game-control');
+                  }}
+                  variant="outline"
+                >
+                  <Trophy className="w-4 h-4 mr-2" />
+                  Manage Tickets & Prizes
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Edit Game Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Game: {selectedGameForEdit?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-host-phone">WhatsApp Phone Number</Label>
+              <Input
+                id="edit-host-phone"
+                placeholder="919876543210"
+                value={editGameForm.hostPhone}
+                onChange={(e) => setEditGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
+                className="border-2 border-gray-200 focus:border-blue-400"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="edit-max-tickets">Maximum Tickets</Label>
+              <Input
+                id="edit-max-tickets"
+                type="number"
+                min="1"
+                max="600"
+                value={editGameForm.maxTickets === 0 ? '' : editGameForm.maxTickets.toString()}
+                onChange={handleEditMaxTicketsChange}
+                className="border-2 border-gray-200 focus:border-blue-400"
+              />
+            </div>
+
+            <div>
+              <Label className="text-base font-semibold">Game Prizes</Label>
+              <div className="grid grid-cols-1 gap-2 mt-2">
+                {AVAILABLE_PRIZES.map((prize) => (
+                  <div key={prize.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`edit-prize-${prize.id}`}
+                      checked={editGameForm.selectedPrizes.includes(prize.id)}
+                      onCheckedChange={(checked) => handleEditPrizeToggle(prize.id, checked as boolean)}
+                    />
+                    <Label htmlFor={`edit-prize-${prize.id}`} className="text-sm">
+                      {prize.name} - {prize.pattern}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex space-x-2">
+              <Button
+                onClick={async () => {
+                  if (!selectedGameForEdit) return;
+                  setIsLoading(true);
+                  try {
+                    await firebaseService.updateGameConfig(selectedGameForEdit.gameId, {
+                      maxTickets: editGameForm.maxTickets,
+                      hostPhone: editGameForm.hostPhone,
+                      selectedPrizes: editGameForm.selectedPrizes
+                    });
+                    
+                    toast({
+                      title: "Game Updated",
+                      description: "Game configuration has been updated successfully!",
+                    });
+                    
+                    setShowEditDialog(false);
+                    await loadHostGames();
+                  } catch (error: any) {
+                    toast({
+                      title: "Update Failed",
+                      description: error.message || "Failed to update game",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading || editGameForm.selectedPrizes.length === 0}
+                className="flex-1"
+              >
+                {isLoading ? 'Updating...' : 'Update Game'}
+              </Button>
+              <Button
+                onClick={() => setShowEditDialog(false)}
+                variant="outline"
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 
   const renderGameControl = () => {
     if (!currentGame) {
@@ -1279,7 +1584,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   <p className="text-sm font-medium text-green-800">🎯 Auto Prize Validation Active</p>
                   <p className="text-xs text-green-700">
                     Winners: {totalWinners} | Prizes Won: {wonPrizes.length}/{Object.keys(currentGame.prizes).length} | 
-                    Latest Winner: {winnerNotificationCount} notifications
+                    Announcements: {announcedWinners.size} tracked
                   </p>
                 </div>
               </div>
@@ -1289,21 +1594,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             </div>
           </CardContent>
         </Card>
-
-        {/* Recent Winner Notification */}
-        {lastWinnerAnnouncement && (
-          <Card className="border-l-4 border-l-yellow-500 bg-yellow-50">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-3">
-                <Trophy className="w-5 h-5 text-yellow-600" />
-                <div>
-                  <p className="text-sm font-medium text-yellow-800">Latest Winner</p>
-                  <p className="text-xs text-yellow-700">{lastWinnerAnnouncement}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Game Control Header */}
         <Card className="game-control-panel">
@@ -1465,6 +1755,22 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           onRefreshGame={loadHostGames}
         />
 
+        {/* Ticket Management */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Users className="w-5 h-5 mr-2" />
+              Ticket Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TicketManagementGrid 
+              gameData={currentGame}
+              onRefreshGame={loadHostGames}
+            />
+          </CardContent>
+        </Card>
+
         {/* Number Grid - Display Only */}
         <Card>
           <CardHeader>
@@ -1543,9 +1849,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     );
   };
 
-  // Rest of the component implementation would continue with renderMyGames() etc.
-  // but I'll keep this focused on the key changes for prize validation
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
       <div className="max-w-7xl mx-auto">
@@ -1570,8 +1873,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </TabsContent>
 
           <TabsContent value="my-games" className="mt-6">
-            {/* renderMyGames() implementation would go here */}
-            <div>My Games content...</div>
+            {renderMyGames()}
           </TabsContent>
 
           <TabsContent value="game-control" className="mt-6">
