@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Updated with phone field, game management, and settings persistence
+// src/components/GameHost.tsx - Fixed Maximum Tickets input handling
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -269,6 +269,48 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  // FIXED: Better handling for maxTickets input
+  const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // Allow empty string (user is clearing the field)
+    if (value === '') {
+      setCreateGameForm(prev => ({ ...prev, maxTickets: 0 })); // Use 0 as placeholder for empty
+      return;
+    }
+    
+    // Parse the number
+    const numValue = parseInt(value, 10);
+    
+    // Only update if it's a valid number
+    if (!isNaN(numValue)) {
+      // Clamp between 1 and 600
+      const clampedValue = Math.max(1, Math.min(600, numValue));
+      setCreateGameForm(prev => ({ ...prev, maxTickets: clampedValue }));
+    }
+  };
+
+  // FIXED: Better handling for edit maxTickets input
+  const handleEditMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // Allow empty string (user is clearing the field)
+    if (value === '') {
+      setEditGameForm(prev => ({ ...prev, maxTickets: 0 })); // Use 0 as placeholder for empty
+      return;
+    }
+    
+    // Parse the number
+    const numValue = parseInt(value, 10);
+    
+    // Only update if it's a valid number
+    if (!isNaN(numValue)) {
+      // Clamp between 1 and 600
+      const clampedValue = Math.max(1, Math.min(600, numValue));
+      setEditGameForm(prev => ({ ...prev, maxTickets: clampedValue }));
+    }
+  };
+
   const createNewGame = async () => {
     if (!isSubscriptionValid()) {
       toast({
@@ -306,6 +348,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return;
     }
 
+    // FIXED: Better validation for maxTickets
     if (createGameForm.maxTickets < 1 || createGameForm.maxTickets > 600) {
       toast({
         title: "Validation Error",
@@ -815,13 +858,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 min="1"
                 max="600"
                 placeholder="100"
-                value={createGameForm.maxTickets}
-                onChange={(e) => setCreateGameForm(prev => ({ 
-                  ...prev, 
-                  maxTickets: parseInt(e.target.value) || 1 
-                }))}
+                value={createGameForm.maxTickets === 0 ? '' : createGameForm.maxTickets.toString()}
+                onChange={handleMaxTicketsChange}
                 className="border-2 border-gray-200 focus:border-blue-400"
               />
+              {createGameForm.maxTickets === 0 && (
+                <p className="text-xs text-red-500 mt-1">Please enter a number between 1 and 600</p>
+              )}
             </div>
           </div>
 
@@ -916,7 +959,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           {/* Create Game Button */}
           <Button 
             onClick={createNewGame} 
-            disabled={isLoading || !createGameForm.hostPhone.trim() || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0}
+            disabled={isLoading || !createGameForm.hostPhone.trim() || !createGameForm.selectedTicketSet || createGameForm.selectedPrizes.length === 0 || createGameForm.maxTickets < 1}
             className="w-full bg-blue-600 hover:bg-blue-700"
             size="lg"
           >
@@ -1106,12 +1149,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   type="number"
                   min="1"
                   max="600"
-                  value={editGameForm.maxTickets}
-                  onChange={(e) => setEditGameForm(prev => ({ 
-                    ...prev, 
-                    maxTickets: parseInt(e.target.value) || 1 
-                  }))}
+                  value={editGameForm.maxTickets === 0 ? '' : editGameForm.maxTickets.toString()}
+                  onChange={handleEditMaxTicketsChange}
                 />
+                {editGameForm.maxTickets === 0 && (
+                  <p className="text-xs text-red-500 mt-1">Please enter a number between 1 and 600</p>
+                )}
               </div>
               <div>
                 <Label className="text-base font-semibold">Update Game Prizes</Label>
@@ -1135,7 +1178,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
               <Button
                 onClick={editGame}
-                disabled={isLoading || !editGameForm.hostPhone.trim() || editGameForm.selectedPrizes.length === 0}
+                disabled={isLoading || !editGameForm.hostPhone.trim() || editGameForm.selectedPrizes.length === 0 || editGameForm.maxTickets < 1}
                 className="w-full"
               >
                 {isLoading ? 'Updating...' : 'Update Game'}
