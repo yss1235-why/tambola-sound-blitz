@@ -167,6 +167,23 @@ export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => 
   }
 };
 
+// Utility function to remove undefined values from objects (Firebase doesn't allow undefined)
+const removeUndefinedValues = (obj: any): any => {
+  if (obj === null || typeof obj !== 'object') return obj;
+  
+  if (Array.isArray(obj)) {
+    return obj.map(removeUndefinedValues);
+  }
+  
+  const cleaned: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      cleaned[key] = removeUndefinedValues(value);
+    }
+  }
+  return cleaned;
+};
+
 // Generate ticket data for a set with simple numbering
 const generateTicketSet = (setId: string): TicketSetData => {
   const tickets: { [key: string]: TambolaTicket } = {};
@@ -308,8 +325,9 @@ class FirebaseService {
         isActive: true
       };
 
-      // Save to Realtime Database
-      await set(ref(database, `hosts/${user.uid}`), hostData);
+      // Save to Realtime Database with cleaned data
+      const cleanedHostData = removeUndefinedValues(hostData);
+      await set(ref(database, `hosts/${user.uid}`), cleanedHostData);
       console.log('✅ Host data saved to Realtime Database');
 
       return hostData;
@@ -395,7 +413,8 @@ class FirebaseService {
 
   async updateHost(hostId: string, updates: Partial<HostUser>): Promise<void> {
     try {
-      await update(ref(database, `hosts/${hostId}`), updates);
+      const cleanedUpdates = removeUndefinedValues(updates);
+      await update(ref(database, `hosts/${hostId}`), cleanedUpdates);
     } catch (error: any) {
       console.error('Error updating host:', error);
       throw new Error(error.message || 'Failed to update host');
@@ -437,10 +456,12 @@ class FirebaseService {
       const newEnd = new Date(currentEnd);
       newEnd.setMonth(newEnd.getMonth() + additionalMonths);
 
-      await update(ref(database, `hosts/${hostId}`), {
+      const updateData = removeUndefinedValues({
         subscriptionEndDate: newEnd.toISOString(),
         updatedAt: new Date().toISOString()
       });
+
+      await update(ref(database, `hosts/${hostId}`), updateData);
     } catch (error: any) {
       console.error('Error extending subscription:', error);
       throw new Error(error.message || 'Failed to extend subscription');
@@ -449,10 +470,12 @@ class FirebaseService {
 
   async toggleHostStatus(hostId: string, isActive: boolean): Promise<void> {
     try {
-      await update(ref(database, `hosts/${hostId}`), {
+      const updateData = removeUndefinedValues({
         isActive,
         updatedAt: new Date().toISOString()
       });
+      
+      await update(ref(database, `hosts/${hostId}`), updateData);
     } catch (error: any) {
       console.error('Error toggling host status:', error);
       throw new Error(error.message || 'Failed to update host status');
@@ -462,10 +485,12 @@ class FirebaseService {
   // Host settings operations
   async saveHostSettings(hostId: string, settings: HostSettings): Promise<void> {
     try {
-      await set(ref(database, `hostSettings/${hostId}`), {
+      const settingsData = removeUndefinedValues({
         ...settings,
         updatedAt: new Date().toISOString()
       });
+      
+      await set(ref(database, `hostSettings/${hostId}`), settingsData);
     } catch (error: any) {
       console.error('Error saving host settings:', error);
       throw new Error(error.message || 'Failed to save host settings');
@@ -518,6 +543,7 @@ class FirebaseService {
             name: prizeDef.name,
             pattern: prizeDef.pattern,
             won: false
+            // Note: winner property is omitted when creating new prizes to avoid undefined values
           };
         }
       });
@@ -544,7 +570,10 @@ class FirebaseService {
         ticketSetId
       };
 
-      await set(gameRef, gameData);
+      // Clean undefined values before saving to Firebase
+      const cleanedGameData = removeUndefinedValues(gameData);
+      
+      await set(gameRef, cleanedGameData);
       return gameData;
     } catch (error: any) {
       console.error('Error creating game:', error);
@@ -614,6 +643,11 @@ class FirebaseService {
 
       const gameData = gameSnapshot.val() as GameData;
       
+      // Check if game has started or has any progress
+      const gameHasStarted = gameData.gameState.isActive || 
+                            gameData.gameState.gameOver || 
+                            (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0);
+      
       // Prepare update object
       const updateData: any = {
         updatedAt: new Date().toISOString()
@@ -643,23 +677,36 @@ class FirebaseService {
           if (prizeDefinitions[prizeId as keyof typeof prizeDefinitions]) {
             const prizeDef = prizeDefinitions[prizeId as keyof typeof prizeDefinitions];
             
-            // Keep existing prize data if it was already won
-            const existingPrize = gameData.prizes[prizeId];
-            
-            prizes[prizeId] = {
+            // Create prize object
+            const newPrize: Prize = {
               id: prizeId,
               name: prizeDef.name,
               pattern: prizeDef.pattern,
-              won: existingPrize?.won || false,
-              winner: existingPrize?.winner
+              won: false // Default to not won
             };
+
+            // Only preserve existing prize data if game has started
+            if (gameHasStarted && gameData.prizes[prizeId]) {
+              const existingPrize = gameData.prizes[prizeId];
+              newPrize.won = existingPrize.won;
+              
+              // Only add winner property if it exists and prize is won
+              if (existingPrize.won && existingPrize.winner) {
+                newPrize.winner = existingPrize.winner;
+              }
+            }
+
+            prizes[prizeId] = newPrize;
           }
         });
 
         updateData.prizes = prizes;
       }
 
-      await update(gameRef, updateData);
+      // Clean undefined values before updating Firebase
+      const cleanedUpdateData = removeUndefinedValues(updateData);
+      
+      await update(gameRef, cleanedUpdateData);
     } catch (error: any) {
       console.error('Error updating game config:', error);
       throw new Error(error.message || 'Failed to update game config');
@@ -688,7 +735,9 @@ class FirebaseService {
 
   async updateGameState(gameId: string, gameState: GameState): Promise<void> {
     try {
-      await update(ref(database, `games/${gameId}`), { gameState });
+      // Clean undefined values before updating Firebase
+      const cleanedGameState = removeUndefinedValues({ gameState });
+      await update(ref(database, `games/${gameId}`), cleanedGameState);
     } catch (error: any) {
       console.error('Error updating game state:', error);
       throw new Error(error.message || 'Failed to update game state');
@@ -725,13 +774,13 @@ class FirebaseService {
         throw new Error('Ticket is already booked');
       }
 
-      const updatedTicket = {
+      const updatedTicket = removeUndefinedValues({
         ...ticketData,
         isBooked: true,
         playerName,
         playerPhone,
         bookedAt: new Date().toISOString()
-      };
+      });
 
       await set(ticketRef, updatedTicket);
     } catch (error: any) {
@@ -893,7 +942,8 @@ const initializeDefaultAdmin = async () => {
         isActive: true
       };
       
-      await set(adminRef, defaultAdmin);
+      const cleanedDefaultAdmin = removeUndefinedValues(defaultAdmin);
+      await set(adminRef, cleanedDefaultAdmin);
       console.log('✅ Default admin initialized in Realtime Database');
     }
   } catch (error) {
