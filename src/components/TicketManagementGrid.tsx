@@ -200,12 +200,15 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     setIsLoading(true);
     try {
-      // Update the ticket with new player information
-      await firebaseService.bookTicket(
+      // Update the ticket with new player information using updateTicket function
+      await firebaseService.updateTicket(
+        gameData.gameId,
         editingTicket.ticketId,
-        editForm.playerName.trim(),
-        editForm.playerPhone.trim(),
-        gameData.gameId
+        {
+          playerName: editForm.playerName.trim(),
+          playerPhone: editForm.playerPhone.trim(),
+          isBooked: true // Ensure it remains booked
+        }
       );
 
       toast({
