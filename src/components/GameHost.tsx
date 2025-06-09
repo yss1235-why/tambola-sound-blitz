@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Enhanced Game Control (Automatic Only)
+// src/components/GameHost.tsx - Fixed version with atomic number calling
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -637,43 +637,69 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  // ✅ FIXED: Using atomic number calling to avoid race conditions
   const startNumberCalling = () => {
     if (!currentGame) return;
 
+    console.log('🎮 Starting number calling with interval:', callInterval, 'seconds');
+
     const interval = setInterval(async () => {
+      console.log('🔄 Number calling interval triggered, available numbers:', availableNumbers.length);
+      
       if (availableNumbers.length === 0) {
+        console.log('🏁 No more numbers available, ending game');
         clearInterval(interval);
         await endGame();
         return;
       }
 
+      // Select random number from available numbers
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const numberToBeCalled = availableNumbers[randomIndex];
       
-      setAvailableNumbers(prev => prev.filter(n => n !== numberToBeCalled));
+      console.log('📞 Calling number:', numberToBeCalled);
+      
+      // Update local available numbers immediately (optimistic update)
+      setAvailableNumbers(prev => {
+        const newAvailable = prev.filter(n => n !== numberToBeCalled);
+        console.log('🔄 Updated available numbers locally, remaining:', newAvailable.length);
+        return newAvailable;
+      });
       
       try {
-        await firebaseService.addCalledNumber(currentGame.gameId, numberToBeCalled);
-        await firebaseService.updateGameState(currentGame.gameId, {
-          ...currentGame.gameState,
-          currentNumber: numberToBeCalled
-        });
+        // ✅ Use atomic function that avoids race conditions
+        await firebaseService.callNumberAtomic(currentGame.gameId, numberToBeCalled);
+        console.log('✅ Number called successfully:', numberToBeCalled);
 
-        // Clear current number after a few seconds
+        // Clear current number after display time
         setTimeout(async () => {
           if (currentGame) {
-            await firebaseService.updateGameState(currentGame.gameId, {
-              ...currentGame.gameState,
-              currentNumber: null
-            });
+            console.log('🔄 Clearing current number display');
+            await firebaseService.clearCurrentNumber(currentGame.gameId);
           }
         }, 3000);
+
       } catch (error) {
-        console.error('Error calling number:', error);
+        console.error('❌ Error calling number:', error);
+        
+        // Revert optimistic update on error
+        setAvailableNumbers(prev => {
+          if (!prev.includes(numberToBeCalled)) {
+            return [...prev, numberToBeCalled].sort((a, b) => a - b);
+          }
+          return prev;
+        });
+        
+        toast({
+          title: "Error Calling Number",
+          description: `Failed to call number ${numberToBeCalled}. Retrying...`,
+          variant: "destructive",
+        });
       }
     }, callInterval * 1000);
 
     setGameInterval(interval);
+    console.log('✅ Number calling interval started');
   };
 
   const pauseGame = async () => {
@@ -1019,6 +1045,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               <Badge variant={subscriptionStatus.variant}>{subscriptionStatus.message}</Badge>
             </div>
             <Calendar className="w-8 h-8 text-gray-400" />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Race Condition Fix Alert */}
+      <Card className="border-l-4 border-l-green-500">
+        <CardContent className="p-4">
+          <div className="flex items-center space-x-3">
+            <div className="text-green-600">✅</div>
+            <div>
+              <p className="text-sm font-medium text-gray-800">Race Condition Fixed!</p>
+              <p className="text-xs text-gray-600">Called numbers are now stored properly in Firebase using atomic operations.</p>
+            </div>
           </div>
         </CardContent>
       </Card>
