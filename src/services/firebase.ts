@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Updated with indexed queries for better performance
+// src/services/firebase.ts - Complete Firebase service with simple ticket naming
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -188,9 +188,9 @@ const removeUndefinedValues = (obj: any): any => {
 const generateTicketSet = (setId: string): TicketSetData => {
   const tickets: { [key: string]: TambolaTicket } = {};
   
-  // Generate 600 tickets for each set with simple numbering
+  // Generate 600 tickets for each set with simple numbering (1, 2, 3, etc.)
   for (let i = 1; i <= 600; i++) {
-    const ticketId = i.toString();
+    const ticketId = i.toString(); // Simple numbering: "1", "2", "3", etc.
     tickets[ticketId] = generateSingleTicket(ticketId);
   }
 
@@ -228,11 +228,20 @@ const generateSingleTicket = (ticketId: string): TambolaTicket => {
       }
     }
     
-    rows.push(ticketRow);
+    // Sort numbers in each row for better readability
+    const sortedRow = [...ticketRow];
+    const numberIndices = numberPositions.sort((a, b) => a - b);
+    const sortedNumbers = numberPositions.map(pos => ticketRow[pos]).sort((a, b) => a - b);
+    
+    numberIndices.forEach((pos, index) => {
+      sortedRow[pos] = sortedNumbers[index];
+    });
+    
+    rows.push(sortedRow);
   }
 
   return {
-    ticketId,
+    ticketId, // This will be simple numbers like "1", "2", "3"
     rows,
     isBooked: false
   };
