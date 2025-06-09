@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Firebase service with automatic validation only
+// src/services/firebase.ts - Complete updated Firebase service with fixed prize validation
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -761,7 +761,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ Call a number with automatic prize validation
+  // ✅ FIXED: Call a number with automatic prize validation
   async callNumberWithPrizeValidation(gameId: string, number: number): Promise<{
     success: boolean;
     winners?: { [prizeId: string]: any };
@@ -790,28 +790,38 @@ class FirebaseService {
       // Create new game state with the called number
       const updatedCalledNumbers = [...currentCalledNumbers, number];
       
-      // First, update the game state with the new number
-      const updatedGameState: GameState = {
-        ...gameData.gameState,
-        calledNumbers: updatedCalledNumbers,
-        currentNumber: number
+      // ✅ FIX: Only validate UNWON prizes to prevent re-announcements
+      const unwonPrizes = Object.fromEntries(
+        Object.entries(gameData.prizes).filter(([_, prize]) => !prize.won)
+      );
+
+      console.log('🔍 Validating only unwon prizes:', Object.keys(unwonPrizes));
+
+      // Validate prizes with ONLY the unwon prizes
+      const validationResult = await this.validateTicketsForPrizes(
+        gameData.tickets || {}, 
+        updatedCalledNumbers, 
+        unwonPrizes // ✅ Only unwon prizes
+      );
+      
+      // Prepare updates
+      const gameUpdates: any = {
+        gameState: removeUndefinedValues({
+          ...gameData.gameState,
+          calledNumbers: updatedCalledNumbers,
+          currentNumber: number
+        })
       };
 
-      await update(gameRef, { gameState: removeUndefinedValues(updatedGameState) });
-
-      // Now validate prizes with the updated called numbers
-      const validationResult = await this.validateTicketsForPrizes(gameData.tickets || {}, updatedCalledNumbers, gameData.prizes);
-      
-      // Update prizes if winners found
+      // Update prizes if NEW winners found
       if (Object.keys(validationResult.winners).length > 0) {
-        const prizeUpdates: any = {};
         const announcements: string[] = [];
         
         for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
           const prizeData = prizeWinners as any;
           
-          // Update prize with winners
-          prizeUpdates[`prizes/${prizeId}`] = removeUndefinedValues({
+          // ✅ Update prize with winners (only for newly won prizes)
+          gameUpdates[`prizes/${prizeId}`] = removeUndefinedValues({
             ...gameData.prizes[prizeId],
             won: true,
             winners: prizeData.winners,
@@ -824,17 +834,18 @@ class FirebaseService {
           announcements.push(announcement);
         }
         
-        // Update all prize data and last winner announcement
+        // ✅ Only update lastWinnerAnnouncement for NEW winners
         if (announcements.length > 0) {
-          prizeUpdates.lastWinnerAnnouncement = announcements.join(' | ');
-          prizeUpdates.lastWinnerAt = new Date().toISOString();
+          gameUpdates.lastWinnerAnnouncement = announcements.join(' | ');
+          gameUpdates.lastWinnerAt = new Date().toISOString();
         }
         
-        await update(gameRef, prizeUpdates);
+        // Single atomic update
+        await update(gameRef, gameUpdates);
         
-        console.log('✅ Number called with automatic prize validation complete:', {
+        console.log('✅ NEW winners found and updated:', {
           number,
-          winnersFound: Object.keys(validationResult.winners).length,
+          newWinners: Object.keys(validationResult.winners),
           announcements
         });
         
@@ -843,10 +854,12 @@ class FirebaseService {
           winners: validationResult.winners,
           announcements
         };
+      } else {
+        // No new winners, just update game state
+        await update(gameRef, gameUpdates);
+        console.log('✅ Number called, no new winners:', number);
+        return { success: true };
       }
-      
-      console.log('✅ Number called, no winners detected:', number);
-      return { success: true };
       
     } catch (error: any) {
       console.error('❌ Error calling number with automatic prize validation:', error);
@@ -878,7 +891,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ Internal prize validation logic (automatic only)
+  // ✅ IMPROVED: Internal prize validation logic with better filtering
   private async validateTicketsForPrizes(
     tickets: { [key: string]: TambolaTicket },
     calledNumbers: number[],
@@ -891,9 +904,20 @@ class FirebaseService {
     const calledSet = new Set(calledNumbers);
     const winners: { [prizeId: string]: any } = {};
     
+    console.log('🔍 Validating prizes:', {
+      totalPrizes: Object.keys(prizes).length,
+      bookedTickets: bookedTickets.length,
+      calledNumbers: calledNumbers.length
+    });
+    
     for (const [prizeId, prize] of Object.entries(prizes)) {
-      if (prize.won) continue; // Skip already won prizes
+      // ✅ DOUBLE CHECK: Ensure we only validate unwon prizes
+      if (prize.won) {
+        console.log(`⏭️ Skipping already won prize: ${prize.name}`);
+        continue;
+      }
 
+      console.log(`🎯 Checking prize: ${prize.name} (${prize.id})`);
       const prizeWinners: any[] = [];
 
       for (const ticket of bookedTickets) {
@@ -904,6 +928,7 @@ class FirebaseService {
             name: ticket.playerName || 'Unknown Player',
             phone: ticket.playerPhone
           });
+          console.log(`🏆 Winner found for ${prize.name}: ${ticket.playerName} (${ticket.ticketId})`);
         }
       }
 
@@ -914,15 +939,22 @@ class FirebaseService {
           winners: prizeWinners,
           winningNumber: calledNumbers[calledNumbers.length - 1]
         };
+        console.log(`✅ Prize ${prize.name} has ${prizeWinners.length} winner(s)`);
       }
     }
+
+    console.log('🎯 Validation complete:', {
+      newWinners: Object.keys(winners).length,
+      winningPrizes: Object.keys(winners)
+    });
 
     return {
       winners,
       statistics: {
         totalTickets: Object.keys(tickets).length,
         bookedTickets: bookedTickets.length,
-        calledNumbers: calledNumbers.length
+        calledNumbers: calledNumbers.length,
+        newWinners: Object.keys(winners).length
       }
     };
   }
@@ -1028,37 +1060,53 @@ class FirebaseService {
     return true;
   }
 
-  // ✅ Reset a specific prize (only for restarting games)
+  // ✅ IMPROVED: Reset a specific prize with better cleanup
   async resetPrize(gameId: string, prizeId: string): Promise<void> {
     try {
-      const prizeRef = ref(database, `games/${gameId}/prizes/${prizeId}`);
-      const prizeSnapshot = await get(prizeRef);
+      console.log(`🔄 Resetting prize: ${prizeId} in game: ${gameId}`);
       
-      if (!prizeSnapshot.exists()) {
+      const gameRef = ref(database, `games/${gameId}`);
+      const gameSnapshot = await get(gameRef);
+      
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+
+      const gameData = gameSnapshot.val() as GameData;
+      const prize = gameData.prizes[prizeId];
+      
+      if (!prize) {
         throw new Error('Prize not found');
       }
 
-      const prizeData = prizeSnapshot.val() as Prize;
-      
-      // Reset prize to initial state
-      const resetPrize = removeUndefinedValues({
-        ...prizeData,
-        won: false,
-        winners: undefined,
-        winningNumber: undefined,
-        wonAt: undefined
-      });
+      // Reset prize to initial state (remove all winner-related properties)
+      const resetPrize: Prize = {
+        id: prize.id,
+        name: prize.name,
+        pattern: prize.pattern,
+        won: false
+        // Note: Explicitly NOT including winners, winningNumber, wonAt to remove them
+      };
 
-      await set(prizeRef, resetPrize);
+      // Update the specific prize
+      await update(ref(database, `games/${gameId}/prizes/${prizeId}`), removeUndefinedValues(resetPrize));
       
-      // Also clear any related winner announcements
-      await update(ref(database, `games/${gameId}`), {
-        lastWinnerAnnouncement: null,
-        lastWinnerAt: null
-      });
+      // ✅ IMPORTANT: Clear winner announcements only if this was the last winner
+      const otherWonPrizes = Object.values(gameData.prizes).filter(p => p.id !== prizeId && p.won);
+      
+      if (otherWonPrizes.length === 0) {
+        // This was the only won prize, clear announcements
+        await update(gameRef, {
+          lastWinnerAnnouncement: null,
+          lastWinnerAt: null
+        });
+        console.log('🧹 Cleared winner announcements (no other won prizes)');
+      }
+      
+      console.log(`✅ Prize ${prize.name} reset successfully`);
       
     } catch (error: any) {
-      console.error('Error resetting prize:', error);
+      console.error('❌ Error resetting prize:', error);
       throw new Error(error.message || 'Failed to reset prize');
     }
   }
