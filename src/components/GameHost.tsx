@@ -451,6 +451,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const openEditDialog = (game: GameData) => {
+    // Check if game has started
+    const gameHasStarted = game.gameState.isActive || 
+                          game.gameState.gameOver || 
+                          (game.gameState.calledNumbers && game.gameState.calledNumbers.length > 0);
+    
+    if (gameHasStarted) {
+      toast({
+        title: "Cannot Edit Active Game",
+        description: "This game has already started or has progress. Only phone number and max tickets can be modified for active games.",
+        variant: "destructive",
+      });
+    }
+    
     setSelectedGameForEdit(game);
     setEditGameForm({
       gameId: game.gameId,
