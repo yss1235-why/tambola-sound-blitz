@@ -260,7 +260,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   };
 
   const getTicketClassName = (ticket: TicketInfo) => {
-    const baseClass = "relative w-full aspect-square rounded-lg border-2 transition-all duration-200 flex items-center justify-center text-lg font-bold cursor-pointer";
+    const baseClass = "relative w-full aspect-square rounded-md sm:rounded-lg border-2 transition-all duration-200 flex items-center justify-center font-bold cursor-pointer";
     
     if (ticket.isBooked) {
       return `${baseClass} bg-green-500 border-green-600 text-white hover:bg-green-600`;
@@ -273,7 +273,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
   const renderTicketContent = (ticket: TicketInfo) => {
     return (
-      <span className="text-2xl font-bold">{ticket.ticketId}</span>
+      <span className="text-lg sm:text-xl lg:text-2xl font-bold">{ticket.ticketId}</span>
     );
   };
 
@@ -373,9 +373,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
           <CardTitle>Tickets Grid (Click to select available tickets or edit booked ones)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {ticketRows.map((row, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-10 gap-2">
+              <div key={rowIndex} className="grid grid-cols-10 gap-1 sm:gap-2">
                 {row.map((ticket) => (
                   <div
                     key={ticket.ticketId}
