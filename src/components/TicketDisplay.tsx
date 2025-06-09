@@ -8,45 +8,17 @@ interface TicketDisplayProps {
   tickets?: TambolaTicket[];
 }
 
-// Sample ticket data for demo purposes with simple naming
-const sampleTickets = [
-  {
-    ticketId: '1',
-    rows: [
-      [4, 11, 0, 32, 44, 0, 60, 0, 0],
-      [8, 0, 21, 34, 47, 0, 0, 74, 0],
-      [0, 14, 29, 0, 49, 55, 0, 0, 88]
-    ],
-    isBooked: true,
-    playerName: 'Sample Player 1',
-    playerPhone: '9876543210'
-  },
-  {
-    ticketId: '2',
-    rows: [
-      [2, 0, 25, 0, 0, 52, 63, 0, 85],
-      [0, 16, 0, 31, 0, 0, 67, 78, 0],
-      [9, 0, 0, 35, 48, 0, 0, 79, 90]
-    ],
-    isBooked: true,
-    playerName: 'Sample Player 2',
-    playerPhone: '9876543211'
-  },
-  {
-    ticketId: '3',
-    rows: [
-      [1, 0, 22, 0, 41, 0, 0, 73, 0],
-      [0, 18, 0, 33, 0, 56, 64, 0, 87],
-      [7, 0, 28, 0, 0, 58, 0, 0, 89]
-    ],
-    isBooked: true,
-    playerName: 'Sample Player 3',
-    playerPhone: '9876543212'
-  }
-];
-
 export const TicketDisplay: React.FC<TicketDisplayProps> = ({ calledNumbers, tickets }) => {
-  const displayTickets = tickets && tickets.length > 0 ? tickets : sampleTickets;
+  // Only show real tickets, no sample data
+  if (!tickets || tickets.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <div className="text-6xl mb-4">🎫</div>
+        <p className="text-gray-600 text-lg">No tickets booked yet</p>
+        <p className="text-gray-500 text-sm">Tickets will appear here once players book them</p>
+      </div>
+    );
+  }
   
   const isNumberMarked = (number: number) => number !== 0 && calledNumbers.includes(number);
   const isEmpty = (number: number) => number === 0;
@@ -63,7 +35,7 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({ calledNumbers, tic
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      {displayTickets.map((ticket) => (
+      {tickets.map((ticket) => (
         <Card key={ticket.ticketId} className="bg-white border-2 border-blue-200 shadow-lg hover:shadow-xl transition-shadow">
           <CardHeader className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-center py-3">
             <CardTitle className="text-lg">Ticket {ticket.ticketId}</CardTitle>
