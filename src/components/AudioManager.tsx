@@ -1,4 +1,4 @@
-
+// src/components/AudioManager.tsx - Complete updated AudioManager with fixed prize announcements
 import React, { useEffect, useRef } from 'react';
 import { Prize } from './TambolaGame';
 
@@ -103,7 +103,9 @@ const numberCalls: { [key: number]: string } = {
 
 export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prizes }) => {
   const lastCalledNumber = useRef<number | null>(null);
-  const lastPrizeCount = useRef<number>(0);
+  
+  // ✅ FIX: Track individual prizes that have been announced
+  const announcedPrizes = useRef<Set<string>>(new Set());
 
   // Enhanced text-to-speech functionality
   const speak = (text: string) => {
@@ -154,17 +156,33 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
     }
   }, [currentNumber]);
 
-  // Handle prize announcements
+  // ✅ FIXED: Handle prize announcements - only announce each prize once
   useEffect(() => {
-    const currentPrizeCount = prizes.filter(p => p.won).length;
-    if (currentPrizeCount > lastPrizeCount.current) {
-      const newlyWonPrizes = prizes.filter(p => p.won).slice(-1);
-      newlyWonPrizes.forEach(prize => {
+    prizes.forEach(prize => {
+      // Only announce if prize is won AND hasn't been announced before
+      if (prize.won && !announcedPrizes.current.has(prize.id)) {
         const announcement = `Congratulations! ${prize.name} has been won!`;
-        setTimeout(() => speak(announcement), 1500);
-        console.log(`🏆 Prize Won: ${announcement}`);
-      });
-      lastPrizeCount.current = currentPrizeCount;
+        
+        setTimeout(() => {
+          speak(announcement);
+        }, 1500);
+        
+        // ✅ Mark this prize as announced
+        announcedPrizes.current.add(prize.id);
+        
+        console.log(`🏆 Prize Won (NEW): ${announcement}`);
+      }
+    });
+  }, [prizes]);
+
+  // ✅ RESET: Clear announced prizes when game resets (all prizes become unwon)
+  useEffect(() => {
+    const wonPrizes = prizes.filter(p => p.won);
+    
+    // If no prizes are won, reset the announced prizes (game was reset)
+    if (wonPrizes.length === 0 && announcedPrizes.current.size > 0) {
+      console.log('🔄 Game reset detected, clearing announced prizes');
+      announcedPrizes.current.clear();
     }
   }, [prizes]);
 
