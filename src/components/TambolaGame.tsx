@@ -1,4 +1,4 @@
-// src/components/TambolaGame.tsx - Updated with simple ticket naming and host phone display
+// src/components/TambolaGame.tsx - Updated with simple ticket naming and improved display
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -293,7 +293,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
         </div>
 
         {/* Player Tickets */}
-        {Object.keys(tickets).length > 0 && (
+        {Object.keys(tickets).length > 0 && getBookedTicketsCount() > 0 && (
           <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
             <CardHeader>
               <CardTitle className="text-gray-800 flex items-center">
