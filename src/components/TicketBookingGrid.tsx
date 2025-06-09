@@ -1,4 +1,4 @@
-// src/components/TicketBookingGrid.tsx - Updated without quick book and with simple ticket naming
+// src/components/TicketBookingGrid.tsx - Fixed WhatsApp booking with simple ticket naming
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -59,11 +59,14 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       return;
     }
 
+    // Get only the numbers from the selected ticket (filter out empty spaces)
     const ticketNumbers = ticket.rows.flat()
       .filter(num => num !== 0)
+      .sort((a, b) => a - b) // Sort numbers in ascending order
       .join(', ');
     
-    const message = `Hi! I want to book Ticket ${ticketId} for the game "${gameData.name}". Numbers: ${ticketNumbers}. Please confirm my booking.`;
+    // Create WhatsApp message without game name and with simple ticket naming
+    const message = `Hi! I want to book Ticket ${ticketId}. Numbers: ${ticketNumbers}. Please confirm my booking.`;
     const whatsappUrl = `https://wa.me/${hostPhone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
