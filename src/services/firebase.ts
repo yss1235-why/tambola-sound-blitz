@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete Firebase service with prize validation
+// src/services/firebase.ts - Firebase service with automatic validation only
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -108,7 +108,6 @@ export interface Prize {
   }>;
   winningNumber?: number;
   wonAt?: string;
-  manuallyAwarded?: boolean;
 }
 
 export interface TambolaTicket {
@@ -762,32 +761,14 @@ class FirebaseService {
     }
   }
 
-  // ✅ DEPRECATED: This method is now deprecated in favor of callNumberWithPrizeValidation
-  async addCalledNumber(gameId: string, number: number): Promise<void> {
-    try {
-      console.log('⚠️ addCalledNumber is deprecated, use callNumberWithPrizeValidation instead');
-      const gameRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
-      const snapshot = await get(gameRef);
-      const calledNumbers = snapshot.exists() ? snapshot.val() : [];
-      
-      if (!calledNumbers.includes(number)) {
-        calledNumbers.push(number);
-        await set(gameRef, calledNumbers);
-      }
-    } catch (error: any) {
-      console.error('Error adding called number:', error);
-      throw new Error(error.message || 'Failed to add called number');
-    }
-  }
-
-  // ✅ NEW: Call a number with automatic prize validation
+  // ✅ Call a number with automatic prize validation
   async callNumberWithPrizeValidation(gameId: string, number: number): Promise<{
     success: boolean;
     winners?: { [prizeId: string]: any };
     announcements?: string[];
   }> {
     try {
-      console.log('🎯 Calling number with prize validation:', { gameId, number });
+      console.log('🎯 Calling number with automatic prize validation:', { gameId, number });
       
       // Get current game state
       const gameRef = ref(database, `games/${gameId}`);
@@ -851,7 +832,7 @@ class FirebaseService {
         
         await update(gameRef, prizeUpdates);
         
-        console.log('✅ Number called with prize validation complete:', {
+        console.log('✅ Number called with automatic prize validation complete:', {
           number,
           winnersFound: Object.keys(validationResult.winners).length,
           announcements
@@ -868,12 +849,12 @@ class FirebaseService {
       return { success: true };
       
     } catch (error: any) {
-      console.error('❌ Error calling number with prize validation:', error);
+      console.error('❌ Error calling number with automatic prize validation:', error);
       throw new Error(error.message || 'Failed to call number with prize validation');
     }
   }
 
-  // ✅ NEW: Clear current number (for UI display)
+  // ✅ Clear current number (for UI display)
   async clearCurrentNumber(gameId: string): Promise<void> {
     try {
       const gameRef = ref(database, `games/${gameId}`);
@@ -897,28 +878,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ NEW: Validate current prizes for a game
-  async validateCurrentPrizes(gameId: string): Promise<{
-    winners: { [prizeId: string]: any };
-    statistics: any;
-  }> {
-    try {
-      const gameSnapshot = await get(ref(database, `games/${gameId}`));
-      if (!gameSnapshot.exists()) {
-        throw new Error('Game not found');
-      }
-
-      const gameData = gameSnapshot.val() as GameData;
-      const calledNumbers = gameData.gameState.calledNumbers || [];
-      
-      return this.validateTicketsForPrizes(gameData.tickets || {}, calledNumbers, gameData.prizes);
-    } catch (error: any) {
-      console.error('Error validating current prizes:', error);
-      throw new Error(error.message || 'Failed to validate prizes');
-    }
-  }
-
-  // ✅ NEW: Internal prize validation logic
+  // ✅ Internal prize validation logic (automatic only)
   private async validateTicketsForPrizes(
     tickets: { [key: string]: TambolaTicket },
     calledNumbers: number[],
@@ -967,7 +927,7 @@ class FirebaseService {
     };
   }
 
-  // ✅ NEW: Check if a ticket has won a specific prize
+  // ✅ Check if a ticket has won a specific prize
   private checkTicketForPrize(
     ticket: TambolaTicket,
     calledNumbers: Set<number>,
@@ -1068,7 +1028,7 @@ class FirebaseService {
     return true;
   }
 
-  // ✅ NEW: Reset a specific prize
+  // ✅ Reset a specific prize (only for restarting games)
   async resetPrize(gameId: string, prizeId: string): Promise<void> {
     try {
       const prizeRef = ref(database, `games/${gameId}/prizes/${prizeId}`);
@@ -1086,8 +1046,7 @@ class FirebaseService {
         won: false,
         winners: undefined,
         winningNumber: undefined,
-        wonAt: undefined,
-        manuallyAwarded: undefined
+        wonAt: undefined
       });
 
       await set(prizeRef, resetPrize);
@@ -1104,63 +1063,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ NEW: Manually award a prize to specific winners
-  async awardPrizeManually(
-    gameId: string,
-    prizeId: string,
-    winners: Array<{
-      ticketId: string;
-      playerName: string;
-      playerPhone?: string;
-    }>
-  ): Promise<void> {
-    try {
-      const prizeRef = ref(database, `games/${gameId}/prizes/${prizeId}`);
-      const prizeSnapshot = await get(prizeRef);
-      
-      if (!prizeSnapshot.exists()) {
-        throw new Error('Prize not found');
-      }
-
-      const prizeData = prizeSnapshot.val() as Prize;
-      
-      // Format winners for storage
-      const formattedWinners = winners.map(winner => ({
-        ticketId: winner.ticketId,
-        name: winner.playerName,
-        phone: winner.playerPhone
-      }));
-
-      // Update prize with manual winners
-      const updatedPrize = removeUndefinedValues({
-        ...prizeData,
-        won: true,
-        winners: formattedWinners,
-        wonAt: new Date().toISOString(),
-        manuallyAwarded: true
-      });
-
-      await set(prizeRef, updatedPrize);
-      
-      // Create winner announcement
-      const announcement = this.formatWinnerAnnouncement({
-        prizeName: prizeData.name,
-        winners: formattedWinners
-      });
-
-      // Update last winner announcement
-      await update(ref(database, `games/${gameId}`), {
-        lastWinnerAnnouncement: announcement,
-        lastWinnerAt: new Date().toISOString()
-      });
-      
-    } catch (error: any) {
-      console.error('Error awarding prize manually:', error);
-      throw new Error(error.message || 'Failed to award prize manually');
-    }
-  }
-
-  // ✅ NEW: Format winner announcement
+  // ✅ Format winner announcement (automatic only)
   private formatWinnerAnnouncement(data: {
     prizeName: string;
     winners: Array<{ name: string; ticketId: string; phone?: string }>;
