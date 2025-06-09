@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Enhanced Game Control with Number Grid and Improved Controls
+// src/components/GameHost.tsx - Enhanced Game Control (Automatic Only)
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { NumberGrid } from './NumberGrid';
-import { numberUtils } from '@/utils/numberManagement';
 import { 
   Play, 
   Pause, 
@@ -146,6 +145,46 @@ const AVAILABLE_PRIZES: GamePrize[] = [
   }
 ];
 
+// Traditional Tambola number calls
+const getNumberCall = (number: number): string => {
+  const traditionalCalls: { [key: number]: string } = {
+    1: "Kelly's Eyes",
+    2: "One Little Duck",
+    3: "Cup of Tea",
+    4: "Knock at the Door",
+    5: "Man Alive",
+    6: "Half a Dozen",
+    7: "Lucky Seven",
+    8: "Garden Gate",
+    9: "Doctor's Orders",
+    10: "Uncle Ben",
+    11: "Legs Eleven",
+    12: "One Dozen",
+    13: "Unlucky for Some",
+    14: "Valentine's Day",
+    15: "Young and Keen",
+    16: "Sweet Sixteen",
+    17: "Dancing Queen",
+    18: "Now You Can Vote",
+    19: "Goodbye Teens",
+    20: "One Score",
+    21: "Key of the Door",
+    22: "Two Little Ducks",
+    30: "Dirty Thirty",
+    44: "Droopy Drawers",
+    45: "Halfway There",
+    50: "Half a Century",
+    55: "Snakes Alive",
+    66: "Clickety Click",
+    77: "Sunset Strip",
+    88: "Two Fat Ladies",
+    90: "Top of the Shop"
+  };
+
+  const call = traditionalCalls[number];
+  return call ? `${call} - ${number}` : `Number ${number}`;
+};
+
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [activeTab, setActiveTab] = useState('create-game');
   const [currentGame, setCurrentGame] = useState<GameData | null>(null);
@@ -178,7 +217,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
   const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
   
-  // New game control states
+  // Game control states
   const [callInterval, setCallInterval] = useState<number>(5); // seconds between calls
   const [countdownDuration, setCountdownDuration] = useState<number>(10); // countdown duration
   const [isGamePaused, setIsGamePaused] = useState<boolean>(false);
@@ -587,7 +626,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       toast({
         title: "Game Started",
-        description: "Number calling has begun!",
+        description: "Automatic number calling has begun!",
       });
     } catch (error: any) {
       toast({
@@ -687,7 +726,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       toast({
         title: "Game Resumed",
-        description: "Number calling has resumed!",
+        description: "Automatic number calling has resumed!",
       });
     } catch (error: any) {
       toast({
@@ -1129,56 +1168,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     </div>
   );
 
-  // Manual number management
-  const handleManualNumberCall = async (number: number) => {
-    if (!currentGame) return;
-
-    try {
-      const validation = numberUtils.validateNumberCall(number, currentGame.gameState.calledNumbers || []);
-      
-      if (!validation.valid) {
-        toast({
-          title: "Invalid Number",
-          description: validation.reason,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      const confirmed = window.confirm(`Manually call number ${number}? This will be added to the called numbers list.`);
-      if (!confirmed) return;
-
-      await firebaseService.addCalledNumber(currentGame.gameId, number);
-      
-      // Update current number display briefly
-      await firebaseService.updateGameState(currentGame.gameId, {
-        ...currentGame.gameState,
-        currentNumber: number
-      });
-
-      // Clear current number after a few seconds
-      setTimeout(async () => {
-        if (currentGame) {
-          await firebaseService.updateGameState(currentGame.gameId, {
-            ...currentGame.gameState,
-            currentNumber: null
-          });
-        }
-      }, 3000);
-
-      toast({
-        title: "Number Called",
-        description: `Number ${number} has been manually called`,
-      });
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to call number manually",
-        variant: "destructive",
-      });
-    }
-  };
-
   const renderGameControl = () => {
     if (!currentGame) {
       return (
@@ -1233,7 +1222,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   disabled={currentGame.gameState.isActive}
                   className="form-input-enhanced"
                 />
-                <p className="text-xs text-gray-500 mt-1">Time between number calls (3-15 seconds)</p>
+                <p className="text-xs text-gray-500 mt-1">Time between automatic number calls (3-15 seconds)</p>
               </div>
               <div>
                 <Label htmlFor="countdown-duration">Countdown Duration (seconds)</Label>
@@ -1254,35 +1243,35 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             {/* Control Buttons */}
             <div className="flex flex-wrap gap-3">
               {!currentGame.gameState.isActive && !currentGame.gameState.isCountdown && !currentGame.gameState.gameOver && !isGamePaused && (
-                <Button onClick={startCountdown} className="bg-green-500 hover:bg-green-600">
+                <Button onClick={startCountdown} className="control-btn-start">
                   <Play className="w-4 h-4 mr-2" />
                   Start Game
                 </Button>
               )}
 
               {isGamePaused && !currentGame.gameState.gameOver && (
-                <Button onClick={resumeGame} className="bg-green-500 hover:bg-green-600">
+                <Button onClick={resumeGame} className="control-btn-start">
                   <Play className="w-4 h-4 mr-2" />
                   Resume Game
                 </Button>
               )}
 
               {(currentGame.gameState.isActive || currentGame.gameState.isCountdown) && (
-                <Button onClick={pauseGame} variant="outline">
+                <Button onClick={pauseGame} className="control-btn-pause">
                   <Pause className="w-4 h-4 mr-2" />
                   Pause Game
                 </Button>
               )}
 
               {(currentGame.gameState.isActive || currentGame.gameState.isCountdown || isGamePaused) && (
-                <Button onClick={endGame} variant="destructive">
+                <Button onClick={endGame} className="control-btn-stop">
                   <Square className="w-4 h-4 mr-2" />
                   End Game
                 </Button>
               )}
 
               {(currentGame.gameState.gameOver || (currentGame.gameState.calledNumbers && currentGame.gameState.calledNumbers.length > 0)) && (
-                <Button onClick={resetGame} variant="outline" className="text-orange-600 hover:text-orange-700">
+                <Button onClick={resetGame} className="control-btn-reset">
                   <RotateCcw className="w-4 h-4 mr-2" />
                   Reset Game
                 </Button>
@@ -1306,7 +1295,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <p className="text-3xl mb-4 font-semibold">Current Number</p>
                 <p className="current-number-text">{currentGame.gameState.currentNumber}</p>
                 <p className="text-xl mt-4 font-medium">
-                  {numberUtils.formatNumberCall(currentGame.gameState.currentNumber)}
+                  {getNumberCall(currentGame.gameState.currentNumber)}
                 </p>
               </div>
             )}
@@ -1344,20 +1333,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </CardContent>
         </Card>
 
-        {/* Number Grid */}
+        {/* Number Grid - Display Only */}
         <Card>
           <CardHeader>
             <CardTitle>Numbers Board (1-90)</CardTitle>
             <p className="text-sm text-gray-600">
-              Called numbers are highlighted. Click numbers to manually mark them as called.
+              Called numbers are highlighted. Numbers are called automatically during the game.
             </p>
           </CardHeader>
           <CardContent>
             <NumberGrid
               calledNumbers={currentGame.gameState.calledNumbers || []}
               currentNumber={currentGame.gameState.currentNumber}
-              isHost={true}
-              onNumberClick={handleManualNumberCall}
             />
           </CardContent>
         </Card>
@@ -1385,7 +1372,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                         index === 0 ? 'recent-number-current' : 
                         index < 5 ? 'recent-number-recent' : 'recent-number-older'
                       }`}
-                      title={`${numberUtils.formatNumberCall(num)} - Called ${index === 0 ? 'now' : `${index + 1} number${index > 0 ? 's' : ''} ago`}`}
+                      title={`${getNumberCall(num)} - Called ${index === 0 ? 'now' : `${index + 1} number${index > 0 ? 's' : ''} ago`}`}
                     >
                       {num}
                     </div>
@@ -1412,62 +1399,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             </CardContent>
           </Card>
         )}
-
-        {/* Game Statistics and Pattern Analysis */}
-        {(currentGame.gameState.calledNumbers || []).length > 10 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Game Analytics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Number Distribution */}
-                <div>
-                  <h4 className="font-semibold mb-3 text-gray-800">Number Distribution</h4>
-                  <div className="space-y-2">
-                    {Object.entries(numberUtils.getNumberStatistics(currentGame.gameState.calledNumbers || []).distribution).map(([range, count]) => (
-                      <div key={range} className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">{range}</span>
-                        <div className="flex items-center space-x-2">
-                          <div className="w-20 bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-blue-500 h-2 rounded-full"
-                              style={{ width: `${(count / 10) * 100}%` }}
-                            ></div>
-                          </div>
-                          <span className="text-sm font-medium text-gray-800 w-6">{count}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Next Suggested Numbers */}
-                <div>
-                  <h4 className="font-semibold mb-3 text-gray-800">Suggested Next Numbers</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {numberUtils.getSuggestedNumbers(currentGame.gameState.calledNumbers || [], 8).map(num => (
-                      <button
-                        key={num}
-                        onClick={() => handleManualNumberCall(num)}
-                        className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 
-                                 border-2 border-orange-300 hover:border-orange-400 
-                                 text-orange-800 font-bold text-sm
-                                 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                        title={`Click to call ${numberUtils.formatNumberCall(num)}`}
-                      >
-                        {num}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    Click any suggested number to call it manually
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     );
   };
@@ -1480,7 +1411,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             Host Dashboard
           </h1>
           <p className="text-slate-600">
-            Welcome back, {user.name}! Create and manage your Tambola games.
+            Welcome back, {user.name}! Create and manage your Tambola games with automatic number calling.
           </p>
         </div>
 
