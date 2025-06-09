@@ -99,6 +99,56 @@
   .ticket-cell.booked {
     @apply bg-gradient-to-br from-gray-300 to-gray-400 text-gray-600 border-gray-400;
   }
+
+  /* Ticket Management Grid Styles */
+  .ticket-management-grid {
+    @apply grid gap-2;
+  }
+
+  .ticket-slot {
+    @apply relative w-full h-16 rounded-lg border-2 transition-all duration-200 
+           flex flex-col items-center justify-center text-sm font-medium cursor-pointer
+           hover:scale-105 transform;
+  }
+
+  .ticket-slot.available {
+    @apply bg-white border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-700
+           hover:shadow-md;
+  }
+
+  .ticket-slot.selected {
+    @apply bg-blue-100 border-blue-400 text-blue-800 shadow-md scale-105;
+  }
+
+  .ticket-slot.booked {
+    @apply bg-green-50 border-green-300 hover:border-green-400 text-green-800
+           hover:shadow-md;
+  }
+
+  .ticket-slot.booked:hover {
+    @apply bg-green-100;
+  }
+
+  /* Enhanced animations for ticket interactions */
+  .ticket-slot-bounce {
+    animation: ticket-bounce 0.3s ease-out;
+  }
+
+  @keyframes ticket-bounce {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1.05); }
+  }
+
+  .ticket-selection-pulse {
+    animation: selection-pulse 1s infinite;
+  }
+
+  @keyframes selection-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+  }
   
   .prize-badge {
     @apply inline-flex items-center px-4 py-2 rounded-full text-sm font-medium
@@ -114,5 +164,91 @@
     @apply bg-gradient-to-r from-slate-600 to-slate-700 text-white px-4 py-2 rounded-lg
            font-semibold shadow-lg hover:from-slate-700 hover:to-slate-800
            transition-all duration-200 hover:scale-105;
+  }
+
+  /* Stats cards for ticket management */
+  .stats-card {
+    @apply text-center p-4 rounded-xl border-2 transition-all duration-200 hover:scale-105;
+  }
+
+  .stats-card.total {
+    @apply bg-blue-50 border-blue-200 text-blue-800;
+  }
+
+  .stats-card.booked {
+    @apply bg-green-50 border-green-200 text-green-800;
+  }
+
+  .stats-card.available {
+    @apply bg-gray-50 border-gray-200 text-gray-800;
+  }
+
+  .stats-card.selected {
+    @apply bg-yellow-50 border-yellow-200 text-yellow-800;
+  }
+
+  /* Enhanced form styling */
+  .form-input-enhanced {
+    @apply w-full px-4 py-3 border-2 border-gray-200 rounded-xl
+           focus:border-blue-400 focus:ring-2 focus:ring-blue-100
+           transition-all duration-200;
+  }
+
+  .form-label-enhanced {
+    @apply block text-sm font-semibold text-gray-700 mb-2;
+  }
+
+  /* Action button enhancements */
+  .action-button-primary {
+    @apply bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700
+           text-white font-semibold py-3 px-6 rounded-xl shadow-lg
+           transition-all duration-200 transform hover:scale-105 active:scale-95;
+  }
+
+  .action-button-success {
+    @apply bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700
+           text-white font-semibold py-3 px-6 rounded-xl shadow-lg
+           transition-all duration-200 transform hover:scale-105 active:scale-95;
+  }
+
+  .action-button-danger {
+    @apply bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700
+           text-white font-semibold py-3 px-6 rounded-xl shadow-lg
+           transition-all duration-200 transform hover:scale-105 active:scale-95;
+  }
+
+  /* Game status indicators */
+  .game-status-active {
+    @apply bg-green-100 text-green-800 border border-green-300 px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .game-status-waiting {
+    @apply bg-gray-100 text-gray-800 border border-gray-300 px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .game-status-countdown {
+    @apply bg-yellow-100 text-yellow-800 border border-yellow-300 px-3 py-1 rounded-full text-sm font-medium animate-pulse;
+  }
+
+  /* Loading states */
+  .loading-spinner {
+    @apply animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600;
+  }
+
+  /* Responsive ticket grid improvements */
+  @screen sm {
+    .ticket-management-grid {
+      @apply gap-3;
+    }
+    
+    .ticket-slot {
+      @apply h-20 text-base;
+    }
+  }
+
+  @screen lg {
+    .ticket-slot {
+      @apply h-24 text-lg;
+    }
   }
 }
