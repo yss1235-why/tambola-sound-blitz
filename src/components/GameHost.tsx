@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { NumberGrid } from './NumberGrid';
+import { numberUtils } from '@/utils/numberManagement';
 import { 
   Play, 
   Pause, 
@@ -1128,6 +1129,56 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     </div>
   );
 
+  // Manual number management
+  const handleManualNumberCall = async (number: number) => {
+    if (!currentGame) return;
+
+    try {
+      const validation = numberUtils.validateNumberCall(number, currentGame.gameState.calledNumbers || []);
+      
+      if (!validation.valid) {
+        toast({
+          title: "Invalid Number",
+          description: validation.reason,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const confirmed = window.confirm(`Manually call number ${number}? This will be added to the called numbers list.`);
+      if (!confirmed) return;
+
+      await firebaseService.addCalledNumber(currentGame.gameId, number);
+      
+      // Update current number display briefly
+      await firebaseService.updateGameState(currentGame.gameId, {
+        ...currentGame.gameState,
+        currentNumber: number
+      });
+
+      // Clear current number after a few seconds
+      setTimeout(async () => {
+        if (currentGame) {
+          await firebaseService.updateGameState(currentGame.gameId, {
+            ...currentGame.gameState,
+            currentNumber: null
+          });
+        }
+      }, 3000);
+
+      toast({
+        title: "Number Called",
+        description: `Number ${number} has been manually called`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to call number manually",
+        variant: "destructive",
+      });
+    }
+  };
+
   const renderGameControl = () => {
     if (!currentGame) {
       return (
@@ -1150,14 +1201,20 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return (
       <div className="space-y-6">
         {/* Game Control Header */}
-        <Card>
+        <Card className="game-control-panel">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               Game Control: {currentGame.name}
-              <Badge variant={currentGame.gameState.isActive ? "default" : "secondary"}>
-                {currentGame.gameState.isActive ? "Active" : 
-                 currentGame.gameState.isCountdown ? "Starting" : 
-                 isGamePaused ? "Paused" : "Waiting"}
+              <Badge 
+                className={`game-status-indicator ${
+                  currentGame.gameState.isActive ? 'game-status-active' : 
+                  currentGame.gameState.isCountdown ? 'game-status-countdown' : 
+                  isGamePaused ? 'game-status-paused' : 'game-status-waiting'
+                }`}
+              >
+                {currentGame.gameState.isActive ? "🟢 Live Game" : 
+                 currentGame.gameState.isCountdown ? "🟡 Starting..." : 
+                 isGamePaused ? "🟣 Paused" : "⚪ Waiting"}
               </Badge>
             </CardTitle>
           </CardHeader>
@@ -1174,7 +1231,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   value={callInterval}
                   onChange={(e) => setCallInterval(parseInt(e.target.value) || 5)}
                   disabled={currentGame.gameState.isActive}
-                  className="mt-1"
+                  className="form-input-enhanced"
                 />
                 <p className="text-xs text-gray-500 mt-1">Time between number calls (3-15 seconds)</p>
               </div>
@@ -1188,7 +1245,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   value={countdownDuration}
                   onChange={(e) => setCountdownDuration(parseInt(e.target.value) || 10)}
                   disabled={currentGame.gameState.isActive || currentGame.gameState.isCountdown}
-                  className="mt-1"
+                  className="form-input-enhanced"
                 />
                 <p className="text-xs text-gray-500 mt-1">Countdown time before game starts (5-30 seconds)</p>
               </div>
@@ -1234,51 +1291,54 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
             {/* Countdown Display */}
             {currentGame.gameState.isCountdown && (
-              <div className="text-center p-6 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg">
-                <Clock className="w-12 h-12 mx-auto mb-4 animate-pulse" />
-                <p className="text-6xl font-bold animate-bounce mb-2">
+              <div className="countdown-display">
+                <Clock className="w-16 h-16 mx-auto mb-6 animate-pulse" />
+                <p className="countdown-number mb-4">
                   {currentCountdown || currentGame.gameState.countdownTime}
                 </p>
-                <p className="text-xl">Game starting soon...</p>
+                <p className="text-2xl font-semibold">Game starting soon...</p>
               </div>
             )}
 
             {/* Current Number Display */}
             {currentGame.gameState.currentNumber && (
-              <div className="text-center p-6 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg">
-                <p className="text-2xl mb-4">Current Number</p>
-                <p className="text-8xl font-bold animate-pulse">{currentGame.gameState.currentNumber}</p>
+              <div className="current-number-display">
+                <p className="text-3xl mb-4 font-semibold">Current Number</p>
+                <p className="current-number-text">{currentGame.gameState.currentNumber}</p>
+                <p className="text-xl mt-4 font-medium">
+                  {numberUtils.formatNumberCall(currentGame.gameState.currentNumber)}
+                </p>
               </div>
             )}
 
             {/* Game Statistics */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">
+              <div className="stat-card stat-card-blue">
+                <div className="text-3xl font-bold">
                   {(currentGame.gameState.calledNumbers || []).length}
                 </div>
-                <div className="text-sm text-blue-700">Numbers Called</div>
+                <div className="text-sm font-medium">Numbers Called</div>
               </div>
 
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">
+              <div className="stat-card stat-card-green">
+                <div className="text-3xl font-bold">
                   {getBookedTicketsCount()}
                 </div>
-                <div className="text-sm text-green-700">Tickets Booked</div>
+                <div className="text-sm font-medium">Tickets Booked</div>
               </div>
 
-              <div className="text-center p-3 bg-purple-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">
+              <div className="stat-card stat-card-purple">
+                <div className="text-3xl font-bold">
                   {availableNumbers.length}
                 </div>
-                <div className="text-sm text-purple-700">Numbers Left</div>
+                <div className="text-sm font-medium">Numbers Left</div>
               </div>
 
-              <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                <div className="text-2xl font-bold text-yellow-600">
+              <div className="stat-card stat-card-yellow">
+                <div className="text-3xl font-bold">
                   {Object.values(currentGame.prizes || {}).filter(p => p.won).length}
                 </div>
-                <div className="text-sm text-yellow-700">Prizes Won</div>
+                <div className="text-sm font-medium">Prizes Won</div>
               </div>
             </div>
           </CardContent>
@@ -1289,13 +1349,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           <CardHeader>
             <CardTitle>Numbers Board (1-90)</CardTitle>
             <p className="text-sm text-gray-600">
-              Called numbers are highlighted. Click numbers to manually mark (if needed).
+              Called numbers are highlighted. Click numbers to manually mark them as called.
             </p>
           </CardHeader>
           <CardContent>
             <NumberGrid
               calledNumbers={currentGame.gameState.calledNumbers || []}
               currentNumber={currentGame.gameState.currentNumber}
+              isHost={true}
+              onNumberClick={handleManualNumberCall}
             />
           </CardContent>
         </Card>
@@ -1304,7 +1366,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         {(currentGame.gameState.calledNumbers || []).length > 0 && (
           <Card>
             <CardHeader>
-              <CardTitle>Recent Numbers Called</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                Recent Numbers Called
+                <Badge variant="outline" className="text-xs">
+                  {(currentGame.gameState.calledNumbers || []).length} / 90
+                </Badge>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-3">
@@ -1314,17 +1381,89 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   .map((num, index) => (
                     <div
                       key={`${num}-${index}`}
-                      className={`w-16 h-16 rounded-xl flex items-center justify-center font-bold text-white text-lg shadow-lg
-                        ${index === 0 
-                          ? 'bg-gradient-to-br from-red-400 to-red-600 ring-4 ring-red-200 animate-pulse transform scale-110' 
-                          : index < 5
-                            ? 'bg-gradient-to-br from-emerald-400 to-emerald-600'
-                            : 'bg-gradient-to-br from-blue-400 to-blue-600'
-                        }`}
+                      className={`recent-number ${
+                        index === 0 ? 'recent-number-current' : 
+                        index < 5 ? 'recent-number-recent' : 'recent-number-older'
+                      }`}
+                      title={`${numberUtils.formatNumberCall(num)} - Called ${index === 0 ? 'now' : `${index + 1} number${index > 0 ? 's' : ''} ago`}`}
                     >
                       {num}
                     </div>
                   ))}
+              </div>
+              
+              {/* Show game progress */}
+              <div className="mt-4 p-3 bg-slate-50 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-slate-700">Game Progress</span>
+                  <span className="text-sm font-bold text-slate-800">
+                    {Math.round(((currentGame.gameState.calledNumbers || []).length / 90) * 100)}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2">
+                  <div 
+                    className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: `${((currentGame.gameState.calledNumbers || []).length / 90) * 100}%` 
+                    }}
+                  ></div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Game Statistics and Pattern Analysis */}
+        {(currentGame.gameState.calledNumbers || []).length > 10 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Game Analytics</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Number Distribution */}
+                <div>
+                  <h4 className="font-semibold mb-3 text-gray-800">Number Distribution</h4>
+                  <div className="space-y-2">
+                    {Object.entries(numberUtils.getNumberStatistics(currentGame.gameState.calledNumbers || []).distribution).map(([range, count]) => (
+                      <div key={range} className="flex justify-between items-center">
+                        <span className="text-sm text-gray-600">{range}</span>
+                        <div className="flex items-center space-x-2">
+                          <div className="w-20 bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-500 h-2 rounded-full"
+                              style={{ width: `${(count / 10) * 100}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-medium text-gray-800 w-6">{count}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Next Suggested Numbers */}
+                <div>
+                  <h4 className="font-semibold mb-3 text-gray-800">Suggested Next Numbers</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {numberUtils.getSuggestedNumbers(currentGame.gameState.calledNumbers || [], 8).map(num => (
+                      <button
+                        key={num}
+                        onClick={() => handleManualNumberCall(num)}
+                        className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-100 to-orange-200 
+                                 border-2 border-orange-300 hover:border-orange-400 
+                                 text-orange-800 font-bold text-sm
+                                 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                        title={`Click to call ${numberUtils.formatNumberCall(num)}`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Click any suggested number to call it manually
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
