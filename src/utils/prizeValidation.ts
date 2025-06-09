@@ -1,4 +1,4 @@
-// src/utils/prizeValidation.ts - Prize Validation Utilities
+// src/utils/prizeValidation.ts - Automatic Prize Validation Utilities Only
 import { TambolaTicket, Prize } from '@/services/firebase';
 
 export interface PrizeValidationResult {
@@ -39,7 +39,7 @@ export interface TicketProgress {
 }
 
 /**
- * Validate all tickets for prize completion based on called numbers
+ * Validate all tickets for prize completion based on called numbers (for automatic detection)
  */
 export function validateAllTicketsForPrizes(
   tickets: { [key: string]: TambolaTicket },
@@ -80,7 +80,7 @@ export function validateAllTicketsForPrizes(
 }
 
 /**
- * Check if a ticket has won a specific prize
+ * Check if a ticket has won a specific prize (automatic validation)
  */
 function checkTicketForPrize(
   ticket: TambolaTicket,
@@ -204,7 +204,7 @@ function checkFullHouse(ticket: TambolaTicket, calledNumbers: Set<number>): bool
 }
 
 /**
- * Get comprehensive prize statistics
+ * Get comprehensive prize statistics for display
  */
 export function getPrizeStatistics(
   tickets: { [key: string]: TambolaTicket },
@@ -234,7 +234,7 @@ export function getPrizeStatistics(
 }
 
 /**
- * Calculate progress for a specific prize
+ * Calculate progress for a specific prize (for monitoring)
  */
 function calculatePrizeProgress(
   tickets: TambolaTicket[],
@@ -355,7 +355,7 @@ function calculateFullHouseProgress(ticket: TambolaTicket, calledNumbers: Set<nu
 }
 
 /**
- * Get detailed progress for all tickets
+ * Get detailed progress for all tickets (for monitoring)
  */
 export function getTicketProgress(
   tickets: { [key: string]: TambolaTicket },
@@ -431,7 +431,7 @@ export function getTicketProgress(
 }
 
 /**
- * Check if any new winners should be announced for recent number calls
+ * Check if any new winners should be announced for recent number calls (automatic detection)
  */
 export function checkForNewWinners(
   tickets: { [key: string]: TambolaTicket },
@@ -450,7 +450,7 @@ export function checkForNewWinners(
 }
 
 /**
- * Format prize announcement for winners
+ * Format prize announcement for winners (automatic announcements)
  */
 export function formatPrizeAnnouncement(result: PrizeValidationResult): string {
   if (result.winners.length === 1) {
@@ -464,34 +464,73 @@ export function formatPrizeAnnouncement(result: PrizeValidationResult): string {
 }
 
 /**
- * Validate if a manual prize award is valid
+ * Get automatic validation summary for monitoring
  */
-export function validateManualAward(
-  ticketId: string,
+export function getAutomaticValidationSummary(
   tickets: { [key: string]: TambolaTicket },
   calledNumbers: number[],
-  prize: Prize
-): { valid: boolean; reason?: string } {
-  const ticket = tickets[ticketId];
-  
-  if (!ticket) {
-    return { valid: false, reason: 'Ticket not found' };
+  prizes: { [key: string]: Prize }
+): {
+  isActive: boolean;
+  totalPlayers: number;
+  totalPrizes: number;
+  wonPrizes: number;
+  totalWinners: number;
+  avgProgress: number;
+  nextLikelyWin: string | null;
+} {
+  const bookedTickets = Object.values(tickets).filter(ticket => ticket.isBooked);
+  const totalPrizes = Object.keys(prizes).length;
+  const wonPrizes = Object.values(prizes).filter(p => p.won).length;
+  const totalWinners = Object.values(prizes).reduce((sum, prize) => 
+    sum + (prize.winners?.length || 0), 0
+  );
+
+  // Calculate overall progress
+  const allProgress = bookedTickets.map(ticket => {
+    let totalNumbers = 0;
+    let markedNumbers = 0;
+    const calledSet = new Set(calledNumbers);
+    
+    for (const row of ticket.rows) {
+      for (const number of row) {
+        if (number !== 0) {
+          totalNumbers++;
+          if (calledSet.has(number)) {
+            markedNumbers++;
+          }
+        }
+      }
+    }
+    
+    return totalNumbers > 0 ? (markedNumbers / totalNumbers) * 100 : 0;
+  });
+
+  const avgProgress = allProgress.length > 0 
+    ? Math.round(allProgress.reduce((sum, p) => sum + p, 0) / allProgress.length)
+    : 0;
+
+  // Find next likely win
+  let nextLikelyWin: string | null = null;
+  let bestProgress = 0;
+
+  for (const [prizeId, prize] of Object.entries(prizes)) {
+    if (prize.won) continue;
+    
+    const prizeProgress = calculatePrizeProgress(bookedTickets, calledNumbers, prize);
+    if (prizeProgress.bestProgress > bestProgress) {
+      bestProgress = prizeProgress.bestProgress;
+      nextLikelyWin = prize.name;
+    }
   }
-  
-  if (!ticket.isBooked) {
-    return { valid: false, reason: 'Ticket is not booked' };
-  }
-  
-  // Check if ticket actually qualifies for the prize
-  const calledSet = new Set(calledNumbers);
-  const qualifies = checkTicketForPrize(ticket, calledNumbers, prize);
-  
-  if (!qualifies) {
-    return { 
-      valid: false, 
-      reason: `Ticket ${ticketId} does not meet the requirements for ${prize.name}` 
-    };
-  }
-  
-  return { valid: true };
+
+  return {
+    isActive: calledNumbers.length > 0,
+    totalPlayers: bookedTickets.length,
+    totalPrizes,
+    wonPrizes,
+    totalWinners,
+    avgProgress,
+    nextLikelyWin: bestProgress >= 80 ? nextLikelyWin : null
+  };
 }
