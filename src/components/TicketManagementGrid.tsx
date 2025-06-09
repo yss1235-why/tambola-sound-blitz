@@ -1,4 +1,4 @@
-// src/components/TicketManagementGrid.tsx - Ticket Management for Hosts
+// src/components/TicketManagementGrid.tsx - Simplified Ticket Management for Hosts
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,9 +14,7 @@ import {
   Edit, 
   Trash2, 
   UserPlus,
-  CheckSquare,
-  Square,
-  User
+  CheckSquare
 } from 'lucide-react';
 import { GameData, TambolaTicket, firebaseService } from '@/services/firebase';
 
@@ -259,51 +257,21 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   };
 
   const getTicketClassName = (ticket: TicketInfo) => {
-    const baseClass = "relative w-full h-16 rounded-lg border-2 transition-all duration-200 flex flex-col items-center justify-center text-sm font-medium cursor-pointer";
+    const baseClass = "relative w-full h-16 rounded-lg border-2 transition-all duration-200 flex items-center justify-center text-lg font-bold cursor-pointer";
     
     if (ticket.isBooked) {
-      return `${baseClass} bg-green-50 border-green-300 hover:border-green-400 text-green-800`;
+      return `${baseClass} bg-green-500 border-green-600 text-white hover:bg-green-600`;
     } else if (selectedTickets.includes(ticket.ticketId)) {
-      return `${baseClass} bg-blue-100 border-blue-400 text-blue-800 shadow-md`;
+      return `${baseClass} bg-blue-500 border-blue-600 text-white shadow-lg`;
     } else {
-      return `${baseClass} bg-white border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-700`;
+      return `${baseClass} bg-gray-100 border-gray-300 hover:border-blue-400 hover:bg-blue-100 text-gray-800`;
     }
   };
 
   const renderTicketContent = (ticket: TicketInfo) => {
-    if (ticket.isBooked) {
-      return (
-        <>
-          <div className="flex items-center space-x-1">
-            <User className="w-3 h-3" />
-            <span className="font-bold">#{ticket.ticketId}</span>
-          </div>
-          <div className="text-xs text-center truncate w-full px-1">
-            {ticket.playerName}
-          </div>
-          {ticket.playerPhone && (
-            <div className="text-xs text-green-600 flex items-center">
-              <Phone className="w-2 h-2 mr-1" />
-              <span className="truncate">{ticket.playerPhone}</span>
-            </div>
-          )}
-        </>
-      );
-    } else {
-      return (
-        <>
-          <div className="flex items-center space-x-1">
-            {selectedTickets.includes(ticket.ticketId) ? (
-              <CheckSquare className="w-4 h-4 text-blue-600" />
-            ) : (
-              <Square className="w-4 h-4 text-gray-400" />
-            )}
-            <span className="font-bold text-lg">#{ticket.ticketId}</span>
-          </div>
-          <span className="text-xs text-gray-500">Available</span>
-        </>
-      );
-    }
+    return (
+      <span className="text-2xl font-bold">#{ticket.ticketId}</span>
+    );
   };
 
   // Create rows of 10 tickets each
@@ -381,15 +349,15 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
           {/* Legend */}
           <div className="flex flex-wrap gap-4 mb-6 text-sm">
             <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-white border-2 border-gray-300 rounded"></div>
+              <div className="w-4 h-4 bg-gray-100 border-2 border-gray-300 rounded"></div>
               <span>Available</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-blue-100 border-2 border-blue-400 rounded"></div>
+              <div className="w-4 h-4 bg-blue-500 border-2 border-blue-600 rounded"></div>
               <span>Selected</span>
             </div>
             <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-green-50 border-2 border-green-300 rounded"></div>
+              <div className="w-4 h-4 bg-green-500 border-2 border-green-600 rounded"></div>
               <span>Booked</span>
             </div>
           </div>
@@ -447,7 +415,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
               {ticketInfo.filter(t => t.isBooked).map((ticket) => (
                 <Card key={ticket.ticketId} className="border-green-200">
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
+                    <div className="flex items-center justify-between">
                       <div className="flex-1">
                         <div className="flex items-center mb-2">
                           <Ticket className="w-4 h-4 mr-2 text-green-600" />
@@ -457,14 +425,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                           <strong>Player:</strong> {ticket.playerName}
                         </p>
                         {ticket.playerPhone && (
-                          <p className="text-sm text-gray-600 flex items-center mb-2">
+                          <p className="text-sm text-gray-600 flex items-center">
                             <Phone className="w-3 h-3 mr-1" />
                             {ticket.playerPhone}
-                          </p>
-                        )}
-                        {ticket.bookedAt && (
-                          <p className="text-xs text-gray-500">
-                            Booked: {new Date(ticket.bookedAt).toLocaleString()}
                           </p>
                         )}
                       </div>
