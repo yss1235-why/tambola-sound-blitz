@@ -257,7 +257,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   };
 
   const getTicketClassName = (ticket: TicketInfo) => {
-    const baseClass = "relative w-full h-16 rounded-lg border-2 transition-all duration-200 flex items-center justify-center text-lg font-bold cursor-pointer";
+    const baseClass = "relative w-full aspect-square rounded-lg border-2 transition-all duration-200 flex items-center justify-center text-lg font-bold cursor-pointer";
     
     if (ticket.isBooked) {
       return `${baseClass} bg-green-500 border-green-600 text-white hover:bg-green-600`;
@@ -270,7 +270,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
   const renderTicketContent = (ticket: TicketInfo) => {
     return (
-      <span className="text-2xl font-bold">#{ticket.ticketId}</span>
+      <span className="text-2xl font-bold">{ticket.ticketId}</span>
     );
   };
 
@@ -385,7 +385,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 {/* Fill empty slots in the last row */}
                 {row.length < 10 && 
                   Array.from({ length: 10 - row.length }).map((_, index) => (
-                    <div key={`empty-${rowIndex}-${index}`} className="w-full h-16"></div>
+                    <div key={`empty-${rowIndex}-${index}`} className="w-full aspect-square"></div>
                   ))
                 }
               </div>
@@ -419,7 +419,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                       <div className="flex-1">
                         <div className="flex items-center mb-2">
                           <Ticket className="w-4 h-4 mr-2 text-green-600" />
-                          <span className="font-bold text-green-800">Ticket #{ticket.ticketId}</span>
+                          <span className="font-bold text-green-800">Ticket {ticket.ticketId}</span>
                         </div>
                         <p className="text-sm text-gray-700 mb-1">
                           <strong>Player:</strong> {ticket.playerName}
@@ -516,7 +516,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Ticket #{editingTicket?.ticketId}</DialogTitle>
+            <DialogTitle>Edit Ticket {editingTicket?.ticketId}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
