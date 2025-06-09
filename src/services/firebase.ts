@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Fixed version with atomic number calling
+// src/services/firebase.ts - Complete Firebase service with prize validation
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -101,10 +101,14 @@ export interface Prize {
   name: string;
   pattern: string;
   won: boolean;
-  winner?: {
-    name: string;
+  winners?: Array<{
     ticketId: string;
-  };
+    name: string;
+    phone?: string;
+  }>;
+  winningNumber?: number;
+  wonAt?: string;
+  manuallyAwarded?: boolean;
 }
 
 export interface TambolaTicket {
@@ -129,6 +133,8 @@ export interface GameData {
   tickets?: { [key: string]: TambolaTicket };
   createdAt: string;
   ticketSetId?: string;
+  lastWinnerAnnouncement?: string;
+  lastWinnerAt?: string;
 }
 
 export interface TicketSetData {
@@ -701,8 +707,8 @@ class FirebaseService {
               newPrize.won = existingPrize.won;
               
               // Only add winner property if it exists and prize is won
-              if (existingPrize.won && existingPrize.winner) {
-                newPrize.winner = existingPrize.winner;
+              if (existingPrize.won && existingPrize.winners) {
+                newPrize.winners = existingPrize.winners;
               }
             }
 
@@ -756,10 +762,10 @@ class FirebaseService {
     }
   }
 
-  // ✅ FIXED: This method is now deprecated in favor of callNumberAtomic
+  // ✅ DEPRECATED: This method is now deprecated in favor of callNumberWithPrizeValidation
   async addCalledNumber(gameId: string, number: number): Promise<void> {
     try {
-      console.log('⚠️ addCalledNumber is deprecated, use callNumberAtomic instead');
+      console.log('⚠️ addCalledNumber is deprecated, use callNumberWithPrizeValidation instead');
       const gameRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
       const snapshot = await get(gameRef);
       const calledNumbers = snapshot.exists() ? snapshot.val() : [];
@@ -774,10 +780,14 @@ class FirebaseService {
     }
   }
 
-  // ✅ NEW: Atomic number calling that avoids race conditions
-  async callNumberAtomic(gameId: string, number: number): Promise<void> {
+  // ✅ NEW: Call a number with automatic prize validation
+  async callNumberWithPrizeValidation(gameId: string, number: number): Promise<{
+    success: boolean;
+    winners?: { [prizeId: string]: any };
+    announcements?: string[];
+  }> {
     try {
-      console.log('🔧 Calling number atomically:', { gameId, number });
+      console.log('🎯 Calling number with prize validation:', { gameId, number });
       
       // Get current game state
       const gameRef = ref(database, `games/${gameId}`);
@@ -793,25 +803,73 @@ class FirebaseService {
       // Check if number is already called
       if (currentCalledNumbers.includes(number)) {
         console.log('⚠️ Number already called:', number);
-        return;
+        return { success: false };
       }
 
       // Create new game state with the called number
       const updatedCalledNumbers = [...currentCalledNumbers, number];
+      
+      // First, update the game state with the new number
       const updatedGameState: GameState = {
         ...gameData.gameState,
         calledNumbers: updatedCalledNumbers,
         currentNumber: number
       };
 
-      // Update everything atomically
-      const cleanedGameState = removeUndefinedValues({ gameState: updatedGameState });
-      await update(gameRef, cleanedGameState);
+      await update(gameRef, { gameState: removeUndefinedValues(updatedGameState) });
+
+      // Now validate prizes with the updated called numbers
+      const validationResult = await this.validateTicketsForPrizes(gameData.tickets || {}, updatedCalledNumbers, gameData.prizes);
       
-      console.log('✅ Number called atomically:', number);
+      // Update prizes if winners found
+      if (Object.keys(validationResult.winners).length > 0) {
+        const prizeUpdates: any = {};
+        const announcements: string[] = [];
+        
+        for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
+          const prizeData = prizeWinners as any;
+          
+          // Update prize with winners
+          prizeUpdates[`prizes/${prizeId}`] = removeUndefinedValues({
+            ...gameData.prizes[prizeId],
+            won: true,
+            winners: prizeData.winners,
+            winningNumber: number,
+            wonAt: new Date().toISOString()
+          });
+          
+          // Create announcement
+          const announcement = this.formatWinnerAnnouncement(prizeData);
+          announcements.push(announcement);
+        }
+        
+        // Update all prize data and last winner announcement
+        if (announcements.length > 0) {
+          prizeUpdates.lastWinnerAnnouncement = announcements.join(' | ');
+          prizeUpdates.lastWinnerAt = new Date().toISOString();
+        }
+        
+        await update(gameRef, prizeUpdates);
+        
+        console.log('✅ Number called with prize validation complete:', {
+          number,
+          winnersFound: Object.keys(validationResult.winners).length,
+          announcements
+        });
+        
+        return {
+          success: true,
+          winners: validationResult.winners,
+          announcements
+        };
+      }
+      
+      console.log('✅ Number called, no winners detected:', number);
+      return { success: true };
+      
     } catch (error: any) {
-      console.error('❌ Error calling number atomically:', error);
-      throw new Error(error.message || 'Failed to call number');
+      console.error('❌ Error calling number with prize validation:', error);
+      throw new Error(error.message || 'Failed to call number with prize validation');
     }
   }
 
@@ -837,6 +895,284 @@ class FirebaseService {
       console.error('Error clearing current number:', error);
       throw new Error(error.message || 'Failed to clear current number');
     }
+  }
+
+  // ✅ NEW: Validate current prizes for a game
+  async validateCurrentPrizes(gameId: string): Promise<{
+    winners: { [prizeId: string]: any };
+    statistics: any;
+  }> {
+    try {
+      const gameSnapshot = await get(ref(database, `games/${gameId}`));
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+
+      const gameData = gameSnapshot.val() as GameData;
+      const calledNumbers = gameData.gameState.calledNumbers || [];
+      
+      return this.validateTicketsForPrizes(gameData.tickets || {}, calledNumbers, gameData.prizes);
+    } catch (error: any) {
+      console.error('Error validating current prizes:', error);
+      throw new Error(error.message || 'Failed to validate prizes');
+    }
+  }
+
+  // ✅ NEW: Internal prize validation logic
+  private async validateTicketsForPrizes(
+    tickets: { [key: string]: TambolaTicket },
+    calledNumbers: number[],
+    prizes: { [key: string]: Prize }
+  ): Promise<{
+    winners: { [prizeId: string]: any };
+    statistics: any;
+  }> {
+    const bookedTickets = Object.values(tickets).filter(ticket => ticket.isBooked);
+    const calledSet = new Set(calledNumbers);
+    const winners: { [prizeId: string]: any } = {};
+    
+    for (const [prizeId, prize] of Object.entries(prizes)) {
+      if (prize.won) continue; // Skip already won prizes
+
+      const prizeWinners: any[] = [];
+
+      for (const ticket of bookedTickets) {
+        const isWinner = this.checkTicketForPrize(ticket, calledSet, prize);
+        if (isWinner) {
+          prizeWinners.push({
+            ticketId: ticket.ticketId,
+            name: ticket.playerName || 'Unknown Player',
+            phone: ticket.playerPhone
+          });
+        }
+      }
+
+      if (prizeWinners.length > 0) {
+        winners[prizeId] = {
+          prizeName: prize.name,
+          prizePattern: prize.pattern,
+          winners: prizeWinners,
+          winningNumber: calledNumbers[calledNumbers.length - 1]
+        };
+      }
+    }
+
+    return {
+      winners,
+      statistics: {
+        totalTickets: Object.keys(tickets).length,
+        bookedTickets: bookedTickets.length,
+        calledNumbers: calledNumbers.length
+      }
+    };
+  }
+
+  // ✅ NEW: Check if a ticket has won a specific prize
+  private checkTicketForPrize(
+    ticket: TambolaTicket,
+    calledNumbers: Set<number>,
+    prize: Prize
+  ): boolean {
+    switch (prize.id) {
+      case 'quickFive':
+        return this.checkQuickFive(ticket, calledNumbers);
+      case 'topLine':
+        return this.checkTopLine(ticket, calledNumbers);
+      case 'middleLine':
+        return this.checkMiddleLine(ticket, calledNumbers);
+      case 'bottomLine':
+        return this.checkBottomLine(ticket, calledNumbers);
+      case 'fourCorners':
+        return this.checkFourCorners(ticket, calledNumbers);
+      case 'fullHouse':
+        return this.checkFullHouse(ticket, calledNumbers);
+      default:
+        return false;
+    }
+  }
+
+  private checkQuickFive(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
+    let markedCount = 0;
+    for (const row of ticket.rows) {
+      for (const number of row) {
+        if (number !== 0 && calledNumbers.has(number)) {
+          markedCount++;
+          if (markedCount >= 5) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  private checkTopLine(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
+    if (ticket.rows.length === 0) return false;
+    const topRow = ticket.rows[0];
+    
+    for (const number of topRow) {
+      if (number !== 0 && !calledNumbers.has(number)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private checkMiddleLine(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
+    if (ticket.rows.length < 2) return false;
+    const middleRow = ticket.rows[1];
+    
+    for (const number of middleRow) {
+      if (number !== 0 && !calledNumbers.has(number)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private checkBottomLine(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
+    if (ticket.rows.length < 3) return false;
+    const bottomRow = ticket.rows[2];
+    
+    for (const number of bottomRow) {
+      if (number !== 0 && !calledNumbers.has(number)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private checkFourCorners(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
+    if (ticket.rows.length < 3) return false;
+
+    const topRow = ticket.rows[0];
+    const bottomRow = ticket.rows[2];
+    
+    // Find first and last non-zero numbers in top and bottom rows
+    const topLeft = topRow.find(num => num !== 0);
+    const topRight = topRow.slice().reverse().find(num => num !== 0);
+    const bottomLeft = bottomRow.find(num => num !== 0);
+    const bottomRight = bottomRow.slice().reverse().find(num => num !== 0);
+
+    const corners = [topLeft, topRight, bottomLeft, bottomRight].filter(num => num !== undefined);
+    
+    return corners.length === 4 && corners.every(corner => calledNumbers.has(corner!));
+  }
+
+  private checkFullHouse(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
+    for (const row of ticket.rows) {
+      for (const number of row) {
+        if (number !== 0 && !calledNumbers.has(number)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  // ✅ NEW: Reset a specific prize
+  async resetPrize(gameId: string, prizeId: string): Promise<void> {
+    try {
+      const prizeRef = ref(database, `games/${gameId}/prizes/${prizeId}`);
+      const prizeSnapshot = await get(prizeRef);
+      
+      if (!prizeSnapshot.exists()) {
+        throw new Error('Prize not found');
+      }
+
+      const prizeData = prizeSnapshot.val() as Prize;
+      
+      // Reset prize to initial state
+      const resetPrize = removeUndefinedValues({
+        ...prizeData,
+        won: false,
+        winners: undefined,
+        winningNumber: undefined,
+        wonAt: undefined,
+        manuallyAwarded: undefined
+      });
+
+      await set(prizeRef, resetPrize);
+      
+      // Also clear any related winner announcements
+      await update(ref(database, `games/${gameId}`), {
+        lastWinnerAnnouncement: null,
+        lastWinnerAt: null
+      });
+      
+    } catch (error: any) {
+      console.error('Error resetting prize:', error);
+      throw new Error(error.message || 'Failed to reset prize');
+    }
+  }
+
+  // ✅ NEW: Manually award a prize to specific winners
+  async awardPrizeManually(
+    gameId: string,
+    prizeId: string,
+    winners: Array<{
+      ticketId: string;
+      playerName: string;
+      playerPhone?: string;
+    }>
+  ): Promise<void> {
+    try {
+      const prizeRef = ref(database, `games/${gameId}/prizes/${prizeId}`);
+      const prizeSnapshot = await get(prizeRef);
+      
+      if (!prizeSnapshot.exists()) {
+        throw new Error('Prize not found');
+      }
+
+      const prizeData = prizeSnapshot.val() as Prize;
+      
+      // Format winners for storage
+      const formattedWinners = winners.map(winner => ({
+        ticketId: winner.ticketId,
+        name: winner.playerName,
+        phone: winner.playerPhone
+      }));
+
+      // Update prize with manual winners
+      const updatedPrize = removeUndefinedValues({
+        ...prizeData,
+        won: true,
+        winners: formattedWinners,
+        wonAt: new Date().toISOString(),
+        manuallyAwarded: true
+      });
+
+      await set(prizeRef, updatedPrize);
+      
+      // Create winner announcement
+      const announcement = this.formatWinnerAnnouncement({
+        prizeName: prizeData.name,
+        winners: formattedWinners
+      });
+
+      // Update last winner announcement
+      await update(ref(database, `games/${gameId}`), {
+        lastWinnerAnnouncement: announcement,
+        lastWinnerAt: new Date().toISOString()
+      });
+      
+    } catch (error: any) {
+      console.error('Error awarding prize manually:', error);
+      throw new Error(error.message || 'Failed to award prize manually');
+    }
+  }
+
+  // ✅ NEW: Format winner announcement
+  private formatWinnerAnnouncement(data: {
+    prizeName: string;
+    winners: Array<{ name: string; ticketId: string; phone?: string }>;
+  }): string {
+    if (data.winners.length === 1) {
+      const winner = data.winners[0];
+      return `🎉 ${data.prizeName} won by ${winner.name} (Ticket ${winner.ticketId})!`;
+    } else if (data.winners.length > 1) {
+      const winnerNames = data.winners.map(w => `${w.name} (T${w.ticketId})`).join(', ');
+      return `🎉 ${data.prizeName} won by ${data.winners.length} players: ${winnerNames}!`;
+    }
+    return `🎉 ${data.prizeName} has been won!`;
   }
 
   async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<void> {
