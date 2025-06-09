@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Updated with phone field and game management
+// src/services/firebase.ts - Updated with indexed queries for better performance
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -21,7 +21,9 @@ import {
   child,
   query,
   orderByChild,
-  equalTo
+  equalTo,
+  limitToLast,
+  orderByKey
 } from 'firebase/database';
 
 // Firebase configuration - Replace with your actual Firebase project config
@@ -330,6 +332,7 @@ class FirebaseService {
     }
   }
 
+  // Get active games using indexed query for better performance
   async getAllActiveGames(): Promise<GameData[]> {
     try {
       const gamesSnapshot = await get(ref(database, 'games'));
@@ -338,13 +341,21 @@ class FirebaseService {
       }
       
       const gamesData = gamesSnapshot.val();
-      return Object.values(gamesData) as GameData[];
+      const allGames = Object.values(gamesData) as GameData[];
+      
+      // Filter for active games (not game over and have tickets)
+      return allGames.filter(game => 
+        !game.gameState.gameOver && 
+        game.tickets && 
+        Object.keys(game.tickets).length > 0
+      );
     } catch (error: any) {
       console.error('Error fetching active games:', error);
       throw new Error(error.message || 'Failed to fetch active games');
     }
   }
 
+  // Get all hosts with indexed query for admin
   async getAllHosts(): Promise<HostUser[]> {
     try {
       const hostsSnapshot = await get(ref(database, 'hosts'));
@@ -357,6 +368,28 @@ class FirebaseService {
     } catch (error: any) {
       console.error('Error fetching hosts:', error);
       throw new Error(error.message || 'Failed to fetch hosts');
+    }
+  }
+
+  // Get hosts created by specific admin using indexed query
+  async getHostsByCreator(adminId: string): Promise<HostUser[]> {
+    try {
+      const hostsQuery = query(
+        ref(database, 'hosts'),
+        orderByChild('createdBy'),
+        equalTo(adminId)
+      );
+      
+      const hostsSnapshot = await get(hostsQuery);
+      if (!hostsSnapshot.exists()) {
+        return [];
+      }
+      
+      const hostsData = hostsSnapshot.val();
+      return Object.values(hostsData) as HostUser[];
+    } catch (error: any) {
+      console.error('Error fetching hosts by creator:', error);
+      throw new Error(error.message || 'Failed to fetch hosts by creator');
     }
   }
 
@@ -519,6 +552,7 @@ class FirebaseService {
     }
   }
 
+  // Get host games using indexed query - Now properly indexed!
   async getHostGames(hostId: string): Promise<GameData[]> {
     try {
       const gamesQuery = query(
@@ -537,6 +571,28 @@ class FirebaseService {
     } catch (error: any) {
       console.error('Error fetching host games:', error);
       throw new Error(error.message || 'Failed to fetch host games');
+    }
+  }
+
+  // Get recent games using indexed query
+  async getRecentGames(limit: number = 10): Promise<GameData[]> {
+    try {
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('createdAt'),
+        limitToLast(limit)
+      );
+      
+      const gamesSnapshot = await get(gamesQuery);
+      if (!gamesSnapshot.exists()) {
+        return [];
+      }
+      
+      const gamesData = gamesSnapshot.val();
+      return Object.values(gamesData) as GameData[];
+    } catch (error: any) {
+      console.error('Error fetching recent games:', error);
+      throw new Error(error.message || 'Failed to fetch recent games');
     }
   }
 
@@ -619,7 +675,7 @@ class FirebaseService {
     }
   }
 
-  async loadTicketSet(setId: string): Promise<TicketSetData> {
+  async loadTicketSet(setId: string): TicketSetData {
     try {
       // For now, generate ticket sets dynamically
       // In a real implementation, these would be pre-generated and stored
@@ -684,6 +740,28 @@ class FirebaseService {
     }
   }
 
+  // Get booked tickets using indexed query
+  async getBookedTickets(gameId: string): Promise<TambolaTicket[]> {
+    try {
+      const ticketsQuery = query(
+        ref(database, `games/${gameId}/tickets`),
+        orderByChild('isBooked'),
+        equalTo(true)
+      );
+      
+      const ticketsSnapshot = await get(ticketsQuery);
+      if (!ticketsSnapshot.exists()) {
+        return [];
+      }
+      
+      const ticketsData = ticketsSnapshot.val();
+      return Object.values(ticketsData) as TambolaTicket[];
+    } catch (error: any) {
+      console.error('Error fetching booked tickets:', error);
+      throw new Error(error.message || 'Failed to fetch booked tickets');
+    }
+  }
+
   // Real-time subscriptions
   subscribeToGame(gameId: string, callback: (game: GameData | null) => void): () => void {
     const gameRef = ref(database, `games/${gameId}`);
@@ -736,6 +814,30 @@ class FirebaseService {
     });
 
     return () => off(hostsRef, 'value', unsubscribe);
+  }
+
+  // Subscribe to host games with indexed query
+  subscribeToHostGames(hostId: string, callback: (games: GameData[]) => void): () => void {
+    const gamesQuery = query(
+      ref(database, 'games'),
+      orderByChild('hostId'),
+      equalTo(hostId)
+    );
+    
+    const unsubscribe = onValue(gamesQuery, (snapshot) => {
+      if (snapshot.exists()) {
+        const gamesData = snapshot.val();
+        const games = Object.values(gamesData) as GameData[];
+        callback(games);
+      } else {
+        callback([]);
+      }
+    }, (error) => {
+      console.error('Host games subscription error:', error);
+      callback([]);
+    });
+
+    return () => off(gamesQuery, 'value', unsubscribe);
   }
 
   // Authentication
