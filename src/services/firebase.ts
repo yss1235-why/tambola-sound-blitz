@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete Firebase service with ticket management
+// src/services/firebase.ts - Fixed version with atomic number calling
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -745,17 +745,21 @@ class FirebaseService {
 
   async updateGameState(gameId: string, gameState: GameState): Promise<void> {
     try {
+      console.log('🔧 Updating game state:', { gameId, gameState });
       // Clean undefined values before updating Firebase
       const cleanedGameState = removeUndefinedValues({ gameState });
       await update(ref(database, `games/${gameId}`), cleanedGameState);
+      console.log('✅ Game state updated successfully');
     } catch (error: any) {
-      console.error('Error updating game state:', error);
+      console.error('❌ Error updating game state:', error);
       throw new Error(error.message || 'Failed to update game state');
     }
   }
 
+  // ✅ FIXED: This method is now deprecated in favor of callNumberAtomic
   async addCalledNumber(gameId: string, number: number): Promise<void> {
     try {
+      console.log('⚠️ addCalledNumber is deprecated, use callNumberAtomic instead');
       const gameRef = ref(database, `games/${gameId}/gameState/calledNumbers`);
       const snapshot = await get(gameRef);
       const calledNumbers = snapshot.exists() ? snapshot.val() : [];
@@ -767,6 +771,71 @@ class FirebaseService {
     } catch (error: any) {
       console.error('Error adding called number:', error);
       throw new Error(error.message || 'Failed to add called number');
+    }
+  }
+
+  // ✅ NEW: Atomic number calling that avoids race conditions
+  async callNumberAtomic(gameId: string, number: number): Promise<void> {
+    try {
+      console.log('🔧 Calling number atomically:', { gameId, number });
+      
+      // Get current game state
+      const gameRef = ref(database, `games/${gameId}`);
+      const gameSnapshot = await get(gameRef);
+      
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+
+      const gameData = gameSnapshot.val() as GameData;
+      const currentCalledNumbers = gameData.gameState.calledNumbers || [];
+      
+      // Check if number is already called
+      if (currentCalledNumbers.includes(number)) {
+        console.log('⚠️ Number already called:', number);
+        return;
+      }
+
+      // Create new game state with the called number
+      const updatedCalledNumbers = [...currentCalledNumbers, number];
+      const updatedGameState: GameState = {
+        ...gameData.gameState,
+        calledNumbers: updatedCalledNumbers,
+        currentNumber: number
+      };
+
+      // Update everything atomically
+      const cleanedGameState = removeUndefinedValues({ gameState: updatedGameState });
+      await update(gameRef, cleanedGameState);
+      
+      console.log('✅ Number called atomically:', number);
+    } catch (error: any) {
+      console.error('❌ Error calling number atomically:', error);
+      throw new Error(error.message || 'Failed to call number');
+    }
+  }
+
+  // ✅ NEW: Clear current number (for UI display)
+  async clearCurrentNumber(gameId: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      const gameSnapshot = await get(gameRef);
+      
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+
+      const gameData = gameSnapshot.val() as GameData;
+      const updatedGameState: GameState = {
+        ...gameData.gameState,
+        currentNumber: null
+      };
+
+      const cleanedGameState = removeUndefinedValues({ gameState: updatedGameState });
+      await update(gameRef, cleanedGameState);
+    } catch (error: any) {
+      console.error('Error clearing current number:', error);
+      throw new Error(error.message || 'Failed to clear current number');
     }
   }
 
