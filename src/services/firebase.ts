@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete Firebase service with simple ticket naming
+// src/services/firebase.ts - Complete Firebase service with ticket management
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -114,6 +114,7 @@ export interface TambolaTicket {
   playerName?: string;
   playerPhone?: string;
   bookedAt?: string;
+  updatedAt?: string;
 }
 
 export interface GameData {
@@ -795,6 +796,55 @@ class FirebaseService {
     } catch (error: any) {
       console.error('Error booking ticket:', error);
       throw new Error(error.message || 'Failed to book ticket');
+    }
+  }
+
+  async updateTicket(gameId: string, ticketId: string, ticketData: Partial<TambolaTicket>): Promise<void> {
+    try {
+      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
+      const ticketSnapshot = await get(ticketRef);
+      
+      if (!ticketSnapshot.exists()) {
+        throw new Error('Ticket not found');
+      }
+
+      const currentTicket = ticketSnapshot.val() as TambolaTicket;
+      const updatedTicket = removeUndefinedValues({
+        ...currentTicket,
+        ...ticketData,
+        updatedAt: new Date().toISOString()
+      });
+
+      await set(ticketRef, updatedTicket);
+    } catch (error: any) {
+      console.error('Error updating ticket:', error);
+      throw new Error(error.message || 'Failed to update ticket');
+    }
+  }
+
+  async unbookTicket(gameId: string, ticketId: string): Promise<void> {
+    try {
+      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
+      const ticketSnapshot = await get(ticketRef);
+      
+      if (!ticketSnapshot.exists()) {
+        throw new Error('Ticket not found');
+      }
+
+      const currentTicket = ticketSnapshot.val() as TambolaTicket;
+      const unBookedTicket = removeUndefinedValues({
+        ...currentTicket,
+        isBooked: false,
+        playerName: undefined,
+        playerPhone: undefined,
+        bookedAt: undefined,
+        updatedAt: new Date().toISOString()
+      });
+
+      await set(ticketRef, unBookedTicket);
+    } catch (error: any) {
+      console.error('Error unbooking ticket:', error);
+      throw new Error(error.message || 'Failed to unbook ticket');
     }
   }
 
