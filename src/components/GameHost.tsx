@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Fixed Maximum Tickets input handling
+// src/components/GameHost.tsx - Updated with Ticket Management
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TicketManagementGrid } from './TicketManagementGrid';
 import { 
   Play, 
   Pause, 
@@ -269,43 +270,36 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // FIXED: Better handling for maxTickets input
+  // Better handling for maxTickets input
   const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     
     // Allow empty string (user is clearing the field)
     if (value === '') {
-      setCreateGameForm(prev => ({ ...prev, maxTickets: 0 })); // Use 0 as placeholder for empty
+      setCreateGameForm(prev => ({ ...prev, maxTickets: 0 }));
       return;
     }
     
-    // Parse the number
     const numValue = parseInt(value, 10);
     
-    // Only update if it's a valid number
     if (!isNaN(numValue)) {
-      // Clamp between 1 and 600
       const clampedValue = Math.max(1, Math.min(600, numValue));
       setCreateGameForm(prev => ({ ...prev, maxTickets: clampedValue }));
     }
   };
 
-  // FIXED: Better handling for edit maxTickets input
+  // Better handling for edit maxTickets input
   const handleEditMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     
-    // Allow empty string (user is clearing the field)
     if (value === '') {
-      setEditGameForm(prev => ({ ...prev, maxTickets: 0 })); // Use 0 as placeholder for empty
+      setEditGameForm(prev => ({ ...prev, maxTickets: 0 }));
       return;
     }
     
-    // Parse the number
     const numValue = parseInt(value, 10);
     
-    // Only update if it's a valid number
     if (!isNaN(numValue)) {
-      // Clamp between 1 and 600
       const clampedValue = Math.max(1, Math.min(600, numValue));
       setEditGameForm(prev => ({ ...prev, maxTickets: clampedValue }));
     }
@@ -348,7 +342,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return;
     }
 
-    // FIXED: Better validation for maxTickets
     if (createGameForm.maxTickets < 1 || createGameForm.maxTickets > 600) {
       toast({
         title: "Validation Error",
@@ -360,10 +353,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsLoading(true);
     try {
-      // Generate game name based on timestamp
       const gameName = `Game ${new Date().toLocaleString()}`;
       
-      // Create the game
       const gameData = await firebaseService.createGame(
         {
           name: gameName,
@@ -376,19 +367,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         createGameForm.selectedPrizes
       );
 
-      // Save settings for next time
       await savePreviousSettings();
 
       setCurrentGame(gameData);
-      setActiveTab('game-control');
-      await loadHostGames(); // Refresh games list
+      setActiveTab('ticket-management');
+      await loadHostGames();
 
       toast({
         title: "Game Created",
         description: `Game created successfully with ${createGameForm.maxTickets} tickets!`,
       });
 
-      // Subscribe to real-time game updates
       const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGame) => {
         if (updatedGame) {
           setCurrentGame(updatedGame);
@@ -473,9 +462,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const selectGame = (game: GameData) => {
     setCurrentGame(game);
-    setActiveTab('game-control');
+    setActiveTab('ticket-management');
 
-    // Subscribe to real-time updates for selected game
     if (gameUnsubscribe) {
       gameUnsubscribe();
     }
@@ -494,7 +482,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const openEditDialog = (game: GameData) => {
-    // Check if game has started
     const gameHasStarted = game.gameState.isActive || 
                           game.gameState.gameOver || 
                           (game.gameState.calledNumbers && game.gameState.calledNumbers.length > 0);
@@ -517,7 +504,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     setShowEditDialog(true);
   };
 
-  // Game control functions (same as before)
+  // Game control functions
   const startGame = async () => {
     if (!currentGame || !isSubscriptionValid()) return;
 
@@ -971,6 +958,35 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     </div>
   );
 
+  const renderTicketManagement = () => {
+    if (!currentGame) {
+      return (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <Ticket className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <p className="text-gray-600">No game selected. Create or select a game to manage tickets.</p>
+            <Button
+              onClick={() => setActiveTab('create-game')}
+              className="mt-4"
+              variant="outline"
+            >
+              Create New Game
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <TicketManagementGrid 
+          gameData={currentGame}
+          onRefreshGame={loadHostGames}
+        />
+      </div>
+    );
+  };
+
   const renderGameControl = () => {
     if (!currentGame) {
       return (
@@ -1107,9 +1123,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="create-game">Create Game</TabsTrigger>
             <TabsTrigger value="my-games">My Games</TabsTrigger>
+            <TabsTrigger value="ticket-management">Ticket Management</TabsTrigger>
             <TabsTrigger value="game-control">Game Control</TabsTrigger>
           </TabsList>
 
@@ -1119,6 +1136,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
           <TabsContent value="my-games" className="mt-6">
             {renderMyGames()}
+          </TabsContent>
+
+          <TabsContent value="ticket-management" className="mt-6">
+            {renderTicketManagement()}
           </TabsContent>
 
           <TabsContent value="game-control" className="mt-6">
