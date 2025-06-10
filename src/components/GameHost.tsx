@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - FIXED: Auto-resume loading issue
+// src/components/GameHost.tsx - Simplified without excessive text
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,10 +32,7 @@ import {
   ArrowLeft,
   RotateCcw,
   Timer,
-  RefreshCw,
-  Zap,
-  Target,
-  CheckCircle
+  RefreshCw
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -118,37 +115,37 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     id: 'quickFive',
     name: 'Quick Five',
     pattern: 'First 5 numbers',
-    description: 'First player to mark any 5 numbers (Multiple winners possible if same number call)'
+    description: 'First player to mark any 5 numbers'
   },
   {
     id: 'topLine',
     name: 'Top Line',
     pattern: 'Complete top row',
-    description: 'Complete the top row of any ticket (Multiple winners possible)'
+    description: 'Complete the top row of any ticket'
   },
   {
     id: 'middleLine',
     name: 'Middle Line',
     pattern: 'Complete middle row', 
-    description: 'Complete the middle row of any ticket (Multiple winners possible)'
+    description: 'Complete the middle row of any ticket'
   },
   {
     id: 'bottomLine',
     name: 'Bottom Line',
     pattern: 'Complete bottom row',
-    description: 'Complete the bottom row of any ticket (Multiple winners possible)'
+    description: 'Complete the bottom row of any ticket'
   },
   {
     id: 'fourCorners',
     name: 'Four Corners',
     pattern: 'All four corner numbers',
-    description: 'Mark all four corner numbers of any ticket (Multiple winners possible)'
+    description: 'Mark all four corner numbers of any ticket'
   },
   {
     id: 'fullHouse',
     name: 'Full House',
     pattern: 'Complete ticket',
-    description: 'Complete all numbers on any ticket (Multiple winners possible if same number call)'
+    description: 'Complete all numbers on any ticket'
   }
 ];
 
@@ -201,7 +198,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<GameData | null>(null);
   
-  // ✅ FIXED: Auto-resume state with timeout protection
   const [isAutoResuming, setIsAutoResuming] = useState(true);
   const [autoResumeGame, setAutoResumeGame] = useState<GameData | null>(null);
   const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
@@ -229,18 +225,16 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
   const [gameUnsubscribe, setGameUnsubscribe] = useState<(() => void) | null>(null);
   
-  // Automatic Prize notification state
   const [lastWinnerAnnouncement, setLastWinnerAnnouncement] = useState<string>('');
   const [winnerNotificationCount, setWinnerNotificationCount] = useState<number>(0);
   
-  // Game control states
   const [callInterval, setCallInterval] = useState<number>(5);
   const [countdownDuration, setCountdownDuration] = useState<number>(10);
   const [isGamePaused, setIsGamePaused] = useState<boolean>(false);
   const [currentCountdown, setCurrentCountdown] = useState<number>(0);
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
 
-  // ✅ FIXED: Safety timeout to prevent infinite loading
+  // Safety timeout to prevent infinite loading
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
       if (isAutoResuming && !autoResumeAttempted) {
@@ -253,7 +247,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           variant: "destructive",
         });
       }
-    }, 10000); // 10 second timeout
+    }, 10000);
 
     return () => clearTimeout(safetyTimeout);
   }, [isAutoResuming, autoResumeAttempted, toast]);
@@ -292,7 +286,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return { status: 'active', message: `Active (${daysLeft} days left)`, variant: 'default' as const };
   }, [user.isActive, user.subscriptionEndDate]);
 
-  // ✅ FIXED: Improved auto-resume logic with better error handling
   const findActiveOrRecentGame = useCallback((games: GameData[]): GameData | null => {
     console.log('🔍 Checking for active or recent games...', games.length, 'total games');
     
@@ -346,7 +339,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return null;
   }, []);
 
-  // ✅ FIXED: Auto-resume function with better error handling
   const autoResumeFromGame = useCallback(async (game: GameData) => {
     console.log('🔄 Auto-resuming game:', game.name);
     setAutoResumeAttempted(true);
@@ -371,14 +363,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             .filter(num => !calledNums.includes(num));
           setAvailableNumbers(availableNums);
           
-          // Handle automatic winner announcements
           if (updatedGame.lastWinnerAnnouncement && 
               updatedGame.lastWinnerAnnouncement !== lastWinnerAnnouncement) {
             setLastWinnerAnnouncement(updatedGame.lastWinnerAnnouncement);
             setWinnerNotificationCount(prev => prev + 1);
             
             toast({
-              title: "🎉 NEW WINNER DETECTED!",
+              title: "🎉 Winner Detected!",
               description: updatedGame.lastWinnerAnnouncement,
               duration: 8000,
             });
@@ -392,8 +383,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         setIsGamePaused(false);
         
         toast({
-          title: "Game Resumed with Auto Prize Detection",
-          description: `Resumed ${game.name} - automatic number calling with instant winner detection continues!`,
+          title: "Game Resumed",
+          description: `Resumed ${game.name}`,
         });
         
         setTimeout(() => {
@@ -407,7 +398,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       } else {
         toast({
           title: "Game Loaded",
-          description: `Loaded game: ${game.name} - ready to continue with automatic prize validation!`,
+          description: `Loaded game: ${game.name}`,
         });
       }
 
@@ -419,12 +410,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         variant: "destructive",
       });
     } finally {
-      // ✅ ENSURE auto-resuming is set to false regardless of success/failure
       setIsAutoResuming(false);
     }
   }, [toast, lastWinnerAnnouncement]);
 
-  // ✅ FIXED: Load host games with better error handling and timeout protection
   const loadHostGames = useCallback(async () => {
     console.log('📥 Loading host games for user:', user.uid);
     
@@ -433,23 +422,20 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       console.log('✅ Loaded', games.length, 'games for host');
       setAllGames(games);
       
-      // Only attempt auto-resume once and if we haven't already attempted it
       if (isAutoResuming && !autoResumeAttempted && games.length > 0) {
         const resumeGame = findActiveOrRecentGame(games);
         if (resumeGame) {
           console.log('🚀 Auto-resuming game found!');
           await autoResumeFromGame(resumeGame);
-          return; // Exit early if we're auto-resuming
+          return;
         }
       }
       
-      // ✅ CRITICAL: Always set auto-resuming to false when done
       setIsAutoResuming(false);
       setAutoResumeAttempted(true);
       
     } catch (error: any) {
       console.error('❌ Error loading host games:', error);
-      // ✅ CRITICAL: Set auto-resuming to false on error
       setIsAutoResuming(false);
       setAutoResumeAttempted(true);
       toast({
@@ -477,7 +463,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ✅ FIXED: Load host games and settings on mount with timeout
   useEffect(() => {
     if (isSubscriptionValid()) {
       console.log('🚀 Starting GameHost initialization');
@@ -489,7 +474,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, [isSubscriptionValid, loadHostGames]);
 
-  // ✅ FIXED: Manual override for stuck loading state
   const forceStopAutoResume = useCallback(() => {
     console.log('🛑 Manually stopping auto-resume');
     setIsAutoResuming(false);
@@ -527,10 +511,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       console.error('Error saving settings:', error);
     }
   };
-
-  // ===========================
-  // GAME CREATION & MANAGEMENT
-  // ===========================
 
   const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -636,8 +616,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setAvailableNumbers(Array.from({ length: 90 }, (_, i) => i + 1));
 
       toast({
-        title: "Game Created with Automatic Prize Detection!",
-        description: `Game created successfully with ${createGameForm.maxTickets} tickets and instant winner validation!`,
+        title: "Game Created",
+        description: `Game created successfully with ${createGameForm.maxTickets} tickets`,
       });
 
       const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGame) => {
@@ -649,14 +629,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             .filter(num => !called.includes(num));
           setAvailableNumbers(available);
           
-          // Handle automatic winner announcements
           if (updatedGame.lastWinnerAnnouncement && 
               updatedGame.lastWinnerAnnouncement !== lastWinnerAnnouncement) {
             setLastWinnerAnnouncement(updatedGame.lastWinnerAnnouncement);
             setWinnerNotificationCount(prev => prev + 1);
             
             toast({
-              title: "🎉 NEW WINNER DETECTED!",
+              title: "🎉 Winner Detected!",
               description: updatedGame.lastWinnerAnnouncement,
               duration: 8000,
             });
@@ -677,10 +656,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ===========================
-  // ENHANCED GAME CONTROL FUNCTIONS
-  // ===========================
-
   const startCountdown = async () => {
     if (!currentGame || !isSubscriptionValid()) return;
 
@@ -696,7 +671,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       toast({
         title: "Game Starting",
-        description: `${countdownDuration} second countdown has begun! Automatic prize detection is ready!`,
+        description: `${countdownDuration} second countdown has begun`,
       });
 
       const countdown = setInterval(async () => {
@@ -736,8 +711,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       startNumberCalling();
 
       toast({
-        title: "Game Started with Automatic Prize Detection!",
-        description: "Automatic number calling with instant winner detection has begun!",
+        title: "Game Started",
+        description: "Game has begun",
         duration: 6000,
       });
     } catch (error: any) {
@@ -749,11 +724,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // Using automatic prize validation method
   const startNumberCalling = () => {
     if (!currentGame) return;
 
-    console.log('🎯 Starting automatic number calling with instant prize validation, interval:', callInterval, 'seconds');
+    console.log('🎯 Starting number calling, interval:', callInterval, 'seconds');
 
     const interval = setInterval(async () => {
       console.log('🔄 Number calling interval triggered, available numbers:', availableNumbers.length);
@@ -768,9 +742,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const numberToBeCalled = availableNumbers[randomIndex];
       
-      console.log('📞 Calling number with automatic prize validation:', numberToBeCalled);
+      console.log('📞 Calling number:', numberToBeCalled);
       
-      // Update local available numbers immediately (optimistic update)
       setAvailableNumbers(prev => {
         const newAvailable = prev.filter(n => n !== numberToBeCalled);
         console.log('🔄 Updated available numbers locally, remaining:', newAvailable.length);
@@ -778,30 +751,27 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       });
       
       try {
-        // Use enhanced method with automatic prize validation
         const result = await firebaseService.callNumberWithPrizeValidation(
           currentGame.gameId, 
           numberToBeCalled
         );
         
-        console.log('✅ Number called successfully with automatic prize validation:', {
+        console.log('✅ Number called successfully:', {
           number: numberToBeCalled,
           winnersFound: result.winners ? Object.keys(result.winners).length : 0,
           announcements: result.announcements
         });
 
-        // Show winner notifications immediately
         if (result.announcements && result.announcements.length > 0) {
           for (const announcement of result.announcements) {
             toast({
-              title: "🎉 WINNER AUTOMATICALLY DETECTED!",
+              title: "🎉 Winner Found!",
               description: announcement,
               duration: 10000,
             });
           }
         }
 
-        // Clear current number after display time
         setTimeout(async () => {
           if (currentGame) {
             console.log('🔄 Clearing current number display');
@@ -810,9 +780,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         }, 3000);
 
       } catch (error) {
-        console.error('❌ Error calling number with automatic prize validation:', error);
+        console.error('❌ Error calling number:', error);
         
-        // Revert optimistic update on error
         setAvailableNumbers(prev => {
           if (!prev.includes(numberToBeCalled)) {
             return [...prev, numberToBeCalled].sort((a, b) => a - b);
@@ -829,7 +798,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }, callInterval * 1000);
 
     setGameInterval(interval);
-    console.log('✅ Automatic number calling interval started with instant prize validation');
+    console.log('✅ Number calling interval started');
   };
 
   const pauseGame = async () => {
@@ -855,7 +824,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
         toast({
           title: "Game Paused",
-          description: "The game has been paused. Automatic prize detection will resume when you continue.",
+          description: "The game has been paused",
         });
       } catch (error: any) {
         toast({
@@ -882,7 +851,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       toast({
         title: "Game Resumed",
-        description: "Automatic number calling with instant prize detection has resumed!",
+        description: "Game has resumed",
       });
     } catch (error: any) {
       toast({
@@ -918,7 +887,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
         toast({
           title: "Game Ended",
-          description: "The game has been completed. Check the final automatic prize results!",
+          description: "The game has been completed",
         });
       } catch (error: any) {
         toast({
@@ -930,9 +899,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // Full game reset only (no individual prize reset)
   const resetGame = async () => {
-    const confirmed = window.confirm('Are you sure you want to completely reset the game? This will clear all called numbers and reset all prizes automatically. This action cannot be undone.');
+    const confirmed = window.confirm('Are you sure you want to completely reset the game? This will clear all called numbers and reset all prizes. This action cannot be undone.');
     if (!confirmed) return;
 
     if (gameInterval) {
@@ -950,7 +918,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     if (currentGame) {
       try {
-        // Reset game state
         const resetGameState: GameState = {
           isActive: false,
           isCountdown: false,
@@ -961,7 +928,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           callInterval: callInterval * 1000
         };
 
-        // Reset all prizes to their initial state (automatic reset)
         const resetPrizes: { [key: string]: Prize } = {};
         for (const [prizeId, prize] of Object.entries(currentGame.prizes)) {
           resetPrizes[prizeId] = {
@@ -969,11 +935,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             name: prize.name,
             pattern: prize.pattern,
             won: false
-            // Remove all winner-related fields for clean reset
           };
         }
 
-        // Update game with reset state and prizes
         const resetData = {
           gameState: resetGameState,
           prizes: resetPrizes,
@@ -984,13 +948,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
         await firebaseService.updateGameData(currentGame.gameId, resetData);
 
-        // Reset local notification state
         setLastWinnerAnnouncement('');
         setWinnerNotificationCount(0);
 
         toast({
-          title: "Game Reset Complete",
-          description: "The game has been completely reset with automatic prize validation ready for a fresh start.",
+          title: "Game Reset",
+          description: "The game has been completely reset",
           duration: 5000,
         });
       } catch (error: any) {
@@ -1002,10 +965,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       }
     }
   };
-
-  // ===========================
-  // UTILITY FUNCTIONS
-  // ===========================
 
   const getBookedTicketsCount = (game?: GameData) => {
     const gameToCheck = game || currentGame;
@@ -1071,7 +1030,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     );
   }
 
-  // ✅ FIXED: Auto-resume loading screen with manual override
   if (isAutoResuming) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
@@ -1080,7 +1038,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             <RefreshCw className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Your Games...</h2>
             <p className="text-gray-600 mb-4">
-              Checking for active games to resume with automatic prize validation
+              Checking for active games to resume
             </p>
             <div className="flex justify-center space-x-1 mb-6">
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
@@ -1088,7 +1046,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
             </div>
             
-            {/* ✅ FIXED: Manual override button */}
             <Button
               onClick={forceStopAutoResume}
               variant="outline"
@@ -1104,10 +1061,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       </div>
     );
   }
-
-  // ===========================
-  // RENDER FUNCTIONS
-  // ===========================
 
   const renderCreateGame = () => (
     <div className="space-y-6">
@@ -1127,45 +1080,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         </CardContent>
       </Card>
 
-      {/* Auto-Resume Alert */}
-      {autoResumeGame && (
-        <Card className="border-l-4 border-l-blue-500">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-3">
-              <div className="text-blue-600">🔄</div>
-              <div>
-                <p className="text-sm font-medium text-gray-800">Auto-Resume Active!</p>
-                <p className="text-xs text-gray-600">
-                  Resumed game: <strong>{autoResumeGame.name}</strong> - Go to Game Control to manage it.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Automatic Prize Validation Feature Alert */}
-      <Card className="border-l-4 border-l-green-500">
-        <CardContent className="p-4">
-          <div className="flex items-center space-x-3">
-            <Zap className="w-6 h-6 text-green-600" />
-            <div>
-              <p className="text-sm font-medium text-gray-800">🎯 Fully Automatic Prize System!</p>
-              <p className="text-xs text-gray-600">
-                Winners are automatically detected and announced instantly when numbers are called. 
-                Multiple winners supported if they win on the same number call! No manual intervention required.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Create New Game */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
             <Plus className="w-5 h-5 mr-2" />
-            Create New Game with Automatic Prize Detection
+            Create New Game
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -1256,19 +1176,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             </div>
           </div>
 
-          {/* Prize Selection with Enhanced Descriptions */}
+          {/* Prize Selection */}
           <div>
             <Label className="text-base font-semibold">Select Game Prizes</Label>
-            <p className="text-sm text-gray-600 mb-2">Choose which prizes to include in this game</p>
-            <div className="p-3 bg-green-50 border border-green-200 rounded-lg mb-4">
-              <div className="flex items-center space-x-2">
-                <CheckCircle className="w-4 h-4 text-green-600" />
-                <p className="text-sm text-green-800">
-                  <strong>100% Automatic System:</strong> Winners are automatically detected and announced instantly! 
-                  Multiple winners allowed if they win on the same number call. No manual work required.
-                </p>
-              </div>
-            </div>
+            <p className="text-sm text-gray-600 mb-4">Choose which prizes to include in this game</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {AVAILABLE_PRIZES.map((prize) => (
                 <Card key={prize.id} className="border-gray-200">
@@ -1307,7 +1218,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             size="lg"
           >
             <Plus className="w-5 h-5 mr-2" />
-            {isLoading ? 'Creating Game...' : 'Create Game with Automatic Prize Detection'}
+            {isLoading ? 'Creating Game...' : 'Create Game'}
           </Button>
         </CardContent>
       </Card>
@@ -1467,45 +1378,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     return (
       <div className="space-y-6">
-        {/* Auto-Resume Notification */}
-        {autoResumeGame?.gameId === currentGame.gameId && (
-          <Card className="border-l-4 border-l-blue-500 bg-blue-50">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-3">
-                <RefreshCw className="w-5 h-5 text-blue-600" />
-                <div>
-                  <p className="text-sm font-medium text-blue-800">Auto-Resumed Game</p>
-                  <p className="text-xs text-blue-700">
-                    This game was automatically resumed with instant prize detection enabled.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Automatic Prize Validation Status */}
-        <Card className="border-l-4 border-l-green-500">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <Zap className="w-6 h-6 text-green-600" />
-                <div>
-                  <p className="text-sm font-medium text-green-800">🎯 Automatic Prize Detection Active</p>
-                  <p className="text-xs text-green-700">
-                    Winners: {totalWinners} | Prizes Won: {wonPrizes.length}/{Object.keys(currentGame.prizes).length} | 
-                    Latest Winner: {winnerNotificationCount} notifications
-                  </p>
-                </div>
-              </div>
-              <Badge variant="default" className="bg-green-600">
-                <CheckCircle className="w-3 h-3 mr-1" />
-                Live Detection
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Recent Winner Notification */}
         {lastWinnerAnnouncement && (
           <Card className="border-l-4 border-l-yellow-500 bg-yellow-50">
@@ -1513,7 +1385,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               <div className="flex items-center space-x-3">
                 <Trophy className="w-5 h-5 text-yellow-600" />
                 <div>
-                  <p className="text-sm font-medium text-yellow-800">Latest Automatic Detection</p>
+                  <p className="text-sm font-medium text-yellow-800">Latest Winner</p>
                   <p className="text-xs text-yellow-700">{lastWinnerAnnouncement}</p>
                 </div>
               </div>
@@ -1525,7 +1397,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         <Card className="game-control-panel">
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              Game Control: {currentGame.name}
+              {currentGame.name}
               <Badge 
                 className={`game-status-indicator ${
                   currentGame.gameState.isActive ? 'game-status-active' : 
@@ -1533,8 +1405,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   isGamePaused ? 'game-status-paused' : 'game-status-waiting'
                 }`}
               >
-                {currentGame.gameState.isActive ? "🟢 Live Game" : 
-                 currentGame.gameState.isCountdown ? "🟡 Starting..." : 
+                {currentGame.gameState.isActive ? "🟢 Live" : 
+                 currentGame.gameState.isCountdown ? "🟡 Starting" : 
                  isGamePaused ? "🟣 Paused" : "⚪ Waiting"}
               </Badge>
             </CardTitle>
@@ -1543,7 +1415,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             {/* Game Settings */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="call-interval">Number Call Interval (seconds)</Label>
+                <Label htmlFor="call-interval">Call Interval (seconds)</Label>
                 <Input
                   id="call-interval"
                   type="number"
@@ -1554,10 +1426,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   disabled={currentGame.gameState.isActive}
                   className="form-input-enhanced"
                 />
-                <p className="text-xs text-gray-500 mt-1">Time between automatic number calls with instant prize detection</p>
               </div>
               <div>
-                <Label htmlFor="countdown-duration">Countdown Duration (seconds)</Label>
+                <Label htmlFor="countdown-duration">Countdown (seconds)</Label>
                 <Input
                   id="countdown-duration"
                   type="number"
@@ -1568,7 +1439,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   disabled={currentGame.gameState.isActive || currentGame.gameState.isCountdown}
                   className="form-input-enhanced"
                 />
-                <p className="text-xs text-gray-500 mt-1">Countdown time before game starts</p>
               </div>
             </div>
 
@@ -1577,7 +1447,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               {!currentGame.gameState.isActive && !currentGame.gameState.isCountdown && !currentGame.gameState.gameOver && !isGamePaused && (
                 <Button onClick={startCountdown} className="control-btn-start">
                   <Play className="w-4 h-4 mr-2" />
-                  Start Game with Auto Detection
+                  Start Game
                 </Button>
               )}
 
@@ -1605,7 +1475,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               {(currentGame.gameState.gameOver || (currentGame.gameState.calledNumbers && currentGame.gameState.calledNumbers.length > 0)) && (
                 <Button onClick={resetGame} className="control-btn-reset">
                   <RotateCcw className="w-4 h-4 mr-2" />
-                  Complete Reset
+                  Reset Game
                 </Button>
               )}
             </div>
@@ -1617,7 +1487,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <p className="countdown-number mb-4">
                   {currentCountdown || currentGame.gameState.countdownTime}
                 </p>
-                <p className="text-2xl font-semibold">Game starting soon with automatic prize detection...</p>
+                <p className="text-2xl font-semibold">Game starting soon...</p>
               </div>
             )}
 
@@ -1629,13 +1499,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <p className="text-xl mt-4 font-medium">
                   {getNumberCall(currentGame.gameState.currentNumber)}
                 </p>
-                <p className="text-lg mt-2 text-yellow-100">
-                  🎯 Auto-checking for winners...
-                </p>
               </div>
             )}
 
-            {/* Enhanced Game Statistics */}
+            {/* Game Statistics */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="stat-card stat-card-blue">
                 <div className="text-2xl font-bold">
@@ -1675,19 +1542,16 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </CardContent>
         </Card>
 
-        {/* Automatic Prize Management Panel */}
+        {/* Prize Management Panel */}
         <PrizeManagementPanel 
           gameData={currentGame}
           onRefreshGame={loadHostGames}
         />
 
-        {/* Number Grid - Display Only */}
+        {/* Number Grid */}
         <Card>
           <CardHeader>
             <CardTitle>Numbers Board (1-90)</CardTitle>
-            <p className="text-sm text-gray-600">
-              Called numbers are highlighted. Numbers are called automatically with instant prize detection.
-            </p>
           </CardHeader>
           <CardContent>
             <NumberGrid
@@ -1697,7 +1561,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </CardContent>
         </Card>
 
-        {/* Recent Numbers with Prize Info */}
+        {/* Recent Numbers */}
         {(currentGame.gameState.calledNumbers || []).length > 0 && (
           <Card>
             <CardHeader>
@@ -1731,7 +1595,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   })}
               </div>
               
-              {/* Show game progress */}
+              {/* Game progress */}
               <div className="mt-4 p-3 bg-slate-50 rounded-lg">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium text-slate-700">Game Progress</span>
@@ -1748,8 +1612,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   ></div>
                 </div>
                 <div className="mt-2 text-xs text-slate-600 flex justify-between">
-                  <span>🎯 Auto detection: {totalWinners} winners detected</span>
-                  <span>📊 {wonPrizes.length}/{Object.keys(currentGame.prizes).length} prizes won</span>
+                  <span>Winners: {totalWinners}</span>
+                  <span>Prizes: {wonPrizes.length}/{Object.keys(currentGame.prizes).length}</span>
                 </div>
               </div>
             </CardContent>
@@ -1763,12 +1627,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
       <div className="max-w-7xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-slate-800">
-            Host Dashboard - Fully Automatic Prize System
-          </h1>
-          <p className="text-slate-600">
-            Welcome back, {user.name}! 100% automatic winner detection is enabled for all your games.
-          </p>
+          <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
+          <p className="text-slate-600">Welcome back, {user.name}!</p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
