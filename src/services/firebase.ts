@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete updated Firebase service with fixed prize validation
+// src/services/firebase.ts - Updated with missing methods and fixes
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -728,6 +728,18 @@ class FirebaseService {
     }
   }
 
+  // ✅ NEW: Add missing updateGameData method
+  async updateGameData(gameId: string, updates: any): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      const cleanedUpdates = removeUndefinedValues(updates);
+      await update(gameRef, cleanedUpdates);
+    } catch (error: any) {
+      console.error('Error updating game data:', error);
+      throw new Error(error.message || 'Failed to update game data');
+    }
+  }
+
   async deleteGame(gameId: string): Promise<void> {
     try {
       await remove(ref(database, `games/${gameId}`));
@@ -761,11 +773,12 @@ class FirebaseService {
     }
   }
 
-  // ✅ FIXED: Call a number with automatic prize validation
+  // ✅ FIXED: Call a number with automatic prize validation and auto-end check
   async callNumberWithPrizeValidation(gameId: string, number: number): Promise<{
     success: boolean;
     winners?: { [prizeId: string]: any };
     announcements?: string[];
+    gameEnded?: boolean;
   }> {
     try {
       console.log('🎯 Calling number with automatic prize validation:', { gameId, number });
@@ -839,27 +852,48 @@ class FirebaseService {
           gameUpdates.lastWinnerAnnouncement = announcements.join(' | ');
           gameUpdates.lastWinnerAt = new Date().toISOString();
         }
-        
-        // Single atomic update
-        await update(gameRef, gameUpdates);
-        
-        console.log('✅ NEW winners found and updated:', {
-          number,
-          newWinners: Object.keys(validationResult.winners),
-          announcements
-        });
-        
-        return {
-          success: true,
-          winners: validationResult.winners,
-          announcements
-        };
-      } else {
-        // No new winners, just update game state
-        await update(gameRef, gameUpdates);
-        console.log('✅ Number called, no new winners:', number);
-        return { success: true };
       }
+
+      // ✅ NEW: Check if all prizes are won and auto-end game
+      const allPrizesAfterUpdate = { ...gameData.prizes };
+      if (Object.keys(validationResult.winners).length > 0) {
+        for (const prizeId of Object.keys(validationResult.winners)) {
+          allPrizesAfterUpdate[prizeId] = { ...allPrizesAfterUpdate[prizeId], won: true };
+        }
+      }
+
+      const allPrizesWon = Object.values(allPrizesAfterUpdate).every(prize => prize.won);
+      let gameEnded = false;
+
+      if (allPrizesWon) {
+        console.log('🏁 All prizes won! Auto-ending game...');
+        gameUpdates.gameState = removeUndefinedValues({
+          ...gameData.gameState,
+          calledNumbers: updatedCalledNumbers,
+          currentNumber: number,
+          isActive: false,
+          isCountdown: false,
+          gameOver: true
+        });
+        gameEnded = true;
+      }
+        
+      // Single atomic update
+      await update(gameRef, gameUpdates);
+      
+      console.log('✅ Number called successfully:', {
+        number,
+        newWinners: Object.keys(validationResult.winners),
+        gameEnded
+      });
+      
+      return {
+        success: true,
+        winners: validationResult.winners,
+        announcements: Object.keys(validationResult.winners).length > 0 ? 
+          Object.values(validationResult.winners).map(w => this.formatWinnerAnnouncement(w as any)) : undefined,
+        gameEnded
+      };
       
     } catch (error: any) {
       console.error('❌ Error calling number with automatic prize validation:', error);
