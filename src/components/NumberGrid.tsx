@@ -1,4 +1,4 @@
-// src/components/NumberGrid.tsx - Enhanced Interactive Number Grid
+// src/components/NumberGrid.tsx - Simplified without instructional text
 import React from 'react';
 
 interface NumberGridProps {
@@ -64,9 +64,6 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
     <div className="w-full max-w-4xl mx-auto p-4">
       {/* Header */}
       <div className="mb-4 text-center">
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">
-          Numbers Board (1-90)
-        </h3>
         <div className="flex justify-center space-x-4 text-sm text-gray-600">
           <div className="flex items-center space-x-2">
             <div className="w-4 h-4 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300 rounded"></div>
@@ -126,7 +123,7 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
       {isHost && (
         <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-sm text-amber-800 text-center">
-            💡 <strong>Host Mode:</strong> Click on any number to manually mark it as called (use sparingly for corrections)
+            💡 <strong>Host Mode:</strong> Click on any number to manually mark it as called
           </p>
         </div>
       )}
