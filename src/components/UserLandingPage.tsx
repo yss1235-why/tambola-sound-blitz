@@ -1,4 +1,4 @@
-// src/components/UserLandingPage.tsx - Updated with working game loading
+// src/components/UserLandingPage.tsx - Simplified without excessive text
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
