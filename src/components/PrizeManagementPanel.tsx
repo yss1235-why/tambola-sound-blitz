@@ -1,15 +1,12 @@
-// src/components/PrizeManagementPanel.tsx - Automatic Prize Validation Only
+// src/components/PrizeManagementPanel.tsx - Simplified without excessive text
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Trophy, 
   Phone, 
   Clock,
-  Zap,
   CheckCircle,
-  Timer,
   Target
 } from 'lucide-react';
 import { GameData, Prize } from '@/services/firebase';
@@ -62,19 +59,13 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
       {/* Prize Management Header */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Trophy className="w-6 h-6 mr-2" />
-              Automatic Prize Validation Status
-            </div>
-            <Badge className="bg-green-600">
-              <Zap className="w-3 h-3 mr-1" />
-              Auto Detection Active
-            </Badge>
+          <CardTitle className="flex items-center">
+            <Trophy className="w-6 h-6 mr-2" />
+            Prize Status
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Validation Status */}
+          {/* Prize Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
               <div className="text-2xl font-bold text-blue-600">
@@ -103,49 +94,13 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
               <div className="text-sm text-orange-700">Active Players</div>
             </div>
           </div>
-
-          {/* Auto Validation Status */}
-          <Alert className="mb-4">
-            <Zap className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Fully Automatic System:</strong> Winners are automatically detected and announced when numbers are called. 
-              Multiple winners are supported if they complete patterns on the same number call. No manual intervention required!
-            </AlertDescription>
-          </Alert>
-
-          {/* Real-time Detection Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center mb-2">
-                <Target className="w-5 h-5 text-blue-600 mr-2" />
-                <h4 className="font-semibold text-blue-800">Detection Speed</h4>
-              </div>
-              <p className="text-sm text-blue-700">
-                Winners are detected instantly when numbers are called. 
-                Average detection time: &lt;100ms
-              </p>
-            </div>
-            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
-              <div className="flex items-center mb-2">
-                <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
-                <h4 className="font-semibold text-green-800">Accuracy</h4>
-              </div>
-              <p className="text-sm text-green-700">
-                100% automatic validation ensures fair and accurate results.
-                No human error possible.
-              </p>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
       {/* Prize List */}
       <Card>
         <CardHeader>
-          <CardTitle>Prize Status & Real-time Updates</CardTitle>
-          <p className="text-sm text-gray-600">
-            All prizes are monitored automatically. Winners are announced immediately when patterns are completed.
-          </p>
+          <CardTitle>Prizes</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -183,12 +138,6 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
                               {new Date(prize.wonAt).toLocaleTimeString()}
                             </Badge>
                           )}
-                          {!prize.won && (
-                            <Badge variant="outline" className="bg-green-50 text-green-700">
-                              <Timer className="w-3 h-3 mr-1" />
-                              Auto-monitoring
-                            </Badge>
-                          )}
                         </div>
 
                         {/* Winners Display */}
@@ -196,9 +145,7 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
                           <div className="bg-white p-3 rounded border border-green-200">
                             <div className="flex items-center mb-2">
                               <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                              <p className="text-sm font-medium text-green-700">
-                                Automatically Detected Winners:
-                              </p>
+                              <p className="text-sm font-medium text-green-700">Winners:</p>
                             </div>
                             <div className="space-y-1">
                               {prize.winners.map((winner, index) => (
@@ -235,21 +182,6 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
                               <p className="text-xs text-gray-500">
                                 {progress.playersClose} player(s) are 80%+ complete
                               </p>
-                              <p className="text-xs text-blue-600 font-medium">
-                                Auto-monitoring for completion
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Pattern Description for Pending Prizes */}
-                        {!prize.won && (
-                          <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
-                            <div className="flex items-center">
-                              <Zap className="w-4 h-4 text-blue-600 mr-2" />
-                              <p className="text-xs text-blue-700">
-                                <strong>Auto-detection active:</strong> Winners will be announced instantly when this pattern is completed.
-                              </p>
                             </div>
                           </div>
                         )}
@@ -271,38 +203,6 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
               </p>
             </div>
           )}
-        </CardContent>
-      </Card>
-
-      {/* Automatic System Benefits */}
-      <Card className="border-green-200 bg-green-50">
-        <CardHeader>
-          <CardTitle className="text-green-800 flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2" />
-            Automatic Prize System Benefits
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <h4 className="font-semibold text-green-800">🚀 Speed & Accuracy</h4>
-              <ul className="text-sm text-green-700 space-y-1">
-                <li>• Instant winner detection (&lt;100ms)</li>
-                <li>• 100% accurate pattern validation</li>
-                <li>• No human error possible</li>
-                <li>• Real-time announcements</li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-semibold text-green-800">🎯 Fair Play</h4>
-              <ul className="text-sm text-green-700 space-y-1">
-                <li>• Multiple winners supported</li>
-                <li>• Same-number-call tie handling</li>
-                <li>• Transparent validation process</li>
-                <li>• Consistent rule application</li>
-              </ul>
-            </div>
-          </div>
         </CardContent>
       </Card>
     </div>
