@@ -1,4 +1,4 @@
-// src/components/Header.tsx
+// src/components/Header.tsx - Simplified without excessive text
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     password: ''
   });
 
-  // Listen for auth state changes - FIXED: Removed callback dependencies
+  // Listen for auth state changes
   useEffect(() => {
     console.log('🔧 Header: Setting up auth listener');
     
@@ -74,7 +74,6 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
             
             if (userData) {
               setCurrentUser(userData);
-              // Use callback refs to avoid dependency issues
               if (onUserLoginRef.current) {
                 onUserLoginRef.current(userData, role);
               }
@@ -89,7 +88,6 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
         console.log('🔍 Auth state changed, user logged out');
         setCurrentUser(null);
         setUserRole(null);
-        // Use callback refs to avoid dependency issues
         if (onUserLogoutRef.current) {
           onUserLogoutRef.current();
         }
@@ -100,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
       console.log('🔧 Header: Cleaning up auth listener');
       unsubscribe();
     };
-  }, []); // Empty dependency array to prevent infinite loop
+  }, []);
 
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,7 +109,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
       if (admin) {
         toast({
           title: "Admin Login Successful",
-          description: `Welcome back, ${admin.name}! You can now manage host accounts.`,
+          description: `Welcome back, ${admin.name}`,
         });
         setIsAdminLoginOpen(false);
         setAdminForm({ email: '', password: '' });
@@ -136,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
       if (host) {
         toast({
           title: "Host Login Successful",
-          description: `Welcome back, ${host.name}! You can now create and manage games.`,
+          description: `Welcome back, ${host.name}`,
         });
         setIsHostLoginOpen(false);
         setHostForm({ email: '', password: '' });
