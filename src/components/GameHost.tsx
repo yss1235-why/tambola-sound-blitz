@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Simplified without excessive text
+// src/components/GameHost.tsx - Fixed with edit/delete functionality and auto-end
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -72,6 +72,7 @@ interface CreateGameForm {
 
 interface EditGameForm {
   gameId: string;
+  gameName: string;
   hostPhone: string;
   maxTickets: number;
   selectedPrizes: string[];
@@ -211,6 +212,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const [editGameForm, setEditGameForm] = useState<EditGameForm>({
     gameId: '',
+    gameName: '',
     hostPhone: '',
     maxTickets: 100,
     selectedPrizes: []
@@ -656,6 +658,120 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  // ✅ NEW: Edit game functionality
+  const openEditDialog = (game: GameData) => {
+    setSelectedGameForEdit(game);
+    setEditGameForm({
+      gameId: game.gameId,
+      gameName: game.name,
+      hostPhone: game.hostPhone || '',
+      maxTickets: game.maxTickets,
+      selectedPrizes: Object.keys(game.prizes)
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleEditGame = async () => {
+    if (!selectedGameForEdit) return;
+
+    if (!editGameForm.hostPhone.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter your WhatsApp phone number",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (editGameForm.selectedPrizes.length === 0) {
+      toast({
+        title: "Validation Error", 
+        description: "Please select at least one prize",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (editGameForm.maxTickets < 1 || editGameForm.maxTickets > 600) {
+      toast({
+        title: "Validation Error",
+        description: "Max tickets must be between 1 and 600",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await firebaseService.updateGameConfig(editGameForm.gameId, {
+        maxTickets: editGameForm.maxTickets,
+        hostPhone: editGameForm.hostPhone,
+        selectedPrizes: editGameForm.selectedPrizes
+      });
+
+      setShowEditDialog(false);
+      setSelectedGameForEdit(null);
+      await loadHostGames();
+
+      toast({
+        title: "Game Updated",
+        description: "Game settings have been updated successfully!",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update game",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ NEW: Delete game functionality
+  const handleDeleteGame = async (game: GameData) => {
+    const confirmed = window.confirm(`Are you sure you want to delete "${game.name}"? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    try {
+      await firebaseService.deleteGame(game.gameId);
+      
+      // Clear current game if it was deleted
+      if (currentGame?.gameId === game.gameId) {
+        setCurrentGame(null);
+        if (gameInterval) {
+          clearInterval(gameInterval);
+          setGameInterval(null);
+        }
+        if (gameUnsubscribe) {
+          gameUnsubscribe();
+          setGameUnsubscribe(null);
+        }
+      }
+
+      // Clear selected game if it was deleted
+      if (selectedGameInMyGames?.gameId === game.gameId) {
+        setSelectedGameInMyGames(null);
+      }
+
+      await loadHostGames();
+
+      toast({
+        title: "Game Deleted",
+        description: `"${game.name}" has been deleted successfully!`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete game",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const startCountdown = async () => {
     if (!currentGame || !isSubscriptionValid()) return;
 
@@ -759,7 +875,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         console.log('✅ Number called successfully:', {
           number: numberToBeCalled,
           winnersFound: result.winners ? Object.keys(result.winners).length : 0,
-          announcements: result.announcements
+          announcements: result.announcements,
+          gameEnded: result.gameEnded
         });
 
         if (result.announcements && result.announcements.length > 0) {
@@ -770,6 +887,21 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               duration: 10000,
             });
           }
+        }
+
+        // ✅ NEW: Handle auto-end game
+        if (result.gameEnded) {
+          console.log('🏁 Game auto-ended - all prizes won!');
+          clearInterval(interval);
+          setGameInterval(null);
+          setIsGamePaused(false);
+          
+          toast({
+            title: "🎉 Game Complete!",
+            description: "All prizes have been won! The game has ended automatically.",
+            duration: 10000,
+          });
+          return;
         }
 
         setTimeout(async () => {
@@ -899,6 +1031,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  // ✅ FIXED: Reset game functionality
   const resetGame = async () => {
     const confirmed = window.confirm('Are you sure you want to completely reset the game? This will clear all called numbers and reset all prizes. This action cannot be undone.');
     if (!confirmed) return;
@@ -946,6 +1079,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           resetAt: new Date().toISOString()
         };
 
+        // ✅ FIXED: Use the correct method
         await firebaseService.updateGameData(currentGame.gameId, resetData);
 
         setLastWinnerAnnouncement('');
@@ -957,6 +1091,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           duration: 5000,
         });
       } catch (error: any) {
+        console.error('Reset game error:', error);
         toast({
           title: "Error",
           description: error.message || "Failed to reset game",
@@ -1331,6 +1466,29 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                             <Play className="w-4 h-4 mr-1" />
                             Control
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditDialog(game);
+                            }}
+                            disabled={game.gameState.isActive || game.gameState.isCountdown}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteGame(game);
+                            }}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            disabled={game.gameState.isActive || game.gameState.isCountdown}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     )}
@@ -1349,6 +1507,88 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           onRefreshGame={loadHostGames}
         />
       )}
+
+      {/* ✅ Edit Game Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Game Settings</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Alert>
+              <AlertDescription>
+                Note: Game name and ticket set cannot be changed after creation.
+              </AlertDescription>
+            </Alert>
+
+            <div>
+              <Label htmlFor="edit-host-phone" className="text-base font-semibold">WhatsApp Phone Number</Label>
+              <Input
+                id="edit-host-phone"
+                placeholder="919876543210"
+                value={editGameForm.hostPhone}
+                onChange={(e) => setEditGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
+                className="border-2 border-gray-200 focus:border-blue-400"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="edit-max-tickets" className="text-base font-semibold">Maximum Tickets</Label>
+              <Input
+                id="edit-max-tickets"
+                type="number"
+                min="1"
+                max="600"
+                value={editGameForm.maxTickets === 0 ? '' : editGameForm.maxTickets.toString()}
+                onChange={handleEditMaxTicketsChange}
+                className="border-2 border-gray-200 focus:border-blue-400"
+              />
+            </div>
+
+            <div>
+              <Label className="text-base font-semibold">Game Prizes</Label>
+              <div className="grid grid-cols-1 gap-3 mt-2">
+                {AVAILABLE_PRIZES.map((prize) => (
+                  <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded">
+                    <Checkbox
+                      id={`edit-prize-${prize.id}`}
+                      checked={editGameForm.selectedPrizes.includes(prize.id)}
+                      onCheckedChange={(checked) => handleEditPrizeToggle(prize.id, checked as boolean)}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <Label 
+                        htmlFor={`edit-prize-${prize.id}`}
+                        className="cursor-pointer"
+                      >
+                        <h4 className="font-semibold text-gray-800">{prize.name}</h4>
+                        <p className="text-sm text-gray-600">{prize.pattern}</p>
+                      </Label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex space-x-2">
+              <Button
+                onClick={handleEditGame}
+                disabled={isLoading || !editGameForm.hostPhone.trim() || editGameForm.selectedPrizes.length === 0}
+                className="flex-1"
+              >
+                {isLoading ? 'Updating...' : 'Update Game'}
+              </Button>
+              <Button
+                onClick={() => setShowEditDialog(false)}
+                variant="outline"
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
