@@ -5,7 +5,6 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, 
-  User,
   updatePassword
 } from 'firebase/auth';
 import { 
@@ -18,12 +17,9 @@ import {
   push,
   onValue,
   off,
-  child,
   query,
   orderByChild,
-  equalTo,
-  limitToLast,
-  orderByKey
+  equalTo
 } from 'firebase/database';
 
 // Firebase configuration
@@ -503,9 +499,19 @@ class FirebaseService {
     }
   }
 
+  async updateGameData(gameId: string, gameData: Partial<GameData>): Promise<void> {
+    try {
+      const cleanedGameData = removeUndefinedValues(gameData);
+      await update(ref(database, `games/${gameId}`), cleanedGameData);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to update game data');
+    }
+  }
+
   async callNumberWithPrizeValidation(gameId: string, number: number): Promise<{
     success: boolean;
     winners?: { [prizeId: string]: any };
+    announcements?: string[];
     gameEnded?: boolean;
   }> {
     try {
@@ -543,6 +549,8 @@ class FirebaseService {
         })
       };
 
+      const announcements: string[] = [];
+
       if (Object.keys(validationResult.winners).length > 0) {
         for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
           const prizeData = prizeWinners as any;
@@ -554,7 +562,13 @@ class FirebaseService {
             winningNumber: number,
             wonAt: new Date().toISOString()
           });
+
+          const winnersText = prizeData.winners.map((w: any) => `${w.name} (T${w.ticketId})`).join(', ');
+          announcements.push(`${prizeData.prizeName} won by ${winnersText}!`);
         }
+
+        gameUpdates.lastWinnerAnnouncement = announcements.join(' ');
+        gameUpdates.lastWinnerAt = new Date().toISOString();
       }
 
       const allPrizesAfterUpdate = { ...gameData.prizes };
@@ -584,11 +598,39 @@ class FirebaseService {
       return {
         success: true,
         winners: validationResult.winners,
+        announcements,
         gameEnded
       };
       
     } catch (error: any) {
       throw new Error(error.message || 'Failed to call number with prize validation');
+    }
+  }
+
+  async addCalledNumber(gameId: string, number: number): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      const gameSnapshot = await get(gameRef);
+      
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+
+      const gameData = gameSnapshot.val() as GameData;
+      const currentCalledNumbers = gameData.gameState.calledNumbers || [];
+      
+      if (!currentCalledNumbers.includes(number)) {
+        const updatedGameState: GameState = {
+          ...gameData.gameState,
+          calledNumbers: [...currentCalledNumbers, number],
+          currentNumber: number
+        };
+
+        const cleanedGameState = removeUndefinedValues({ gameState: updatedGameState });
+        await update(gameRef, cleanedGameState);
+      }
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to add called number');
     }
   }
 
