@@ -1,4 +1,4 @@
-// src/components/Header.tsx - Fixed version with proper admin credentials
+// src/components/Header.tsx - Updated for your existing admin structure
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -41,10 +41,10 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     onUserLogoutRef.current = onUserLogout;
   }, [onUserLogout]);
 
-  // Admin login form state - with default credentials
+  // Admin login form state - empty by default (user will fill their credentials)
   const [adminForm, setAdminForm] = useState({
-    email: 'yurs@gmai.com',
-    password: 'Qwe123@'
+    email: '',
+    password: ''
   });
 
   // Host login form state
@@ -101,7 +101,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
       if (admin) {
         console.log('✅ Admin login successful');
         setIsAdminLoginOpen(false);
-        // Keep the default credentials filled for easy access
+        setAdminForm({ email: '', password: '' }); // Clear form after successful login
       }
     } catch (error: any) {
       console.error('❌ Admin login failed:', error.message);
@@ -168,6 +168,12 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                   <div className="px-2 py-2">
                     <p className="text-sm font-medium">{currentUser.email}</p>
                     <p className="text-xs text-gray-500 capitalize">{userRole}</p>
+                    {userRole === 'admin' && 'permissions' in currentUser && (
+                      <div className="text-xs text-green-600 mt-1">
+                        {currentUser.permissions.createHosts && '✓ Create Hosts '}
+                        {currentUser.permissions.manageUsers && '✓ Manage Users'}
+                      </div>
+                    )}
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
@@ -268,9 +274,8 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                 </DialogHeader>
                 <form onSubmit={handleAdminLogin} className="space-y-4">
                   <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm text-blue-800 font-medium">Default Admin Credentials:</p>
-                    <p className="text-xs text-blue-600">Email: yurs@gmai.com</p>
-                    <p className="text-xs text-blue-600">Password: Qwe123@</p>
+                    <p className="text-sm text-blue-800 font-medium">Admin Login</p>
+                    <p className="text-xs text-blue-600">Enter your admin credentials</p>
                   </div>
                   <div>
                     <Label htmlFor="admin-email" className="text-gray-700">Email</Label>
