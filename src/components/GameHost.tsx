@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Complete fixed version
+// src/components/GameHost.tsx - Updated to remove date/time from game names
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -553,9 +553,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       console.log('✅ User authenticated as:', userRole);
 
-      // 4. Create the game
+      // 4. Create the game with simple sequential naming
       console.log('🎮 Creating game...');
-      const gameName = `Game ${new Date().toLocaleString()}`;
+      
+      // Generate simple game name without date/time
+      const gameNumber = allGames.length + 1;
+      const gameName = `Tambola Game ${gameNumber}`;
       
       const gameData = await firebaseService.createGame(
         {
@@ -1141,12 +1144,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                                 <span>Prizes Won:</span>
                                 <span className="font-medium text-purple-600">
                                   {Object.values(game.prizes).filter(p => p.won).length}/{Object.keys(game.prizes).length}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span>Created:</span>
-                                <span className="font-medium text-gray-500">
-                                  {new Date(game.createdAt).toLocaleDateString()}
                                 </span>
                               </div>
                             </div>
