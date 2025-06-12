@@ -1,11 +1,10 @@
-// src/components/AdminDashboard.tsx - Updated with phone field
+// src/components/AdminDashboard.tsx - Cleaned up version
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
@@ -54,7 +53,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [selectedHost, setSelectedHost] = useState<HostUser | null>(null);
-  const { toast } = useToast();
 
   const [createForm, setCreateForm] = useState<CreateHostForm>({
     name: '',
@@ -74,56 +72,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
   const [newPassword, setNewPassword] = useState('');
 
-  // Memoize the loadHosts function to prevent unnecessary re-renders
+  // Load hosts
   const loadHosts = useCallback(async () => {
     setIsLoading(true);
     try {
       const hostsList = await firebaseService.getAllHosts();
       setHosts(hostsList);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to load hosts",
-        variant: "destructive",
-      });
+      console.error('Failed to load hosts:', error.message);
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, []);
 
   // Load hosts on component mount
   useEffect(() => {
-    console.log('🔧 AdminDashboard: Component mounted, loading hosts');
     loadHosts();
     
     // Subscribe to real-time hosts updates
     const unsubscribe = firebaseService.subscribeToHosts((updatedHosts) => {
       if (updatedHosts) {
-        console.log('📝 AdminDashboard: Hosts updated via subscription');
         setHosts(updatedHosts);
       }
     });
 
-    return () => {
-      console.log('🔧 AdminDashboard: Cleaning up hosts subscription');
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, [loadHosts]);
 
   const handleCreateHost = async () => {
     if (!createForm.name.trim() || !createForm.email.trim() || !createForm.phone.trim() || !createForm.password.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
+      alert('Please fill in all required fields');
       return;
     }
 
     setIsLoading(true);
     try {
-      console.log('Creating host account...');
-      
       await firebaseService.createHost(
         createForm.email,
         createForm.password,
@@ -133,23 +116,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         createForm.subscriptionMonths
       );
 
-      console.log('✅ Host created successfully, admin remains logged in');
-      
       setShowCreateDialog(false);
       setCreateForm({ name: '', email: '', phone: '', password: '', subscriptionMonths: 12 });
       
-      toast({
-        title: "Host Created Successfully!",
-        description: `${createForm.name} has been created and you remain logged in as admin.`,
-      });
-      
     } catch (error: any) {
-      console.error('❌ Create host error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create host",
-        variant: "destructive",
-      });
+      console.error('Create host error:', error);
+      alert(error.message || 'Failed to create host');
     } finally {
       setIsLoading(false);
     }
@@ -175,16 +147,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       setShowEditDialog(false);
       setSelectedHost(null);
       
-      toast({
-        title: "Host Updated",
-        description: "Host details have been updated successfully!",
-      });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update host",
-        variant: "destructive",
-      });
+      console.error('Update host error:', error);
+      alert(error.message || 'Failed to update host');
     } finally {
       setIsLoading(false);
     }
@@ -197,17 +162,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     setIsLoading(true);
     try {
       await firebaseService.deleteHost(host.uid);
-      
-      toast({
-        title: "Host Deleted",
-        description: `${host.name} has been deleted successfully!`,
-      });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to delete host",
-        variant: "destructive",
-      });
+      console.error('Delete host error:', error);
+      alert(error.message || 'Failed to delete host');
     } finally {
       setIsLoading(false);
     }
@@ -215,11 +172,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
   const handleChangePassword = async () => {
     if (!selectedHost || !newPassword.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter a valid password",
-        variant: "destructive",
-      });
+      alert('Please enter a valid password');
       return;
     }
 
@@ -231,16 +184,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       setSelectedHost(null);
       setNewPassword('');
       
-      toast({
-        title: "Password Changed",
-        description: "Host password has been updated successfully!",
-      });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to change password",
-        variant: "destructive",
-      });
+      console.error('Change password error:', error);
+      alert(error.message || 'Failed to change password');
     } finally {
       setIsLoading(false);
     }
@@ -250,17 +196,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     setIsLoading(true);
     try {
       await firebaseService.extendHostSubscription(host.uid, additionalMonths);
-      
-      toast({
-        title: "Subscription Extended",
-        description: `${host.name}'s subscription extended by ${additionalMonths} months`,
-      });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to extend subscription",
-        variant: "destructive",
-      });
+      console.error('Extend subscription error:', error);
+      alert(error.message || 'Failed to extend subscription');
     } finally {
       setIsLoading(false);
     }
@@ -270,17 +208,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     setIsLoading(true);
     try {
       await firebaseService.toggleHostStatus(host.uid, !host.isActive);
-      
-      toast({
-        title: "Status Updated",
-        description: `${host.name} has been ${!host.isActive ? 'activated' : 'deactivated'}`,
-      });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update status",
-        variant: "destructive",
-      });
+      console.error('Toggle status error:', error);
+      alert(error.message || 'Failed to update status');
     } finally {
       setIsLoading(false);
     }
@@ -329,7 +259,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           <div>
             <h1 className="text-3xl font-bold text-slate-800">Admin Dashboard</h1>
             <p className="text-slate-600">Manage host accounts and user access</p>
-            <p className="text-sm text-green-600 mt-1">✅ Enhanced: Creating hosts won't log you out anymore!</p>
           </div>
           <Button
             onClick={() => setShowCreateDialog(true)}
@@ -535,7 +464,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <div className="space-y-4">
               <Alert>
                 <AlertDescription>
-                  ✅ You will remain logged in as admin after creating the host account.
+                  You will remain logged in as admin after creating the host account.
                 </AlertDescription>
               </Alert>
               <div>
