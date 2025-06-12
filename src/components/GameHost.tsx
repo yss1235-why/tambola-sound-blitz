@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Fixed with enhanced real-time updates
+// src/components/GameHost.tsx - Cleaned up version
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useToast } from '@/components/ui/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TicketManagementGrid } from './TicketManagementGrid';
@@ -24,17 +23,11 @@ import {
   AlertCircle,
   Trophy,
   Ticket,
-  Lock,
   Edit,
   Trash2,
-  Settings,
   Phone,
-  ArrowLeft,
   RotateCcw,
-  Timer,
-  RefreshCw,
-  Wifi,
-  WifiOff
+  Timer
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -152,46 +145,6 @@ const AVAILABLE_PRIZES: GamePrize[] = [
   }
 ];
 
-// Traditional Tambola number calls
-const getNumberCall = (number: number): string => {
-  const traditionalCalls: { [key: number]: string } = {
-    1: "Kelly's Eyes",
-    2: "One Little Duck",
-    3: "Cup of Tea",
-    4: "Knock at the Door",
-    5: "Man Alive",
-    6: "Half a Dozen",
-    7: "Lucky Seven",
-    8: "Garden Gate",
-    9: "Doctor's Orders",
-    10: "Uncle Ben",
-    11: "Legs Eleven",
-    12: "One Dozen",
-    13: "Unlucky for Some",
-    14: "Valentine's Day",
-    15: "Young and Keen",
-    16: "Sweet Sixteen",
-    17: "Dancing Queen",
-    18: "Now You Can Vote",
-    19: "Goodbye Teens",
-    20: "One Score",
-    21: "Key of the Door",
-    22: "Two Little Ducks",
-    30: "Dirty Thirty",
-    44: "Droopy Drawers",
-    45: "Halfway There",
-    50: "Half a Century",
-    55: "Snakes Alive",
-    66: "Clickety Click",
-    77: "Sunset Strip",
-    88: "Two Fat Ladies",
-    90: "Top of the Shop"
-  };
-
-  const call = traditionalCalls[number];
-  return call ? `${call} - ${number}` : `Number ${number}`;
-};
-
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [activeTab, setActiveTab] = useState('create-game');
   const [currentGame, setCurrentGame] = useState<GameData | null>(null);
@@ -201,13 +154,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedGameForEdit, setSelectedGameForEdit] = useState<GameData | null>(null);
   
-  // ✅ NEW: Real-time connection status
-  const [isConnected, setIsConnected] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState<string>('');
-  const connectionCheckRef = useRef<NodeJS.Timeout | null>(null);
-  
   const [isAutoResuming, setIsAutoResuming] = useState(true);
-  const [autoResumeGame, setAutoResumeGame] = useState<GameData | null>(null);
   const [autoResumeAttempted, setAutoResumeAttempted] = useState(false);
   
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
@@ -225,20 +172,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     selectedPrizes: []
   });
 
-  const { toast } = useToast();
-
   // Game control states
   const [gameInterval, setGameInterval] = useState<NodeJS.Timeout | null>(null);
   const [availableNumbers, setAvailableNumbers] = useState<number[]>(
     Array.from({ length: 90 }, (_, i) => i + 1)
   );
   
-  // ✅ IMPROVED: Better subscription management with refs
+  // Subscription management with refs
   const gameUnsubscribeRef = useRef<(() => void) | null>(null);
   const hostGamesUnsubscribeRef = useRef<(() => void) | null>(null);
-  
-  const [lastWinnerAnnouncement, setLastWinnerAnnouncement] = useState<string>('');
-  const [winnerNotificationCount, setWinnerNotificationCount] = useState<number>(0);
   
   const [callInterval, setCallInterval] = useState<number>(5);
   const [countdownDuration, setCountdownDuration] = useState<number>(10);
@@ -246,64 +188,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [currentCountdown, setCurrentCountdown] = useState<number>(0);
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
 
-  // ✅ NEW: Enhanced connection monitoring
-  useEffect(() => {
-    const checkConnection = () => {
-      const now = new Date().toLocaleTimeString();
-      setLastUpdate(now);
-      setIsConnected(true);
-    };
-
-    checkConnection();
-    connectionCheckRef.current = setInterval(checkConnection, 30000); // Check every 30 seconds
-
-    // Listen for online/offline events
-    const handleOnline = () => {
-      setIsConnected(true);
-      toast({
-        title: "Connection Restored",
-        description: "Real-time updates are working",
-      });
-    };
-
-    const handleOffline = () => {
-      setIsConnected(false);
-      toast({
-        title: "Connection Lost",
-        description: "Trying to reconnect...",
-        variant: "destructive",
-      });
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      if (connectionCheckRef.current) {
-        clearInterval(connectionCheckRef.current);
-      }
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [toast]);
-
   // Safety timeout to prevent infinite loading
   useEffect(() => {
     const safetyTimeout = setTimeout(() => {
       if (isAutoResuming && !autoResumeAttempted) {
-        console.log('⚠️ Auto-resume safety timeout triggered, stopping loading');
         setIsAutoResuming(false);
         setAutoResumeAttempted(true);
-        toast({
-          title: "Auto-Resume Timeout",
-          description: "Took too long to load games. You can manually select games from My Games tab.",
-          variant: "destructive",
-        });
       }
     }, 10000);
 
     return () => clearTimeout(safetyTimeout);
-  }, [isAutoResuming, autoResumeAttempted, toast]);
+  }, [isAutoResuming, autoResumeAttempted]);
 
   // Check subscription status
   const isSubscriptionValid = useCallback(() => {
@@ -340,12 +235,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   }, [user.isActive, user.subscriptionEndDate]);
 
   const findActiveOrRecentGame = useCallback((games: GameData[]): GameData | null => {
-    console.log('🔍 Checking for active or recent games...', games.length, 'total games');
-    
-    if (games.length === 0) {
-      console.log('❌ No games found');
-      return null;
-    }
+    if (games.length === 0) return null;
     
     const sortedGames = games.sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -357,10 +247,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       game.gameState.isCountdown
     );
 
-    if (activeGame) {
-      console.log('🎮 Found active game:', activeGame.name, activeGame.gameState);
-      return activeGame;
-    }
+    if (activeGame) return activeGame;
 
     // Check for recent games with progress
     const fourHoursAgo = Date.now() - (4 * 60 * 60 * 1000);
@@ -372,10 +259,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return (game.gameState.gameOver || hasProgress) && isRecent;
     });
 
-    if (recentGame) {
-      console.log('📅 Found recent game:', recentGame.name, recentGame.gameState);
-      return recentGame;
-    }
+    if (recentGame) return recentGame;
 
     // Check for paused games
     const pausedGame = sortedGames.find(game => {
@@ -383,19 +267,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return hasProgress && !game.gameState.gameOver;
     });
 
-    if (pausedGame) {
-      console.log('⏸️ Found paused game:', pausedGame.name, pausedGame.gameState);
-      return pausedGame;
-    }
-
-    console.log('❌ No active or recent games found');
-    return null;
+    return pausedGame || null;
   }, []);
 
-  // ✅ ENHANCED: Real-time game subscription with better error handling
+  // Real-time game subscription with better error handling
   const setupGameSubscription = useCallback((game: GameData) => {
-    console.log('🔗 Setting up real-time subscription for game:', game.gameId);
-    
     // Clean up previous subscription
     if (gameUnsubscribeRef.current) {
       gameUnsubscribeRef.current();
@@ -404,18 +280,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
       if (updatedGame) {
-        console.log('📡 Real-time game update received:', {
-          gameId: updatedGame.gameId,
-          isActive: updatedGame.gameState.isActive,
-          isCountdown: updatedGame.gameState.isCountdown,
-          calledNumbers: updatedGame.gameState.calledNumbers?.length || 0,
-          currentNumber: updatedGame.gameState.currentNumber
-        });
-
         setCurrentGame(updatedGame);
         setSelectedGameInMyGames(updatedGame);
-        setLastUpdate(new Date().toLocaleTimeString());
-        setIsConnected(true);
         
         // Update available numbers based on called numbers
         const calledNums = updatedGame.gameState.calledNumbers || [];
@@ -423,51 +289,31 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           .filter(num => !calledNums.includes(num));
         setAvailableNumbers(availableNums);
         
-        // ✅ Handle winner announcements
-        if (updatedGame.lastWinnerAnnouncement && 
-            updatedGame.lastWinnerAnnouncement !== lastWinnerAnnouncement) {
-          setLastWinnerAnnouncement(updatedGame.lastWinnerAnnouncement);
-          setWinnerNotificationCount(prev => prev + 1);
-          
-          toast({
-            title: "🎉 Winner Detected!",
-            description: updatedGame.lastWinnerAnnouncement,
-            duration: 8000,
-          });
-        }
-
-        // ✅ Handle game state changes automatically
+        // Handle game state changes automatically
         if (updatedGame.gameState.gameOver && gameInterval) {
-          console.log('🏁 Game ended, stopping number calling');
           clearInterval(gameInterval);
           setGameInterval(null);
           setIsGamePaused(false);
         }
 
-        // ✅ Handle countdown updates
+        // Handle countdown updates
         if (updatedGame.gameState.isCountdown) {
           setCurrentCountdown(updatedGame.gameState.countdownTime);
         }
 
-        // ✅ Update game paused state based on real game state
+        // Update game paused state based on real game state
         setIsGamePaused(!updatedGame.gameState.isActive && 
                         !updatedGame.gameState.isCountdown && 
                         !updatedGame.gameState.gameOver &&
                         (updatedGame.gameState.calledNumbers?.length || 0) > 0);
-
-      } else {
-        console.log('❌ Game update received but game is null');
-        setIsConnected(false);
       }
     });
 
     gameUnsubscribeRef.current = unsubscribe;
-  }, [gameInterval, lastWinnerAnnouncement, toast]);
+  }, [gameInterval]);
 
-  // ✅ ENHANCED: Real-time host games subscription
+  // Real-time host games subscription
   const setupHostGamesSubscription = useCallback(() => {
-    console.log('🔗 Setting up real-time subscription for host games');
-    
     // Clean up previous subscription
     if (hostGamesUnsubscribeRef.current) {
       hostGamesUnsubscribeRef.current();
@@ -475,12 +321,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
 
     const unsubscribe = firebaseService.subscribeToHostGames(user.uid, (games) => {
-      console.log('📡 Real-time host games update received:', games.length, 'games');
       setAllGames(games);
-      setLastUpdate(new Date().toLocaleTimeString());
-      setIsConnected(true);
 
-      // ✅ Auto-update current game if it's in the updated list
+      // Auto-update current game if it's in the updated list
       if (currentGame) {
         const updatedCurrentGame = games.find(g => g.gameId === currentGame.gameId);
         if (updatedCurrentGame) {
@@ -489,7 +332,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         }
       }
 
-      // ✅ Auto-update selected game in my games
+      // Auto-update selected game in my games
       if (selectedGameInMyGames) {
         const updatedSelectedGame = games.find(g => g.gameId === selectedGameInMyGames.gameId);
         if (updatedSelectedGame) {
@@ -502,13 +345,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   }, [user.uid, currentGame, selectedGameInMyGames]);
 
   const autoResumeFromGame = useCallback(async (game: GameData) => {
-    console.log('🔄 Auto-resuming game:', game.name);
     setAutoResumeAttempted(true);
     
     try {
       setCurrentGame(game);
       setSelectedGameInMyGames(game);
-      setAutoResumeGame(game);
       setActiveTab('game-control');
       
       const called = game.gameState.calledNumbers || [];
@@ -516,60 +357,34 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         .filter(num => !called.includes(num));
       setAvailableNumbers(available);
 
-      // ✅ Setup real-time subscription
+      // Setup real-time subscription
       setupGameSubscription(game);
 
       if (game.gameState.isActive && !game.gameState.gameOver) {
-        console.log('▶️ Resuming active game...');
         setIsGamePaused(false);
-        
-        toast({
-          title: "Game Resumed",
-          description: `Resumed ${game.name}`,
-        });
-        
         setTimeout(() => {
           startNumberCalling();
         }, 1000);
-      } else if (game.gameState.gameOver) {
-        toast({
-          title: "Game Completed",
-          description: `Loaded completed game: ${game.name}`,
-        });
-      } else {
-        toast({
-          title: "Game Loaded",
-          description: `Loaded game: ${game.name}`,
-        });
       }
 
     } catch (error) {
-      console.error('❌ Error auto-resuming game:', error);
-      toast({
-        title: "Auto-Resume Failed",
-        description: "Failed to resume the previous game. You can manually select it from My Games.",
-        variant: "destructive",
-      });
+      console.error('Error auto-resuming game:', error);
     } finally {
       setIsAutoResuming(false);
     }
-  }, [setupGameSubscription, toast]);
+  }, [setupGameSubscription]);
 
   const loadHostGames = useCallback(async () => {
-    console.log('📥 Loading host games for user:', user.uid);
-    
     try {
       const games = await firebaseService.getHostGames(user.uid);
-      console.log('✅ Loaded', games.length, 'games for host');
       setAllGames(games);
       
-      // ✅ Setup real-time subscription for host games
+      // Setup real-time subscription for host games
       setupHostGamesSubscription();
       
       if (isAutoResuming && !autoResumeAttempted && games.length > 0) {
         const resumeGame = findActiveOrRecentGame(games);
         if (resumeGame) {
-          console.log('🚀 Auto-resuming game found!');
           await autoResumeFromGame(resumeGame);
           return;
         }
@@ -579,17 +394,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setAutoResumeAttempted(true);
       
     } catch (error: any) {
-      console.error('❌ Error loading host games:', error);
+      console.error('Error loading host games:', error);
       setIsAutoResuming(false);
       setAutoResumeAttempted(true);
-      setIsConnected(false);
-      toast({
-        title: "Error Loading Games",
-        description: error.message || "Failed to load your games. Please try refreshing the page.",
-        variant: "destructive",
-      });
     }
-  }, [user.uid, isAutoResuming, autoResumeAttempted, findActiveOrRecentGame, autoResumeFromGame, setupHostGamesSubscription, toast]);
+  }, [user.uid, isAutoResuming, autoResumeAttempted, findActiveOrRecentGame, autoResumeFromGame, setupHostGamesSubscription]);
 
   const loadPreviousSettings = async () => {
     try {
@@ -610,38 +419,26 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   useEffect(() => {
     if (isSubscriptionValid()) {
-      console.log('🚀 Starting GameHost initialization');
       loadHostGames();
       loadPreviousSettings();
     } else {
-      console.log('❌ Subscription invalid, not loading games');
       setIsAutoResuming(false);
     }
   }, [isSubscriptionValid, loadHostGames]);
 
   const forceStopAutoResume = useCallback(() => {
-    console.log('🛑 Manually stopping auto-resume');
     setIsAutoResuming(false);
     setAutoResumeAttempted(true);
-    toast({
-      title: "Auto-Resume Stopped",
-      description: "You can now use the dashboard normally. Check the My Games tab for your games.",
-    });
-  }, [toast]);
+  }, []);
 
-  // ✅ Enhanced cleanup with proper subscription management
+  // Cleanup with proper subscription management
   useEffect(() => {
     return () => {
-      console.log('🧹 Cleaning up GameHost subscriptions and intervals');
-      
       if (gameInterval) {
         clearInterval(gameInterval);
       }
       if (countdownInterval) {
         clearInterval(countdownInterval);
-      }
-      if (connectionCheckRef.current) {
-        clearInterval(connectionCheckRef.current);
       }
       if (gameUnsubscribeRef.current) {
         gameUnsubscribeRef.current();
@@ -665,7 +462,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ... (keep existing form handlers unchanged)
+  // Form handlers
   const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     
@@ -700,47 +497,27 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const createNewGame = async () => {
     if (!isSubscriptionValid()) {
-      toast({
-        title: "Access Denied",
-        description: "Your subscription has expired or account is inactive",
-        variant: "destructive",
-      });
+      alert('Your subscription has expired or account is inactive');
       return;
     }
 
     if (!createGameForm.hostPhone.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please enter your WhatsApp phone number",
-        variant: "destructive",
-      });
+      alert('Please enter your WhatsApp phone number');
       return;
     }
 
     if (!createGameForm.selectedTicketSet) {
-      toast({
-        title: "Validation Error",
-        description: "Please select a ticket set",
-        variant: "destructive",
-      });
+      alert('Please select a ticket set');
       return;
     }
 
     if (createGameForm.selectedPrizes.length === 0) {
-      toast({
-        title: "Validation Error", 
-        description: "Please select at least one prize",
-        variant: "destructive",
-      });
+      alert('Please select at least one prize');
       return;
     }
 
     if (createGameForm.maxTickets < 1 || createGameForm.maxTickets > 600) {
-      toast({
-        title: "Validation Error",
-        description: "Max tickets must be between 1 and 600",
-        variant: "destructive",
-      });
+      alert('Max tickets must be between 1 and 600');
       return;
     }
 
@@ -768,30 +545,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       setAvailableNumbers(Array.from({ length: 90 }, (_, i) => i + 1));
 
-      // ✅ Setup real-time subscription for new game
+      // Setup real-time subscription for new game
       setupGameSubscription(gameData);
-
-      toast({
-        title: "Game Created",
-        description: `Game created successfully with ${createGameForm.maxTickets} tickets`,
-      });
 
     } catch (error: any) {
       console.error('Create game error:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create game",
-        variant: "destructive",
-      });
+      alert(error.message || 'Failed to create game');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ✅ Enhanced game selection with real-time subscription
+  // Game selection with real-time subscription
   const selectGameForControl = useCallback((game: GameData) => {
-    console.log('🎮 Selecting game for control:', game.gameId);
-    
     setCurrentGame(game);
     setSelectedGameInMyGames(game);
     setActiveTab('game-control');
@@ -801,27 +567,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       .filter(num => !called.includes(num));
     setAvailableNumbers(available);
 
-    // ✅ Setup real-time subscription
+    // Setup real-time subscription
     setupGameSubscription(game);
 
-    // ✅ Auto-resume if game is active
+    // Auto-resume if game is active
     if (game.gameState.isActive && !game.gameState.gameOver) {
-      console.log('▶️ Auto-resuming active game...');
       setIsGamePaused(false);
-      
-      toast({
-        title: "Game Resumed",
-        description: `Resumed control of ${game.name}`,
-      });
-      
       setTimeout(() => {
         startNumberCalling();
       }, 1000);
     }
-  }, [setupGameSubscription, toast]);
+  }, [setupGameSubscription]);
 
-  // ... (keep all other game control methods unchanged, they already work with real-time updates)
-
+  // Game control methods
   const startCountdown = async () => {
     if (!currentGame || !isSubscriptionValid()) return;
 
@@ -833,11 +591,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         isCountdown: true,
         countdownTime: countdownDuration,
         isActive: false
-      });
-
-      toast({
-        title: "Game Starting",
-        description: `${countdownDuration} second countdown has begun`,
       });
 
       const countdown = setInterval(async () => {
@@ -854,11 +607,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       setCountdownInterval(countdown);
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to start countdown",
-        variant: "destructive",
-      });
+      console.error('Start countdown error:', error);
     }
   };
 
@@ -876,30 +625,16 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setIsGamePaused(false);
       startNumberCalling();
 
-      toast({
-        title: "Game Started",
-        description: "Game has begun",
-        duration: 6000,
-      });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to start game",
-        variant: "destructive",
-      });
+      console.error('Start game error:', error);
     }
   };
 
   const startNumberCalling = () => {
     if (!currentGame) return;
 
-    console.log('🎯 Starting number calling, interval:', callInterval, 'seconds');
-
     const interval = setInterval(async () => {
-      console.log('🔄 Number calling interval triggered, available numbers:', availableNumbers.length);
-      
       if (availableNumbers.length === 0) {
-        console.log('🏁 No more numbers available, ending game');
         clearInterval(interval);
         await endGame();
         return;
@@ -908,11 +643,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const numberToBeCalled = availableNumbers[randomIndex];
       
-      console.log('📞 Calling number:', numberToBeCalled);
-      
       setAvailableNumbers(prev => {
         const newAvailable = prev.filter(n => n !== numberToBeCalled);
-        console.log('🔄 Updated available numbers locally, remaining:', newAvailable.length);
         return newAvailable;
       });
       
@@ -921,47 +653,22 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           currentGame.gameId, 
           numberToBeCalled
         );
-        
-        console.log('✅ Number called successfully:', {
-          number: numberToBeCalled,
-          winnersFound: result.winners ? Object.keys(result.winners).length : 0,
-          announcements: result.announcements,
-          gameEnded: result.gameEnded
-        });
-
-        if (result.announcements && result.announcements.length > 0) {
-          for (const announcement of result.announcements) {
-            toast({
-              title: "🎉 Winner Found!",
-              description: announcement,
-              duration: 10000,
-            });
-          }
-        }
 
         if (result.gameEnded) {
-          console.log('🏁 Game auto-ended - all prizes won!');
           clearInterval(interval);
           setGameInterval(null);
           setIsGamePaused(false);
-          
-          toast({
-            title: "🎉 Game Complete!",
-            description: "All prizes have been won! The game has ended automatically.",
-            duration: 10000,
-          });
           return;
         }
 
         setTimeout(async () => {
           if (currentGame) {
-            console.log('🔄 Clearing current number display');
             await firebaseService.clearCurrentNumber(currentGame.gameId);
           }
         }, 3000);
 
       } catch (error) {
-        console.error('❌ Error calling number:', error);
+        console.error('Error calling number:', error);
         
         setAvailableNumbers(prev => {
           if (!prev.includes(numberToBeCalled)) {
@@ -969,17 +676,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           }
           return prev;
         });
-        
-        toast({
-          title: "Error Calling Number",
-          description: `Failed to call number ${numberToBeCalled}. Retrying...`,
-          variant: "destructive",
-        });
       }
     }, callInterval * 1000);
 
     setGameInterval(interval);
-    console.log('✅ Number calling interval started');
   };
 
   const pauseGame = async () => {
@@ -1002,17 +702,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           isActive: false,
           isCountdown: false
         });
-
-        toast({
-          title: "Game Paused",
-          description: "The game has been paused",
-        });
       } catch (error: any) {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to pause game",
-          variant: "destructive",
-        });
+        console.error('Pause game error:', error);
       }
     }
   };
@@ -1030,16 +721,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setIsGamePaused(false);
       startNumberCalling();
 
-      toast({
-        title: "Game Resumed",
-        description: "Game has resumed",
-      });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to resume game",
-        variant: "destructive",
-      });
+      console.error('Resume game error:', error);
     }
   };
 
@@ -1065,17 +748,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           gameOver: true,
           currentNumber: null
         });
-
-        toast({
-          title: "Game Ended",
-          description: "The game has been completed",
-        });
       } catch (error: any) {
-        toast({
-          title: "Error",
-          description: error.message || "Failed to end game",
-          variant: "destructive",
-        });
+        console.error('End game error:', error);
       }
     }
   };
@@ -1129,34 +803,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
         await firebaseService.updateGameData(currentGame.gameId, resetData);
 
-        setLastWinnerAnnouncement('');
-        setWinnerNotificationCount(0);
-
-        toast({
-          title: "Game Reset",
-          description: "The game has been completely reset",
-          duration: 5000,
-        });
       } catch (error: any) {
         console.error('Reset game error:', error);
-        toast({
-          title: "Error",
-          description: error.message || "Failed to reset game",
-          variant: "destructive",
-        });
+        alert(error.message || 'Failed to reset game');
       }
     }
   };
 
-  // ... (keep other helper methods unchanged)
-
+  // Helper methods
   const getBookedTicketsCount = (game?: GameData) => {
     const gameToCheck = game || currentGame;
     if (!gameToCheck || !gameToCheck.tickets) return 0;
     return Object.values(gameToCheck.tickets).filter(ticket => ticket.isBooked).length;
   };
-
-  // ... (keep all other existing methods unchanged)
 
   const subscriptionStatus = getSubscriptionStatus();
 
@@ -1196,16 +855,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
         <Card className="max-w-md w-full">
           <CardContent className="p-8 text-center">
-            <RefreshCw className="w-12 h-12 animate-spin text-blue-500 mx-auto mb-4" />
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Your Games...</h2>
             <p className="text-gray-600 mb-4">
               Checking for active games to resume
             </p>
-            <div className="flex justify-center space-x-1 mb-6">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-            </div>
             
             <Button
               onClick={forceStopAutoResume}
@@ -1223,37 +877,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     );
   }
 
-  // ✅ Enhanced header with connection status
-  const renderHeader = () => (
-    <div className="mb-6 flex justify-between items-center">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
-        <p className="text-slate-600">Welcome back, {user.name}!</p>
-      </div>
-      <div className="flex items-center space-x-4">
-        {/* Connection Status Indicator */}
-        <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
-          isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-        }`}>
-          {isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-          <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
-        </div>
-        {lastUpdate && (
-          <div className="text-xs text-gray-500">
-            Last update: {lastUpdate}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  // ✅ Rest of the component remains the same, just with enhanced header
-  // ... (keep all existing render methods unchanged)
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
       <div className="max-w-7xl mx-auto">
-        {renderHeader()}
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
+          <p className="text-slate-600">Welcome back, {user.name}!</p>
+        </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid w-full grid-cols-3">
@@ -1263,11 +894,123 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </TabsList>
 
           <TabsContent value="create-game" className="mt-6">
-            {/* Keep existing renderCreateGame() content */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Plus className="w-6 h-6 mr-2" />
+                  Create New Game
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Host Phone */}
+                <div>
+                  <Label htmlFor="host-phone">WhatsApp Phone Number (with country code)</Label>
+                  <Input
+                    id="host-phone"
+                    type="tel"
+                    placeholder="e.g., 919876543210"
+                    value={createGameForm.hostPhone}
+                    onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
+                    className="border-2 border-gray-200 focus:border-blue-400"
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Players will use this number to book tickets via WhatsApp
+                  </p>
+                </div>
+
+                {/* Max Tickets */}
+                <div>
+                  <Label htmlFor="max-tickets">Maximum Tickets (1-600)</Label>
+                  <Input
+                    id="max-tickets"
+                    type="number"
+                    min="1"
+                    max="600"
+                    placeholder="100"
+                    value={createGameForm.maxTickets || ''}
+                    onChange={handleMaxTicketsChange}
+                    className="border-2 border-gray-200 focus:border-blue-400"
+                  />
+                </div>
+
+                {/* Ticket Set Selection */}
+                <div>
+                  <Label>Select Ticket Set</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                    {TICKET_SETS.map((ticketSet) => (
+                      <Card
+                        key={ticketSet.id}
+                        className={`cursor-pointer transition-all duration-200 ${
+                          createGameForm.selectedTicketSet === ticketSet.id
+                            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                            : 'border-gray-200 hover:border-blue-300'
+                        } ${!ticketSet.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onClick={() => ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
+                      >
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-bold">{ticketSet.name}</h3>
+                            <Badge variant={ticketSet.available ? "default" : "secondary"}>
+                              {ticketSet.available ? 'Available' : 'Coming Soon'}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-gray-600 mb-2">{ticketSet.description}</p>
+                          <p className="text-xs text-gray-500">{ticketSet.ticketCount} tickets</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Prize Selection */}
+                <div>
+                  <Label>Select Prizes</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+                    {AVAILABLE_PRIZES.map((prize) => (
+                      <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+                        <Checkbox
+                          id={prize.id}
+                          checked={createGameForm.selectedPrizes.includes(prize.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setCreateGameForm(prev => ({
+                                ...prev,
+                                selectedPrizes: [...prev.selectedPrizes, prize.id]
+                              }));
+                            } else {
+                              setCreateGameForm(prev => ({
+                                ...prev,
+                                selectedPrizes: prev.selectedPrizes.filter(id => id !== prize.id)
+                              }));
+                            }
+                          }}
+                        />
+                        <div className="flex-1">
+                          <Label htmlFor={prize.id} className="font-medium cursor-pointer">
+                            {prize.name}
+                          </Label>
+                          <p className="text-sm text-gray-600">{prize.pattern}</p>
+                          <p className="text-xs text-gray-500">{prize.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Create Game Button */}
+                <Button
+                  onClick={createNewGame}
+                  disabled={isLoading || !createGameForm.hostPhone.trim() || createGameForm.selectedPrizes.length === 0}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                  size="lg"
+                >
+                  {isLoading ? 'Creating Game...' : 'Create Game'}
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="my-games" className="mt-6">
-            {/* Enhanced my games with selectGameForControl */}
             <div className="space-y-6">
               <Card>
                 <CardHeader>
@@ -1275,27 +1018,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                     <div className="flex items-center">
                       <Trophy className="w-6 h-6 mr-2" />
                       My Games ({allGames.length})
-                    </div>
-                    <div className="flex space-x-2">
-                      {isConnected ? (
-                        <Badge variant="default" className="bg-green-500">
-                          <Wifi className="w-3 h-3 mr-1" />
-                          Live Updates
-                        </Badge>
-                      ) : (
-                        <Badge variant="destructive">
-                          <WifiOff className="w-3 h-3 mr-1" />
-                          Offline
-                        </Badge>
-                      )}
-                      <Button
-                        onClick={loadHostGames}
-                        variant="outline"
-                        size="sm"
-                      >
-                        <RefreshCw className="w-4 h-4 mr-2" />
-                        Refresh
-                      </Button>
                     </div>
                   </CardTitle>
                 </CardHeader>
@@ -1385,7 +1107,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                                     <Play className="w-4 h-4 mr-1" />
                                     Control
                                   </Button>
-                                  {/* Keep existing edit/delete buttons */}
                                 </div>
                               </div>
                             )}
@@ -1408,7 +1129,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </TabsContent>
 
           <TabsContent value="game-control" className="mt-6">
-            {/* Keep existing renderGameControl() content with enhanced status indicators */}
             {!currentGame ? (
               <Card>
                 <CardContent className="p-6 text-center">
@@ -1425,29 +1145,169 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </Card>
             ) : (
               <div className="space-y-6">
-                {/* Enhanced connection status for active game */}
-                <Card className="border-l-4 border-l-blue-500">
-                  <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                        <div>
-                          <p className="font-medium">Real-time Status</p>
-                          <p className="text-sm text-gray-600">
-                            {isConnected ? 'Connected - Game updates automatically' : 'Disconnected - Manual refresh may be needed'}
-                          </p>
-                        </div>
+                {/* Game Control Panel */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span>Game Control: {currentGame.name}</span>
+                      <Badge variant={currentGame.gameState.isActive ? "default" : "secondary"}>
+                        {currentGame.gameState.isActive ? "Live" : "Stopped"}
+                      </Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Control Buttons */}
+                    <div className="flex flex-wrap gap-3">
+                      {!currentGame.gameState.isActive && !currentGame.gameState.isCountdown && !currentGame.gameState.gameOver && (
+                        <>
+                          <Button
+                            onClick={startCountdown}
+                            className="bg-yellow-600 hover:bg-yellow-700"
+                          >
+                            <Timer className="w-4 h-4 mr-2" />
+                            Start Countdown ({countdownDuration}s)
+                          </Button>
+                          <Button
+                            onClick={startGame}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <Play className="w-4 h-4 mr-2" />
+                            Start Game
+                          </Button>
+                        </>
+                      )}
+
+                      {currentGame.gameState.isActive && (
+                        <Button
+                          onClick={pauseGame}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Pause className="w-4 h-4 mr-2" />
+                          Pause Game
+                        </Button>
+                      )}
+
+                      {isGamePaused && (
+                        <Button
+                          onClick={resumeGame}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Resume Game
+                        </Button>
+                      )}
+
+                      <Button
+                        onClick={endGame}
+                        variant="destructive"
+                      >
+                        <Square className="w-4 h-4 mr-2" />
+                        End Game
+                      </Button>
+
+                      <Button
+                        onClick={resetGame}
+                        variant="outline"
+                        className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                      >
+                        <RotateCcw className="w-4 h-4 mr-2" />
+                        Reset Game
+                      </Button>
+                    </div>
+
+                    {/* Game Settings */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="call-interval">Number Calling Interval (seconds)</Label>
+                        <Input
+                          id="call-interval"
+                          type="number"
+                          min="3"
+                          max="15"
+                          value={callInterval}
+                          onChange={(e) => setCallInterval(parseInt(e.target.value) || 5)}
+                          disabled={currentGame.gameState.isActive}
+                        />
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm text-gray-500">Last update: {lastUpdate}</p>
-                        <p className="text-xs text-gray-400">Game: {currentGame.name}</p>
+                      <div>
+                        <Label htmlFor="countdown-duration">Countdown Duration (seconds)</Label>
+                        <Input
+                          id="countdown-duration"
+                          type="number"
+                          min="5"
+                          max="30"
+                          value={countdownDuration}
+                          onChange={(e) => setCountdownDuration(parseInt(e.target.value) || 10)}
+                          disabled={currentGame.gameState.isActive || currentGame.gameState.isCountdown}
+                        />
                       </div>
                     </div>
+
+                    {/* Game Statistics */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center p-3 bg-blue-50 rounded-lg">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {(currentGame.gameState.calledNumbers || []).length}
+                        </div>
+                        <div className="text-sm text-blue-700">Numbers Called</div>
+                      </div>
+                      <div className="text-center p-3 bg-green-50 rounded-lg">
+                        <div className="text-2xl font-bold text-green-600">
+                          {getBookedTicketsCount()}
+                        </div>
+                        <div className="text-sm text-green-700">Booked Tickets</div>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 rounded-lg">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {Object.values(currentGame.prizes).filter(p => p.won).length}
+                        </div>
+                        <div className="text-sm text-purple-700">Prizes Won</div>
+                      </div>
+                      <div className="text-center p-3 bg-orange-50 rounded-lg">
+                        <div className="text-2xl font-bold text-orange-600">
+                          {90 - (currentGame.gameState.calledNumbers || []).length}
+                        </div>
+                        <div className="text-sm text-orange-700">Numbers Left</div>
+                      </div>
+                    </div>
+
+                    {/* Countdown Display */}
+                    {currentGame.gameState.isCountdown && (
+                      <div className="text-center p-8 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl">
+                        <Clock className="w-12 h-12 mx-auto mb-4 animate-pulse" />
+                        <div className="text-6xl font-bold animate-bounce">{currentCountdown}</div>
+                        <p className="text-xl mt-2">Game starting...</p>
+                      </div>
+                    )}
+
+                    {/* Current Number Display */}
+                    {currentGame.gameState.currentNumber && (
+                      <div className="text-center p-8 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl">
+                        <div className="text-8xl font-bold animate-pulse">{currentGame.gameState.currentNumber}</div>
+                        <p className="text-xl mt-4">Current Number</p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
-                {/* Keep all existing game control UI */}
-                {/* ... rest of game control interface ... */}
+                {/* Number Grid */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Numbers Board</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <NumberGrid
+                      calledNumbers={currentGame.gameState.calledNumbers || []}
+                      currentNumber={currentGame.gameState.currentNumber}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Prize Management */}
+                <PrizeManagementPanel
+                  gameData={currentGame}
+                  onRefreshGame={() => {}} // Real-time updates handle this
+                />
               </div>
             )}
           </TabsContent>
