@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Cleaned up version
+// src/components/GameHost.tsx - Complete fixed version
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,7 +27,8 @@ import {
   Trash2,
   Phone,
   RotateCcw,
-  Timer
+  Timer,
+  RefreshCw
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -35,8 +36,10 @@ import {
   TambolaTicket, 
   HostUser,
   GameState,
-  Prize
+  Prize,
+  getCurrentUserRole
 } from '@/services/firebase';
+import { auth } from '@/services/firebase';
 
 interface GameHostProps {
   user: HostUser;
@@ -523,6 +526,35 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsLoading(true);
     try {
+      console.log('🎮 Starting game creation process...');
+      
+      // 1. Verify authentication first
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('No authenticated user found. Please log in again.');
+      }
+
+      console.log('✅ Current user verified:', currentUser.uid, currentUser.email);
+
+      // 2. Force token refresh to ensure it's valid
+      console.log('🔄 Refreshing authentication token...');
+      await currentUser.getIdToken(true);
+
+      // 3. Verify user role and permissions
+      console.log('🔍 Checking user permissions...');
+      const userRole = await getCurrentUserRole();
+      if (!userRole) {
+        throw new Error('User role not found. Please contact administrator.');
+      }
+
+      if (userRole !== 'host' && userRole !== 'admin') {
+        throw new Error('Insufficient permissions. Only hosts and admins can create games.');
+      }
+
+      console.log('✅ User authenticated as:', userRole);
+
+      // 4. Create the game
+      console.log('🎮 Creating game...');
       const gameName = `Game ${new Date().toLocaleString()}`;
       
       const gameData = await firebaseService.createGame(
@@ -532,10 +564,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           ticketPrice: 0,
           hostPhone: createGameForm.hostPhone
         },
-        user.uid,
+        currentUser.uid,
         createGameForm.selectedTicketSet,
         createGameForm.selectedPrizes
       );
+
+      console.log('✅ Game created successfully:', gameData.gameId);
 
       await savePreviousSettings();
 
@@ -549,8 +583,20 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setupGameSubscription(gameData);
 
     } catch (error: any) {
-      console.error('Create game error:', error);
-      alert(error.message || 'Failed to create game');
+      console.error('❌ Create game error:', error);
+      
+      // Provide specific error messages
+      if (error.message.includes('Permission denied')) {
+        alert('Permission Error: Unable to create game. This could be because:\n\n' +
+              '1. Your session has expired - please log out and log in again\n' +
+              '2. Your host account is not properly set up\n' +
+              '3. Your account permissions have changed\n\n' +
+              'Please contact the administrator if this continues.');
+      } else if (error.message.includes('auth')) {
+        alert('Authentication Error: Please log out and log in again.');
+      } else {
+        alert(error.message || 'Failed to create game. Please try again.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -884,6 +930,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
           <p className="text-slate-600">Welcome back, {user.name}!</p>
+          <div className="mt-2">
+            <Badge variant={subscriptionStatus.variant}>
+              {subscriptionStatus.message}
+            </Badge>
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1004,7 +1055,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   className="w-full bg-blue-600 hover:bg-blue-700"
                   size="lg"
                 >
-                  {isLoading ? 'Creating Game...' : 'Create Game'}
+                  {isLoading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Creating Game...
+                    </>
+                  ) : (
+                    'Create Game'
+                  )}
                 </Button>
               </CardContent>
             </Card>
@@ -1151,7 +1209,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                     <CardTitle className="flex items-center justify-between">
                       <span>Game Control: {currentGame.name}</span>
                       <Badge variant={currentGame.gameState.isActive ? "default" : "secondary"}>
-                        {currentGame.gameState.isActive ? "Live" : "Stopped"}
+                        {currentGame.gameState.isActive ? "🟢 Live" : 
+                         currentGame.gameState.isCountdown ? "🟡 Starting" : 
+                         currentGame.gameState.gameOver ? "🔴 Ended" : "⚪ Stopped"}
                       </Badge>
                     </CardTitle>
                   </CardHeader>
