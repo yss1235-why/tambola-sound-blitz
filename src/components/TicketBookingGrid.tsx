@@ -1,4 +1,4 @@
-// src/components/TicketBookingGrid.tsx - Cleaned up version
+// src/components/TicketBookingGrid.tsx - Updated with simplified WhatsApp message
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,14 +55,8 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       return;
     }
 
-    // Get only the numbers from the selected ticket (filter out empty spaces)
-    const ticketNumbers = ticket.rows.flat()
-      .filter(num => num !== 0)
-      .sort((a, b) => a - b) // Sort numbers in ascending order
-      .join(', ');
-    
-    // Create WhatsApp message
-    const message = `Hi! I want to book Ticket ${ticketId}. Numbers: ${ticketNumbers}. Please confirm my booking.`;
+    // Create simplified WhatsApp message with only ticket number
+    const message = `Hi! I want to book Ticket ${ticketId}. Please confirm my booking.`;
     const whatsappUrl = `https://wa.me/${hostPhone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
@@ -105,12 +99,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">{totalCount}</div>
               <div className="text-sm text-gray-600">Max Tickets</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {gameData.ticketPrice > 0 ? `₹${gameData.ticketPrice}` : 'Free'}
-              </div>
-              <div className="text-sm text-gray-600">Per Ticket</div>
             </div>
           </div>
         </CardHeader>
