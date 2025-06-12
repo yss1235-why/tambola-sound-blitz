@@ -1,4 +1,4 @@
-// src/components/NumberGrid.tsx - Simplified without instructional text
+// src/components/NumberGrid.tsx - Cleaned up version
 import React from 'react';
 
 interface NumberGridProps {
@@ -20,7 +20,11 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
     const isCalled = calledNumbers.includes(number);
     const isCurrent = currentNumber === number;
     
-    let baseClass = 'number-cell transition-all duration-300 cursor-pointer hover:scale-105 flex items-center justify-center rounded-xl font-bold text-sm border-2';
+    let baseClass = 'number-cell transition-all duration-300 flex items-center justify-center rounded-xl font-bold text-sm border-2';
+    
+    if (isHost && onNumberClick) {
+      baseClass += ' cursor-pointer hover:scale-105';
+    }
     
     if (isCurrent) {
       return `${baseClass} current bg-gradient-to-br from-yellow-400 to-yellow-600 text-white shadow-xl transform scale-110 ring-4 ring-yellow-300 ring-opacity-50 animate-pulse`;
@@ -120,7 +124,7 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
       </div>
 
       {/* Host Instructions */}
-      {isHost && (
+      {isHost && onNumberClick && (
         <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-sm text-amber-800 text-center">
             💡 <strong>Host Mode:</strong> Click on any number to manually mark it as called
