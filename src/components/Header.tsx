@@ -1,11 +1,10 @@
-// src/components/Header.tsx - Simplified without excessive text
+// src/components/Header.tsx - Cleaned up version
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { LogIn, Menu, LogOut, User } from 'lucide-react';
-import { useToast } from '@/components/ui/use-toast';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +27,6 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
   const [isLoading, setIsLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<AdminUser | HostUser | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'host' | null>(null);
-  const { toast } = useToast();
 
   // Use refs to store latest callback values to avoid dependency issues
   const onUserLoginRef = useRef(onUserLogin);
@@ -57,35 +55,26 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
 
   // Listen for auth state changes
   useEffect(() => {
-    console.log('🔧 Header: Setting up auth listener');
-    
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log('🔍 Auth state changed:', user ? `user logged in: ${user.uid}` : 'user logged out');
-      
       if (user) {
         try {
           const role = await getCurrentUserRole();
-          console.log('🔍 User role:', role);
           
           if (role) {
             setUserRole(role);
             const userData = await firebaseService.getUserData();
-            console.log('🔍 User data from Firebase:', userData);
             
             if (userData) {
               setCurrentUser(userData);
               if (onUserLoginRef.current) {
                 onUserLoginRef.current(userData, role);
               }
-            } else {
-              console.log('❌ No user data found');
             }
           }
         } catch (error) {
           console.error('Error getting user role:', error);
         }
       } else {
-        console.log('🔍 Auth state changed, user logged out');
         setCurrentUser(null);
         setUserRole(null);
         if (onUserLogoutRef.current) {
@@ -94,10 +83,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
       }
     });
 
-    return () => {
-      console.log('🔧 Header: Cleaning up auth listener');
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
   const handleAdminLogin = async (e: React.FormEvent) => {
@@ -107,19 +93,11 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     try {
       const admin = await firebaseService.loginAdmin(adminForm.email, adminForm.password);
       if (admin) {
-        toast({
-          title: "Admin Login Successful",
-          description: `Welcome back, ${admin.name}`,
-        });
         setIsAdminLoginOpen(false);
         setAdminForm({ email: '', password: '' });
       }
     } catch (error: any) {
-      toast({
-        title: "Login Failed",
-        description: error.message || "Invalid admin credentials",
-        variant: "destructive",
-      });
+      console.error('Admin login failed:', error.message);
     } finally {
       setIsLoading(false);
     }
@@ -132,19 +110,11 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     try {
       const host = await firebaseService.loginHost(hostForm.email, hostForm.password);
       if (host) {
-        toast({
-          title: "Host Login Successful",
-          description: `Welcome back, ${host.name}`,
-        });
         setIsHostLoginOpen(false);
         setHostForm({ email: '', password: '' });
       }
     } catch (error: any) {
-      toast({
-        title: "Login Failed",
-        description: error.message || "Invalid host credentials",
-        variant: "destructive",
-      });
+      console.error('Host login failed:', error.message);
     } finally {
       setIsLoading(false);
     }
@@ -153,16 +123,8 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
   const handleLogout = async () => {
     try {
       await firebaseService.logout();
-      toast({
-        title: "Logged Out",
-        description: "You have been successfully logged out.",
-      });
     } catch (error: any) {
-      toast({
-        title: "Logout Error",
-        description: error.message || "Failed to logout",
-        variant: "destructive",
-      });
+      console.error('Logout error:', error.message);
     }
   };
 
