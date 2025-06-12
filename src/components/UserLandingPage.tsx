@@ -1,4 +1,4 @@
-// src/components/UserLandingPage.tsx - Cleaned up version
+// src/components/UserLandingPage.tsx - Updated version (removed pricing, dates, how to play)
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -143,11 +143,6 @@ export const UserLandingPage: React.FC = () => {
 
   const getBookedTicketsCount = () => {
     return Object.values(tickets).filter(ticket => ticket.isBooked).length;
-  };
-
-  const getTotalRevenue = () => {
-    if (!selectedGame) return 0;
-    return getBookedTicketsCount() * (selectedGame.ticketPrice || 0);
   };
 
   const getAvailableTicketsCount = () => {
@@ -363,30 +358,6 @@ export const UserLandingPage: React.FC = () => {
             onGameStart={() => setCurrentView('game')}
           />
         )}
-
-        {/* How to Play Section */}
-        <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
-          <CardHeader>
-            <CardTitle className="text-2xl text-gray-800 text-center">How to Play</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center p-4">
-              <div className="text-4xl mb-3">📱</div>
-              <h3 className="font-bold text-lg text-gray-800 mb-2">Book via WhatsApp</h3>
-              <p className="text-gray-600">Click on any available ticket to book it through WhatsApp messaging with the host.</p>
-            </div>
-            <div className="text-center p-4">
-              <div className="text-4xl mb-3">🎯</div>
-              <h3 className="font-bold text-lg text-gray-800 mb-2">Mark Numbers</h3>
-              <p className="text-gray-600">Mark the called numbers on your ticket during the live game.</p>
-            </div>
-            <div className="text-center p-4">
-              <div className="text-4xl mb-3">🏆</div>
-              <h3 className="font-bold text-lg text-gray-800 mb-2">Win Prizes</h3>
-              <p className="text-gray-600">Complete patterns like lines, corners, or full house to win exciting prizes!</p>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
