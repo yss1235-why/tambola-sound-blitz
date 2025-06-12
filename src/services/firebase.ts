@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Updated to work with your existing admin structure
+// src/services/firebase.ts - Complete file with Option 1 implementation
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -38,7 +38,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 const database = getDatabase(app);
 
-// Updated type definitions to match your existing structure
+// Type definitions
 export interface AdminUser {
   uid: string;
   email: string;
@@ -126,23 +126,20 @@ export interface HostSettings {
   selectedPrizes: string[];
 }
 
-// Get current user role - updated to work with your admin structure
+// Get current user role
 export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => {
   const user = auth.currentUser;
   if (!user) return null;
 
   try {
-    // Check if user exists in admins first
     const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
     if (adminSnapshot.exists()) {
       const adminData = adminSnapshot.val();
-      // Check if admin has createHosts permission (equivalent to being active)
       if (adminData.permissions && adminData.permissions.createHosts) {
         return 'admin';
       }
     }
 
-    // Then check hosts
     const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
     if (hostSnapshot.exists()) {
       const hostData = hostSnapshot.val();
@@ -179,18 +176,18 @@ const removeUndefinedValues = (obj: any): any => {
 const TICKET_SETS_DATA: { [key: string]: TicketSetData } = {
   "1": {
     ticketCount: 600,
-    tickets: {} // Will be loaded from 1.json
+    tickets: {}
   },
   "2": {
     ticketCount: 600,
-    tickets: {} // Will be loaded from 2.json
+    tickets: {}
   }
 };
 
 // Firebase service class
 class FirebaseService {
 
-  // Admin operations - works with your existing admin structure
+  // Admin operations
   async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
     try {
       console.log('🔐 Attempting admin login...');
@@ -199,7 +196,6 @@ class FirebaseService {
 
       console.log('✅ Firebase auth successful for:', user.email, 'UID:', user.uid);
 
-      // Check if admin record exists in database
       const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
       if (!adminSnapshot.exists()) {
         throw new Error(`Admin record not found for ${user.email}. Please contact system administrator.`);
@@ -207,7 +203,6 @@ class FirebaseService {
 
       const adminData = adminSnapshot.val() as AdminUser;
       
-      // Check if admin has necessary permissions
       if (!adminData.permissions || !adminData.permissions.createHosts) {
         throw new Error('Admin account does not have sufficient permissions.');
       }
@@ -252,6 +247,7 @@ class FirebaseService {
     }
   }
 
+  // OPTION 1 IMPLEMENTATION: Create host with credential switch
   async createHost(
     email: string, 
     password: string, 
@@ -261,29 +257,30 @@ class FirebaseService {
     subscriptionMonths: number = 12
   ): Promise<HostUser> {
     try {
-      console.log('👤 Creating host account...');
-      
       // Verify admin permissions first
-      const adminSnapshot = await get(ref(database, `admins/${adminUid}`));
-      if (!adminSnapshot.exists()) {
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.uid !== adminUid) {
         throw new Error('Admin authorization failed. Please log in again.');
       }
 
-      const adminData = adminSnapshot.val();
-      if (!adminData.permissions || !adminData.permissions.createHosts) {
+      const adminSnapshot = await get(ref(database, `admins/${adminUid}`));
+      if (!adminSnapshot.exists() || !adminSnapshot.val().permissions?.createHosts) {
         throw new Error('Admin does not have permission to create hosts.');
       }
 
-      // Create Firebase auth account
+      console.log('✅ Admin permissions verified');
+
+      // Create Firebase auth account (auto signs in new user)
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      const newUser = userCredential.user;
       console.log('✅ Firebase auth account created');
 
+      // Prepare host data
       const subscriptionEndDate = new Date();
       subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
 
       const hostData: HostUser = {
-        uid: user.uid,
+        uid: newUser.uid,
         email,
         name,
         phone,
@@ -294,15 +291,20 @@ class FirebaseService {
         isActive: true
       };
 
-      // Save host record in database
-      const cleanedHostData = removeUndefinedValues(hostData);
-      await set(ref(database, `hosts/${user.uid}`), cleanedHostData);
-      console.log('✅ Host record created in database');
-      
-      console.log('✅ Host creation successful');
-      return hostData;
+      // New user writes their own profile (allowed by rules)
+      await set(ref(database, `hosts/${newUser.uid}`), removeUndefinedValues(hostData));
+      console.log('✅ Host profile created');
+
+      // Sign out new user immediately
+      await signOut(auth);
+      console.log('✅ Signed out new user');
+
+      // Success - admin needs to log back in
+      throw new Error(`SUCCESS: Host account created for ${email}! Please log in again as admin to continue.`);
+
     } catch (error: any) {
-      console.error('❌ Host creation failed:', error);
+      // Always sign out to clean state
+      try { await signOut(auth); } catch {}
       throw new Error(error.message || 'Failed to create host');
     }
   }
@@ -440,13 +442,11 @@ class FirebaseService {
   // Load predefined ticket sets
   async loadTicketSet(setId: string): Promise<TicketSetData> {
     try {
-      // Try to load from Firebase first
       const ticketSetSnapshot = await get(ref(database, `ticketSets/${setId}`));
       if (ticketSetSnapshot.exists()) {
         return ticketSetSnapshot.val() as TicketSetData;
       }
 
-      // If not found, load from predefined data
       if (TICKET_SETS_DATA[setId]) {
         return TICKET_SETS_DATA[setId];
       }
@@ -457,7 +457,7 @@ class FirebaseService {
     }
   }
 
-  // Game operations with proper permission verification
+  // Game operations
   async createGame(
     gameConfig: { name: string; maxTickets: number; ticketPrice: number; hostPhone?: string },
     hostId: string,
@@ -467,7 +467,6 @@ class FirebaseService {
     try {
       console.log('🎮 Creating game...');
       
-      // Verify current user permissions
       const currentUser = auth.currentUser;
       if (!currentUser) {
         throw new Error('No authenticated user. Please log in again.');
@@ -477,7 +476,6 @@ class FirebaseService {
         throw new Error('User ID mismatch. Please log in again.');
       }
 
-      // Verify user exists in database with proper permissions
       const userRole = await getCurrentUserRole();
       if (!userRole || (userRole !== 'host' && userRole !== 'admin')) {
         throw new Error('Insufficient permissions. Please contact administrator.');
