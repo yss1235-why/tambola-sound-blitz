@@ -1,4 +1,4 @@
-// src/pages/Index.tsx - Cleaned up version
+// src/pages/Index.tsx - Simplified version for single-page design
 import React, { useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { UserLandingPage } from '@/components/UserLandingPage';
@@ -25,10 +25,10 @@ const Index = () => {
     // Role-based content rendering
     if (currentUser && userRole) {
       if (userRole === 'admin') {
-        // Admin Dashboard - Only user management
+        // Admin Dashboard - User management only
         return <AdminDashboard user={currentUser as AdminUser} />;
       } else if (userRole === 'host') {
-        // Host Dashboard - Game management only
+        // Host Dashboard - Single-page game management
         return <GameHost user={currentUser as HostUser} userRole={userRole} />;
       }
     }
