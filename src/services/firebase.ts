@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete file with Option 1 implementation
+// src/services/firebase.ts - Complete file with ticket format transformation
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -126,6 +126,14 @@ export interface HostSettings {
   selectedPrizes: string[];
 }
 
+// Type for your JSON format
+interface RawTicketRow {
+  setId: number;
+  ticketId: number;
+  rowId: number;
+  numbers: number[];
+}
+
 // Get current user role
 export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => {
   const user = auth.currentUser;
@@ -170,18 +178,6 @@ const removeUndefinedValues = (obj: any): any => {
     }
   }
   return cleaned;
-};
-
-// Pre-generated ticket sets data
-const TICKET_SETS_DATA: { [key: string]: TicketSetData } = {
-  "1": {
-    ticketCount: 600,
-    tickets: {}
-  },
-  "2": {
-    ticketCount: 600,
-    tickets: {}
-  }
 };
 
 // Firebase service class
@@ -439,21 +435,86 @@ class FirebaseService {
     }
   }
 
-  // Load predefined ticket sets
+  // UPDATED: Load predefined ticket sets from local JSON files (your format)
   async loadTicketSet(setId: string): Promise<TicketSetData> {
     try {
-      const ticketSetSnapshot = await get(ref(database, `ticketSets/${setId}`));
-      if (ticketSetSnapshot.exists()) {
-        return ticketSetSnapshot.val() as TicketSetData;
+      console.log(`📁 Loading ticket set ${setId} from local JSON...`);
+      
+      // Fetch from public/data/ directory
+      const response = await fetch(`/data/${setId}.json`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ticket set ${setId}: ${response.status} ${response.statusText}`);
       }
-
-      if (TICKET_SETS_DATA[setId]) {
-        return TICKET_SETS_DATA[setId];
-      }
-
-      throw new Error(`Ticket set ${setId} not found`);
+      
+      // Parse the flat array format
+      const rawData = await response.json() as RawTicketRow[];
+      
+      console.log(`📊 Raw data loaded: ${rawData.length} rows for set ${setId}`);
+      
+      // Transform flat array to nested ticket structure
+      const tickets: { [key: string]: TambolaTicket } = {};
+      const targetSetId = parseInt(setId);
+      
+      // Filter rows for this specific set and group by ticketId
+      const setRows = rawData.filter(row => row.setId === targetSetId);
+      
+      // Group rows by ticketId
+      const ticketGroups: { [ticketId: string]: RawTicketRow[] } = {};
+      setRows.forEach(row => {
+        const ticketKey = row.ticketId.toString();
+        if (!ticketGroups[ticketKey]) {
+          ticketGroups[ticketKey] = [];
+        }
+        ticketGroups[ticketKey].push(row);
+      });
+      
+      // Convert each ticket group to proper format
+      Object.keys(ticketGroups).forEach(ticketId => {
+        const rows = ticketGroups[ticketId];
+        
+        // Sort by rowId to ensure correct order
+        rows.sort((a, b) => a.rowId - b.rowId);
+        
+        // Ensure we have exactly 3 rows
+        if (rows.length === 3) {
+          tickets[ticketId] = {
+            ticketId: ticketId,
+            rows: [
+              rows[0].numbers, // Row 1
+              rows[1].numbers, // Row 2
+              rows[2].numbers  // Row 3
+            ],
+            isBooked: false
+          };
+        } else {
+          console.warn(`⚠️ Ticket ${ticketId} has ${rows.length} rows instead of 3`);
+        }
+      });
+      
+      const ticketCount = Object.keys(tickets).length;
+      
+      console.log(`✅ Successfully loaded ticket set ${setId}:`, {
+        rawRows: rawData.length,
+        filteredRows: setRows.length,
+        processedTickets: ticketCount,
+        ticketIds: Object.keys(tickets).slice(0, 5) // Show first 5 ticket IDs
+      });
+      
+      return {
+        ticketCount,
+        tickets
+      };
+      
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to load ticket set');
+      console.error(`❌ Error loading ticket set ${setId}:`, error);
+      
+      // Fallback to empty ticket set
+      console.log(`🔄 Creating fallback empty ticket set for ${setId}`);
+      return {
+        ticketCount: 0,
+        tickets: {}
+      };
     }
   }
 
@@ -1043,6 +1104,51 @@ class FirebaseService {
       await signOut(auth);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to logout');
+    }
+  }
+
+  // Debug method for ticket transformation (temporary)
+  async debugTicketTransformation(setId: string): Promise<void> {
+    console.log(`\n🔍 Debug: Testing ticket transformation for set ${setId}`);
+    
+    try {
+      // Load raw data
+      const response = await fetch(`/data/${setId}.json`);
+      const rawData = await response.json();
+      
+      console.log(`📊 Raw data sample:`, rawData.slice(0, 3));
+      console.log(`📊 Total rows in file: ${rawData.length}`);
+      
+      // Test transformation
+      const ticketSet = await this.loadTicketSet(setId);
+      
+      console.log(`📋 Transformation result:`, {
+        ticketCount: ticketSet.ticketCount,
+        firstTicketId: Object.keys(ticketSet.tickets)[0],
+        sampleTicket: Object.values(ticketSet.tickets)[0]
+      });
+      
+      // Validate first ticket structure
+      const firstTicket = Object.values(ticketSet.tickets)[0];
+      if (firstTicket) {
+        console.log(`✅ First ticket structure:`, {
+          ticketId: firstTicket.ticketId,
+          rowCount: firstTicket.rows.length,
+          row1Numbers: firstTicket.rows[0],
+          row2Numbers: firstTicket.rows[1], 
+          row3Numbers: firstTicket.rows[2],
+          isBooked: firstTicket.isBooked
+        });
+        
+        // Count non-zero numbers in each row
+        firstTicket.rows.forEach((row, index) => {
+          const nonZeroCount = row.filter(n => n !== 0).length;
+          console.log(`Row ${index + 1}: ${nonZeroCount} numbers, ${9 - nonZeroCount} empty cells`);
+        });
+      }
+      
+    } catch (error) {
+      console.error(`❌ Debug error for set ${setId}:`, error);
     }
   }
 }
