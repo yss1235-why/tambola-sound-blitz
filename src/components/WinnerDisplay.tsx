@@ -1,4 +1,4 @@
-
+// src/components/WinnerDisplay.tsx - Cleaned up version
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,6 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({ prizes }) => {
     const winnerText = prizes.map(prize => 
       `${prize.name}: ${prize.winner?.name || 'Unknown'} (Ticket #${prize.winner?.ticketId || 'Unknown'})`
     ).join('\n');
-    
-    console.log('🏆 Game Winners:\n', winnerText);
     
     // Create a simple text export
     const blob = new Blob([`Tambola Game Winners\n\n${winnerText}`], { type: 'text/plain' });
