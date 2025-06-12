@@ -1,4 +1,4 @@
-// src/components/PrizeManagementPanel.tsx - Simplified without excessive text
+// src/components/PrizeManagementPanel.tsx - Cleaned up version
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,10 +10,6 @@ import {
   Target
 } from 'lucide-react';
 import { GameData, Prize } from '@/services/firebase';
-import { 
-  getPrizeStatistics,
-  getTicketProgress 
-} from '@/utils/prizeValidation';
 
 interface PrizeManagementPanelProps {
   gameData: GameData;
@@ -26,11 +22,6 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
   // Get booked tickets for validation
   const bookedTickets = gameData.tickets ? 
     Object.values(gameData.tickets).filter(ticket => ticket.isBooked) : [];
-
-  // Calculate prize statistics
-  const calledNumbers = gameData.gameState.calledNumbers || [];
-  const prizeStats = bookedTickets.length > 0 ? 
-    getPrizeStatistics(gameData.tickets || {}, calledNumbers, gameData.prizes) : null;
 
   // Get prize display info
   const getPrizeDisplayInfo = (prize: Prize) => {
@@ -106,7 +97,6 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
           <div className="space-y-4">
             {Object.values(gameData.prizes).map((prize) => {
               const displayInfo = getPrizeDisplayInfo(prize);
-              const progress = prizeStats?.prizeProgress[prize.id];
               
               return (
                 <Card key={prize.id} className={`${displayInfo.className} transition-all duration-200`}>
@@ -161,27 +151,6 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
                                   )}
                                 </div>
                               ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Progress Info for Pending Prizes */}
-                        {!prize.won && progress && bookedTickets.length > 0 && (
-                          <div className="bg-white p-3 rounded border border-blue-200">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm font-medium text-gray-700">Player Progress</span>
-                              <span className="text-sm text-gray-600">{progress.averageProgress}% average</span>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                                style={{ width: `${progress.averageProgress}%` }}
-                              ></div>
-                            </div>
-                            <div className="flex justify-between items-center mt-2">
-                              <p className="text-xs text-gray-500">
-                                {progress.playersClose} player(s) are 80%+ complete
-                              </p>
                             </div>
                           </div>
                         )}
