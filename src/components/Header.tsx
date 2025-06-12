@@ -1,4 +1,4 @@
-// src/components/Header.tsx - Cleaned up version
+// src/components/Header.tsx - Fixed version with proper admin credentials
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -41,10 +41,10 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     onUserLogoutRef.current = onUserLogout;
   }, [onUserLogout]);
 
-  // Admin login form state
+  // Admin login form state - with default credentials
   const [adminForm, setAdminForm] = useState({
-    email: '',
-    password: ''
+    email: 'yurs@gmai.com',
+    password: 'Qwe123@'
   });
 
   // Host login form state
@@ -58,6 +58,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
+          console.log('🔐 Auth state changed - user logged in:', user.email);
           const role = await getCurrentUserRole();
           
           if (role) {
@@ -69,12 +70,16 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
               if (onUserLoginRef.current) {
                 onUserLoginRef.current(userData, role);
               }
+              console.log('✅ User data loaded successfully');
             }
+          } else {
+            console.log('❌ No valid role found for user');
           }
         } catch (error) {
-          console.error('Error getting user role:', error);
+          console.error('❌ Error getting user role:', error);
         }
       } else {
+        console.log('🔐 Auth state changed - user logged out');
         setCurrentUser(null);
         setUserRole(null);
         if (onUserLogoutRef.current) {
@@ -91,13 +96,16 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     setIsLoading(true);
     
     try {
+      console.log('🔐 Attempting admin login...');
       const admin = await firebaseService.loginAdmin(adminForm.email, adminForm.password);
       if (admin) {
+        console.log('✅ Admin login successful');
         setIsAdminLoginOpen(false);
-        setAdminForm({ email: '', password: '' });
+        // Keep the default credentials filled for easy access
       }
     } catch (error: any) {
-      console.error('Admin login failed:', error.message);
+      console.error('❌ Admin login failed:', error.message);
+      alert(`Admin Login Failed: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -108,13 +116,16 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     setIsLoading(true);
     
     try {
+      console.log('🔐 Attempting host login...');
       const host = await firebaseService.loginHost(hostForm.email, hostForm.password);
       if (host) {
+        console.log('✅ Host login successful');
         setIsHostLoginOpen(false);
         setHostForm({ email: '', password: '' });
       }
     } catch (error: any) {
-      console.error('Host login failed:', error.message);
+      console.error('❌ Host login failed:', error.message);
+      alert(`Host Login Failed: ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -122,9 +133,11 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
 
   const handleLogout = async () => {
     try {
+      console.log('🔐 Logging out...');
       await firebaseService.logout();
+      console.log('✅ Logout successful');
     } catch (error: any) {
-      console.error('Logout error:', error.message);
+      console.error('❌ Logout error:', error.message);
     }
   };
 
@@ -148,7 +161,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                     className="border-2 border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold"
                   >
                     <User className="w-4 h-4 mr-2" />
-                    {userRole === 'admin' ? 'Admin' : 'Host'}
+                    {userRole === 'admin' ? 'Admin' : 'Host'}: {currentUser.name}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
@@ -254,6 +267,11 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                   <DialogTitle className="text-gray-800">Admin Login</DialogTitle>
                 </DialogHeader>
                 <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm text-blue-800 font-medium">Default Admin Credentials:</p>
+                    <p className="text-xs text-blue-600">Email: yurs@gmai.com</p>
+                    <p className="text-xs text-blue-600">Password: Qwe123@</p>
+                  </div>
                   <div>
                     <Label htmlFor="admin-email" className="text-gray-700">Email</Label>
                     <Input 
@@ -288,11 +306,6 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                     {isLoading ? 'Logging in...' : 'Login as Admin'}
                   </Button>
                 </form>
-                <div className="text-xs text-gray-500 mt-2">
-                  <p>Default Admin Credentials:</p>
-                  <p>Email: yurs@gmai.com</p>
-                  <p>Password: Qwe123@</p>
-                </div>
               </DialogContent>
             </Dialog>
           </div>
