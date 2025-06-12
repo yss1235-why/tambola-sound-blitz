@@ -1,9 +1,8 @@
-// src/components/UserLandingPage.tsx - Enhanced with real-time updates for public users
+// src/components/UserLandingPage.tsx - Cleaned up version
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useToast } from '@/components/ui/use-toast';
 import { TicketBookingGrid } from './TicketBookingGrid';
 import { TambolaGame } from './TambolaGame';
 import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
@@ -11,13 +10,7 @@ import {
   Loader2, 
   Users, 
   Trophy, 
-  DollarSign, 
   Gamepad2, 
-  RefreshCw, 
-  Wifi, 
-  WifiOff, 
-  AlertCircle,
-  Clock,
   Phone,
   Ticket
 } from 'lucide-react';
@@ -29,85 +22,12 @@ export const UserLandingPage: React.FC = () => {
   const [tickets, setTickets] = useState<{ [key: string]: TambolaTicket }>({});
   const [isLoading, setIsLoading] = useState(true);
   
-  // ✅ NEW: Real-time connection status
-  const [isConnected, setIsConnected] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState<string>('');
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
-  
-  // ✅ Subscription management
-  const gamesUnsubscribeRef = useRef<(() => void) | null>(null);
+  // Subscription management
   const selectedGameUnsubscribeRef = useRef<(() => void) | null>(null);
   const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
-  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const { toast } = useToast();
 
-  // ✅ NEW: Enhanced connection monitoring
-  useEffect(() => {
-    const checkConnection = () => {
-      const now = new Date().toLocaleTimeString();
-      setLastUpdate(now);
-      setIsConnected(navigator.onLine);
-    };
-
-    checkConnection();
-    
-    // Check connection every 30 seconds
-    const connectionInterval = setInterval(checkConnection, 30000);
-
-    // Listen for online/offline events
-    const handleOnline = () => {
-      setIsConnected(true);
-      toast({
-        title: "Connection Restored",
-        description: "Game updates are now live!",
-      });
-      
-      // Reload games when coming back online
-      if (autoRefreshEnabled) {
-        loadActiveGames();
-      }
-    };
-
-    const handleOffline = () => {
-      setIsConnected(false);
-      toast({
-        title: "Connection Lost",
-        description: "You're offline. Game updates will resume when reconnected.",
-        variant: "destructive",
-      });
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      clearInterval(connectionInterval);
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [autoRefreshEnabled, toast]);
-
-  // ✅ Enhanced auto-refresh for public games list
-  useEffect(() => {
-    if (autoRefreshEnabled && isConnected) {
-      autoRefreshIntervalRef.current = setInterval(() => {
-        console.log('🔄 Auto-refreshing games list for public users');
-        loadActiveGames();
-      }, 60000); // Refresh every minute for public users
-    }
-
-    return () => {
-      if (autoRefreshIntervalRef.current) {
-        clearInterval(autoRefreshIntervalRef.current);
-      }
-    };
-  }, [autoRefreshEnabled, isConnected]);
-
-  // ✅ Enhanced real-time subscription for selected game
+  // Enhanced real-time subscription for selected game
   const setupSelectedGameSubscription = useCallback((game: GameData) => {
-    console.log('🔗 Setting up real-time subscription for selected game:', game.gameId);
-    
     // Clean up previous subscription
     if (selectedGameUnsubscribeRef.current) {
       selectedGameUnsubscribeRef.current();
@@ -116,60 +36,20 @@ export const UserLandingPage: React.FC = () => {
 
     const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
       if (updatedGame) {
-        console.log('📡 Real-time game update received for selected game:', updatedGame.gameId);
-        
         setSelectedGame(updatedGame);
-        setLastUpdate(new Date().toLocaleTimeString());
-        setIsConnected(true);
-
-        // ✅ Update game in active games list
+        
+        // Update game in active games list
         setActiveGames(prev => prev.map(g => 
           g.gameId === updatedGame.gameId ? updatedGame : g
         ));
-
-        // ✅ Notify about important game state changes
-        const prevGame = activeGames.find(g => g.gameId === updatedGame.gameId);
-        if (prevGame) {
-          // Game started
-          if (!prevGame.gameState.isActive && updatedGame.gameState.isActive) {
-            toast({
-              title: "🎮 Game Started!",
-              description: `${updatedGame.name} has begun!`,
-              duration: 5000,
-            });
-          }
-
-          // Game countdown
-          if (!prevGame.gameState.isCountdown && updatedGame.gameState.isCountdown) {
-            toast({
-              title: "⏱️ Game Starting Soon!",
-              description: `${updatedGame.name} starts in ${updatedGame.gameState.countdownTime} seconds!`,
-              duration: 3000,
-            });
-          }
-
-          // Game ended
-          if (!prevGame.gameState.gameOver && updatedGame.gameState.gameOver) {
-            toast({
-              title: "🏁 Game Ended!",
-              description: `${updatedGame.name} has completed!`,
-              duration: 8000,
-            });
-          }
-        }
-
-      } else {
-        setIsConnected(false);
       }
     });
 
     selectedGameUnsubscribeRef.current = unsubscribe;
-  }, [activeGames, toast]);
+  }, []);
 
-  // ✅ Enhanced real-time subscription for tickets
+  // Real-time subscription for tickets
   const setupTicketsSubscription = useCallback((gameId: string) => {
-    console.log('🔗 Setting up real-time subscription for tickets:', gameId);
-    
     // Clean up previous subscription
     if (ticketsUnsubscribeRef.current) {
       ticketsUnsubscribeRef.current();
@@ -178,43 +58,17 @@ export const UserLandingPage: React.FC = () => {
 
     const unsubscribe = firebaseService.subscribeToTickets(gameId, (updatedTickets) => {
       if (updatedTickets) {
-        console.log('📡 Real-time tickets update received:', Object.keys(updatedTickets).length, 'tickets');
-        
-        const previousBookedCount = Object.values(tickets).filter(t => t.isBooked).length;
-        const newBookedCount = Object.values(updatedTickets).filter(t => t.isBooked).length;
-        
         setTickets(updatedTickets);
-        setLastUpdate(new Date().toLocaleTimeString());
-        setIsConnected(true);
-
-        // ✅ Notify about new bookings
-        if (newBookedCount > previousBookedCount) {
-          const newBookings = newBookedCount - previousBookedCount;
-          toast({
-            title: "🎫 New Bookings!",
-            description: `${newBookings} ticket(s) just booked! Total players: ${newBookedCount}`,
-            duration: 4000,
-          });
-        }
-
-      } else {
-        setIsConnected(false);
       }
     });
 
     ticketsUnsubscribeRef.current = unsubscribe;
-  }, [tickets, toast]);
+  }, []);
 
   const loadActiveGames = useCallback(async () => {
-    if (!isConnected && !isLoading) {
-      console.log('⚠️ Skipping games load - offline');
-      return;
-    }
-
     setIsLoading(true);
     try {
       const games = await firebaseService.getAllActiveGames();
-      console.log('🔍 Loaded games for public users:', games.length);
       
       // Filter for games that are not over and have available tickets
       const availableGames = games.filter(game => 
@@ -223,12 +77,9 @@ export const UserLandingPage: React.FC = () => {
         Object.keys(game.tickets).length > 0
       );
       
-      console.log('🔍 Available games for public:', availableGames.length);
       setActiveGames(availableGames);
-      setLastUpdate(new Date().toLocaleTimeString());
-      setIsConnected(true);
       
-      // ✅ Auto-select first game and setup subscriptions
+      // Auto-select first game and setup subscriptions
       if (availableGames.length > 0) {
         const firstGame = availableGames[0];
         
@@ -259,37 +110,22 @@ export const UserLandingPage: React.FC = () => {
       }
       
     } catch (error: any) {
-      console.error('Error loading games for public users:', error);
-      setIsConnected(false);
-      toast({
-        title: "Connection Error",
-        description: "Failed to load games. Check your internet connection.",
-        variant: "destructive",
-      });
+      console.error('Error loading games:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [isConnected, isLoading, selectedGame, setupSelectedGameSubscription, setupTicketsSubscription, toast]);
+  }, [selectedGame, setupSelectedGameSubscription, setupTicketsSubscription]);
 
-  // ✅ Initial load and cleanup
+  // Initial load and cleanup
   useEffect(() => {
-    console.log('🚀 UserLandingPage: Initial load');
     loadActiveGames();
 
     return () => {
-      console.log('🧹 UserLandingPage: Cleaning up subscriptions');
-      
-      if (gamesUnsubscribeRef.current) {
-        gamesUnsubscribeRef.current();
-      }
       if (selectedGameUnsubscribeRef.current) {
         selectedGameUnsubscribeRef.current();
       }
       if (ticketsUnsubscribeRef.current) {
         ticketsUnsubscribeRef.current();
-      }
-      if (autoRefreshIntervalRef.current) {
-        clearInterval(autoRefreshIntervalRef.current);
       }
     };
   }, [loadActiveGames]);
@@ -299,17 +135,9 @@ export const UserLandingPage: React.FC = () => {
 
     try {
       await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGame.gameId);
-      
-      toast({
-        title: "Ticket Booked!",
-        description: `Ticket ${ticketId} has been booked successfully.`,
-      });
     } catch (error: any) {
-      toast({
-        title: "Booking Failed",
-        description: error.message || "Failed to book ticket",
-        variant: "destructive",
-      });
+      console.error('Booking failed:', error.message);
+      alert(error.message || 'Failed to book ticket');
     }
   };
 
@@ -329,7 +157,6 @@ export const UserLandingPage: React.FC = () => {
   };
 
   const handleGameSelect = (game: GameData) => {
-    console.log('🎮 User selected game:', game.gameId);
     setSelectedGame(game);
     
     // Setup real-time subscriptions for the selected game
@@ -339,16 +166,6 @@ export const UserLandingPage: React.FC = () => {
       setTickets(game.tickets);
       setupTicketsSubscription(game.gameId);
     }
-  };
-
-  const toggleAutoRefresh = () => {
-    setAutoRefreshEnabled(prev => !prev);
-    toast({
-      title: autoRefreshEnabled ? "Auto-refresh Disabled" : "Auto-refresh Enabled",
-      description: autoRefreshEnabled 
-        ? "Games list will no longer update automatically" 
-        : "Games list will refresh every minute",
-    });
   };
 
   if (isLoading && activeGames.length === 0) {
@@ -374,103 +191,25 @@ export const UserLandingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* ✅ Enhanced Welcome Section with Connection Status */}
+        {/* Welcome Section */}
         <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
           <CardHeader className="text-center">
-            <div className="flex justify-between items-start">
-              <div className="flex-1">
-                <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-                  🎲 Welcome to Tambola! 🎲
-                </CardTitle>
-                <p className="text-gray-600 text-lg mt-2">
-                  Join the excitement! Book your tickets and play live Tambola games.
-                </p>
-              </div>
-              
-              {/* ✅ Connection Status and Controls */}
-              <div className="flex flex-col items-end space-y-2">
-                <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
-                  isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                }`}>
-                  {isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-                  <span>{isConnected ? 'Live Updates' : 'Offline'}</span>
-                </div>
-                
-                <div className="flex space-x-2">
-                  <Button
-                    onClick={loadActiveGames}
-                    variant="outline"
-                    size="sm"
-                    disabled={isLoading}
-                  >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                    Refresh
-                  </Button>
-                  
-                  <Button
-                    onClick={toggleAutoRefresh}
-                    variant={autoRefreshEnabled ? "default" : "outline"}
-                    size="sm"
-                  >
-                    <Clock className="w-4 h-4 mr-2" />
-                    Auto
-                  </Button>
-                </div>
-              </div>
-            </div>
-            
-            {/* ✅ Status info */}
-            {lastUpdate && (
-              <p className="text-xs text-gray-500 mt-2">
-                Last updated: {lastUpdate} • 
-                Auto-refresh: {autoRefreshEnabled ? 'On' : 'Off'} • 
-                {activeGames.length} game(s) available
-              </p>
-            )}
+            <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+              🎲 Welcome to Tambola! 🎲
+            </CardTitle>
+            <p className="text-gray-600 text-lg mt-2">
+              Join the excitement! Book your tickets and play live Tambola games.
+            </p>
           </CardHeader>
         </Card>
 
-        {/* ✅ Connection Status Alert */}
-        {!isConnected && (
-          <Card className="border-l-4 border-l-red-500 bg-red-50">
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-3">
-                <AlertCircle className="w-5 h-5 text-red-600" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-red-800">You're offline</p>
-                  <p className="text-xs text-red-700">
-                    Game updates and ticket bookings will resume when your connection is restored.
-                  </p>
-                </div>
-                <Button 
-                  onClick={loadActiveGames}
-                  size="sm"
-                  variant="outline"
-                  className="border-red-300 text-red-600 hover:bg-red-100"
-                >
-                  <RefreshCw className="w-3 h-3 mr-1" />
-                  Retry
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* ✅ Enhanced Active Games List */}
+        {/* Active Games List */}
         {activeGames.length > 1 && (
           <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
             <CardHeader>
               <CardTitle className="text-2xl text-gray-800 text-center flex items-center justify-between">
                 <span>Available Games</span>
-                <div className="flex items-center space-x-2">
-                  {isConnected && autoRefreshEnabled && (
-                    <Badge variant="default" className="bg-green-500">
-                      <Wifi className="w-3 h-3 mr-1" />
-                      Live
-                    </Badge>
-                  )}
-                  <Badge variant="outline">{activeGames.length} Available</Badge>
-                </div>
+                <Badge variant="outline">{activeGames.length} Available</Badge>
               </CardTitle>
               <p className="text-gray-600 text-center">Choose a game to join</p>
             </CardHeader>
@@ -489,24 +228,16 @@ export const UserLandingPage: React.FC = () => {
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-bold text-gray-800 truncate">{game.name}</h3>
-                        <div className="flex flex-col items-end space-y-1">
-                          <Badge 
-                            variant={
-                              game.gameState.isActive ? "default" :
-                              game.gameState.isCountdown ? "secondary" :
-                              "outline"
-                            }
-                          >
-                            {game.gameState.isActive ? '🟢 Live' : 
-                             game.gameState.isCountdown ? '🟡 Starting' : '⚪ Waiting'}
-                          </Badge>
-                          {isConnected && (
-                            <Badge variant="outline" className="text-xs bg-green-50">
-                              <Wifi className="w-2 h-2 mr-1" />
-                              Live
-                            </Badge>
-                          )}
-                        </div>
+                        <Badge 
+                          variant={
+                            game.gameState.isActive ? "default" :
+                            game.gameState.isCountdown ? "secondary" :
+                            "outline"
+                          }
+                        >
+                          {game.gameState.isActive ? '🟢 Live' : 
+                           game.gameState.isCountdown ? '🟡 Starting' : '⚪ Waiting'}
+                        </Badge>
                       </div>
                       <div className="space-y-2 text-sm text-gray-600">
                         <div className="flex justify-between">
@@ -549,7 +280,7 @@ export const UserLandingPage: React.FC = () => {
           </Card>
         )}
 
-        {/* ✅ Enhanced Game Status */}
+        {/* Game Status */}
         {selectedGame ? (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
@@ -587,12 +318,7 @@ export const UserLandingPage: React.FC = () => {
                        selectedGame.gameState.gameOver ? 'Ended' : 'Waiting'}
                     </p>
                   </div>
-                  <div className="flex flex-col items-center">
-                    <Gamepad2 className="w-6 h-6 text-purple-200" />
-                    {isConnected && (
-                      <Wifi className="w-3 h-3 text-purple-200 mt-1" />
-                    )}
-                  </div>
+                  <Gamepad2 className="w-8 h-8 text-purple-200" />
                 </div>
               </CardContent>
             </Card>
@@ -617,43 +343,24 @@ export const UserLandingPage: React.FC = () => {
               <p className="text-gray-600 mb-4">
                 There are currently no active Tambola games. Please check back later or contact the host to start a new game.
               </p>
-              <div className="flex justify-center space-x-3">
-                <Button 
-                  onClick={loadActiveGames}
-                  className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
-                  disabled={isLoading}
-                >
-                  <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-                  Refresh Games
-                </Button>
-                <Button
-                  onClick={toggleAutoRefresh}
-                  variant="outline"
-                >
-                  <Clock className="w-4 h-4 mr-2" />
-                  {autoRefreshEnabled ? 'Disable Auto-refresh' : 'Enable Auto-refresh'}
-                </Button>
-              </div>
-              
-              {!isConnected && (
-                <p className="text-sm text-red-600 mt-4 flex items-center justify-center">
-                  <WifiOff className="w-4 h-4 mr-2" />
-                  Check your internet connection
-                </p>
-              )}
+              <Button 
+                onClick={loadActiveGames}
+                className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                disabled={isLoading}
+              >
+                Refresh Games
+              </Button>
             </CardContent>
           </Card>
         )}
 
-        {/* ✅ Enhanced Ticket Booking Grid with Real-time Updates */}
+        {/* Ticket Booking Grid */}
         {selectedGame && Object.keys(tickets).length > 0 && (
           <TicketBookingGrid 
             tickets={tickets}
             gameData={selectedGame}
             onBookTicket={handleBookTicket}
             onGameStart={() => setCurrentView('game')}
-            isConnected={isConnected}
-            lastUpdate={lastUpdate}
           />
         )}
 
@@ -680,24 +387,6 @@ export const UserLandingPage: React.FC = () => {
             </div>
           </CardContent>
         </Card>
-
-        {/* ✅ Enhanced Debug info for connection status (development only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <Card className="bg-gray-100 border border-gray-300">
-            <CardContent className="p-3">
-              <div className="text-xs text-gray-600 space-y-1">
-                <p>🔧 Debug Info (UserLandingPage):</p>
-                <p>Connection: {isConnected ? '✅ Connected' : '❌ Disconnected'}</p>
-                <p>Auto-refresh: {autoRefreshEnabled ? '✅ Enabled' : '❌ Disabled'}</p>
-                <p>Last Update: {lastUpdate || 'Never'}</p>
-                <p>Active Games: {activeGames.length}</p>
-                <p>Selected Game: {selectedGame?.gameId || 'None'}</p>
-                <p>Tickets Loaded: {Object.keys(tickets).length}</p>
-                <p>Booked Tickets: {getBookedTicketsCount()}</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
   );
