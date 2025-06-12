@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete file with ticket format transformation
+// src/services/firebase.ts - Complete file with corrected ticket loading
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -435,7 +435,7 @@ class FirebaseService {
     }
   }
 
-  // UPDATED: Load predefined ticket sets from local JSON files (your format)
+  // CORRECTED: Load predefined ticket sets from local JSON files
   async loadTicketSet(setId: string): Promise<TicketSetData> {
     try {
       console.log(`📁 Loading ticket set ${setId} from local JSON...`);
@@ -456,8 +456,17 @@ class FirebaseService {
       const tickets: { [key: string]: TambolaTicket } = {};
       const targetSetId = parseInt(setId);
       
-      // Filter rows for this specific set and group by ticketId
+      // Filter rows for this specific set
       const setRows = rawData.filter(row => row.setId === targetSetId);
+      
+      console.log(`📋 Filtered ${setRows.length} rows for setId ${targetSetId}`);
+      
+      if (setRows.length === 0) {
+        console.warn(`⚠️ No rows found for setId ${targetSetId}`);
+        const availableSets = [...new Set(rawData.map(row => row.setId))];
+        console.log(`Available setIds in JSON:`, availableSets);
+        return { ticketCount: 0, tickets: {} };
+      }
       
       // Group rows by ticketId
       const ticketGroups: { [ticketId: string]: RawTicketRow[] } = {};
@@ -469,48 +478,79 @@ class FirebaseService {
         ticketGroups[ticketKey].push(row);
       });
       
+      // Get all unique ticket IDs and sort them numerically
+      const ticketIds = Object.keys(ticketGroups).sort((a, b) => parseInt(a) - parseInt(b));
+      
+      console.log(`🎫 Processing tickets for setId ${targetSetId}:`, {
+        totalTicketGroups: ticketIds.length,
+        ticketIdRange: ticketIds.length > 0 ? `${ticketIds[0]} to ${ticketIds[ticketIds.length - 1]}` : 'none',
+        expectedTickets: 600
+      });
+      
       // Convert each ticket group to proper format
-      Object.keys(ticketGroups).forEach(ticketId => {
+      let processedCount = 0;
+      let skippedCount = 0;
+      const skippedTickets: string[] = [];
+      
+      ticketIds.forEach(ticketId => {
         const rows = ticketGroups[ticketId];
         
-        // Sort by rowId to ensure correct order
+        // Sort by rowId to ensure correct order (1, 2, 3)
         rows.sort((a, b) => a.rowId - b.rowId);
         
-        // Ensure we have exactly 3 rows
-        if (rows.length === 3) {
+        // Validate we have exactly 3 rows with correct rowIds
+        const expectedRowIds = [1, 2, 3];
+        const actualRowIds = rows.map(r => r.rowId);
+        
+        if (rows.length === 3 && expectedRowIds.every(id => actualRowIds.includes(id))) {
+          // Create ticket with original ticket ID from JSON
           tickets[ticketId] = {
             ticketId: ticketId,
             rows: [
-              rows[0].numbers, // Row 1
-              rows[1].numbers, // Row 2
-              rows[2].numbers  // Row 3
+              rows.find(r => r.rowId === 1)!.numbers, // Row 1
+              rows.find(r => r.rowId === 2)!.numbers, // Row 2
+              rows.find(r => r.rowId === 3)!.numbers  // Row 3
             ],
             isBooked: false
           };
+          processedCount++;
         } else {
-          console.warn(`⚠️ Ticket ${ticketId} has ${rows.length} rows instead of 3`);
+          console.warn(`⚠️ Skipping ticket ${ticketId} - expected rows [1,2,3], got [${actualRowIds.join(',')}]`);
+          skippedTickets.push(ticketId);
+          skippedCount++;
         }
       });
       
-      const ticketCount = Object.keys(tickets).length;
+      const finalTicketCount = Object.keys(tickets).length;
       
-      console.log(`✅ Successfully loaded ticket set ${setId}:`, {
-        rawRows: rawData.length,
-        filteredRows: setRows.length,
-        processedTickets: ticketCount,
-        ticketIds: Object.keys(tickets).slice(0, 5) // Show first 5 ticket IDs
+      console.log(`✅ Ticket set ${setId} processing complete:`, {
+        rawDataRows: rawData.length,
+        filteredRowsForThisSet: setRows.length,
+        uniqueTicketGroups: ticketIds.length,
+        successfullyProcessed: processedCount,
+        skippedDueToErrors: skippedCount,
+        finalAvailableTickets: finalTicketCount,
+        firstFewTicketIds: Object.keys(tickets).slice(0, 10),
+        lastFewTicketIds: Object.keys(tickets).slice(-10)
       });
       
+      if (skippedCount > 0) {
+        console.warn(`⚠️ Skipped ${skippedCount} tickets due to row structure issues:`, skippedTickets.slice(0, 10));
+      }
+      
+      // Verify we got a reasonable number of tickets
+      if (finalTicketCount < 500) {
+        console.warn(`⚠️ Warning: Only ${finalTicketCount} tickets loaded for set ${setId}. Expected around 600.`);
+      }
+      
       return {
-        ticketCount,
+        ticketCount: finalTicketCount,
         tickets
       };
       
     } catch (error: any) {
       console.error(`❌ Error loading ticket set ${setId}:`, error);
       
-      // Fallback to empty ticket set
-      console.log(`🔄 Creating fallback empty ticket set for ${setId}`);
       return {
         ticketCount: 0,
         tickets: {}
