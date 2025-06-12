@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Fixed version with proper admin initialization
+// src/services/firebase.ts - Updated to work with your existing admin structure
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -38,14 +38,17 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 const database = getDatabase(app);
 
-// Type definitions
+// Updated type definitions to match your existing structure
 export interface AdminUser {
   uid: string;
   email: string;
   name: string;
   role: 'admin';
   createdAt: string;
-  isActive: boolean;
+  permissions: {
+    createHosts: boolean;
+    manageUsers: boolean;
+  };
 }
 
 export interface HostUser {
@@ -123,7 +126,7 @@ export interface HostSettings {
   selectedPrizes: string[];
 }
 
-// Get current user role with better error handling
+// Get current user role - updated to work with your admin structure
 export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => {
   const user = auth.currentUser;
   if (!user) return null;
@@ -131,14 +134,21 @@ export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => 
   try {
     // Check if user exists in admins first
     const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
-    if (adminSnapshot.exists() && adminSnapshot.val().isActive) {
-      return 'admin';
+    if (adminSnapshot.exists()) {
+      const adminData = adminSnapshot.val();
+      // Check if admin has createHosts permission (equivalent to being active)
+      if (adminData.permissions && adminData.permissions.createHosts) {
+        return 'admin';
+      }
     }
 
     // Then check hosts
     const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
-    if (hostSnapshot.exists() && hostSnapshot.val().isActive) {
-      return 'host';
+    if (hostSnapshot.exists()) {
+      const hostData = hostSnapshot.val();
+      if (hostData.isActive) {
+        return 'host';
+      }
     }
 
     return null;
@@ -180,66 +190,26 @@ const TICKET_SETS_DATA: { [key: string]: TicketSetData } = {
 // Firebase service class
 class FirebaseService {
 
-  // Ensure admin record exists in database
-  private async ensureAdminRecord(uid: string, email: string): Promise<void> {
-    try {
-      const adminRef = ref(database, `admins/${uid}`);
-      const adminSnapshot = await get(adminRef);
-      
-      if (!adminSnapshot.exists()) {
-        const adminData: AdminUser = {
-          uid,
-          email,
-          name: 'Administrator',
-          role: 'admin',
-          createdAt: new Date().toISOString(),
-          isActive: true
-        };
-        
-        const cleanedAdminData = removeUndefinedValues(adminData);
-        await set(adminRef, cleanedAdminData);
-        console.log('✅ Admin record created in database');
-      }
-    } catch (error) {
-      console.error('❌ Error ensuring admin record:', error);
-      throw new Error('Failed to set up admin record');
-    }
-  }
-
-  // Ensure host record exists in database
-  private async ensureHostRecord(hostData: HostUser): Promise<void> {
-    try {
-      const hostRef = ref(database, `hosts/${hostData.uid}`);
-      const cleanedHostData = removeUndefinedValues(hostData);
-      await set(hostRef, cleanedHostData);
-      console.log('✅ Host record created in database');
-    } catch (error) {
-      console.error('❌ Error ensuring host record:', error);
-      throw new Error('Failed to set up host record');
-    }
-  }
-
-  // Admin operations with proper database record creation
+  // Admin operations - works with your existing admin structure
   async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
     try {
       console.log('🔐 Attempting admin login...');
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      console.log('✅ Firebase auth successful for:', user.email);
+      console.log('✅ Firebase auth successful for:', user.email, 'UID:', user.uid);
 
-      // Ensure admin record exists in database
-      await this.ensureAdminRecord(user.uid, user.email || '');
-
-      // Get the admin data
+      // Check if admin record exists in database
       const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
       if (!adminSnapshot.exists()) {
-        throw new Error('Admin record not found after creation');
+        throw new Error(`Admin record not found for ${user.email}. Please contact system administrator.`);
       }
 
       const adminData = adminSnapshot.val() as AdminUser;
-      if (!adminData.isActive) {
-        throw new Error('Admin account is deactivated');
+      
+      // Check if admin has necessary permissions
+      if (!adminData.permissions || !adminData.permissions.createHosts) {
+        throw new Error('Admin account does not have sufficient permissions.');
       }
 
       console.log('✅ Admin login successful');
@@ -250,7 +220,7 @@ class FirebaseService {
     }
   }
 
-  // Host operations with proper database record creation
+  // Host operations
   async loginHost(email: string, password: string): Promise<HostUser | null> {
     try {
       console.log('🔐 Attempting host login...');
@@ -299,6 +269,11 @@ class FirebaseService {
         throw new Error('Admin authorization failed. Please log in again.');
       }
 
+      const adminData = adminSnapshot.val();
+      if (!adminData.permissions || !adminData.permissions.createHosts) {
+        throw new Error('Admin does not have permission to create hosts.');
+      }
+
       // Create Firebase auth account
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
@@ -319,8 +294,10 @@ class FirebaseService {
         isActive: true
       };
 
-      // Ensure host record is saved in database
-      await this.ensureHostRecord(hostData);
+      // Save host record in database
+      const cleanedHostData = removeUndefinedValues(hostData);
+      await set(ref(database, `hosts/${user.uid}`), cleanedHostData);
+      console.log('✅ Host record created in database');
       
       console.log('✅ Host creation successful');
       return hostData;
@@ -1073,38 +1050,3 @@ class FirebaseService {
 }
 
 export const firebaseService = new FirebaseService();
-
-// Initialize default admin with proper setup
-const initializeDefaultAdmin = async () => {
-  try {
-    // Wait a bit for Firebase to initialize
-    setTimeout(async () => {
-      try {
-        const adminRef = ref(database, 'admins/default-admin-123');
-        const adminSnapshot = await get(adminRef);
-        
-        if (!adminSnapshot.exists()) {
-          const defaultAdmin: AdminUser = {
-            uid: 'default-admin-123',
-            email: 'yurs@gmai.com',
-            name: 'System Administrator',
-            role: 'admin',
-            createdAt: new Date().toISOString(),
-            isActive: true
-          };
-          
-          const cleanedDefaultAdmin = removeUndefinedValues(defaultAdmin);
-          await set(adminRef, cleanedDefaultAdmin);
-          console.log('✅ Default admin initialized in database');
-        }
-      } catch (error) {
-        console.error('❌ Error initializing default admin:', error);
-      }
-    }, 2000);
-  } catch (error) {
-    console.error('❌ Error in admin initialization timeout:', error);
-  }
-};
-
-// Initialize when the module loads
-initializeDefaultAdmin();
