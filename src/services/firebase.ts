@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete file with corrected ticket loading
+// src/services/firebase.ts - Fixed to load all sheets from selected JSON file
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -96,6 +96,8 @@ export interface TambolaTicket {
   playerPhone?: string;
   bookedAt?: string;
   updatedAt?: string;
+  sheetId?: number; // Which sheet this ticket belongs to (for future features)
+  originalTicketId?: number; // Original ticket ID from JSON
 }
 
 export interface GameData {
@@ -128,8 +130,8 @@ export interface HostSettings {
 
 // Type for your JSON format
 interface RawTicketRow {
-  setId: number;
-  ticketId: number;
+  setId: number; // This represents sheet number (1-100)
+  ticketId: number; // This is the original ticket number from JSON
   rowId: number;
   numbers: number[];
 }
@@ -243,7 +245,7 @@ class FirebaseService {
     }
   }
 
-  // OPTION 1 IMPLEMENTATION: Create host with credential switch
+  // Create host with credential switch
   async createHost(
     email: string, 
     password: string, 
@@ -435,10 +437,10 @@ class FirebaseService {
     }
   }
 
-  // CORRECTED: Load predefined ticket sets from local JSON files
+  // FIXED: Load ALL sheets from the selected ticket arrangement
   async loadTicketSet(setId: string): Promise<TicketSetData> {
     try {
-      console.log(`📁 Loading ticket set ${setId} from local JSON...`);
+      console.log(`📁 Loading ticket arrangement ${setId} (ALL sheets) from JSON...`);
       
       // Fetch from public/data/ directory
       const response = await fetch(`/data/${setId}.json`);
@@ -450,27 +452,17 @@ class FirebaseService {
       // Parse the flat array format
       const rawData = await response.json() as RawTicketRow[];
       
-      console.log(`📊 Raw data loaded: ${rawData.length} rows for set ${setId}`);
+      console.log(`📊 Raw data loaded: ${rawData.length} rows for arrangement ${setId}`);
       
       // Transform flat array to nested ticket structure
       const tickets: { [key: string]: TambolaTicket } = {};
-      const targetSetId = parseInt(setId);
       
-      // Filter rows for this specific set
-      const setRows = rawData.filter(row => row.setId === targetSetId);
+      // *** KEY FIX: Load ALL setIds (sheets) from the file, don't filter by setId ***
+      console.log(`📋 Processing ALL sheets from arrangement ${setId}...`);
       
-      console.log(`📋 Filtered ${setRows.length} rows for setId ${targetSetId}`);
-      
-      if (setRows.length === 0) {
-        console.warn(`⚠️ No rows found for setId ${targetSetId}`);
-        const availableSets = [...new Set(rawData.map(row => row.setId))];
-        console.log(`Available setIds in JSON:`, availableSets);
-        return { ticketCount: 0, tickets: {} };
-      }
-      
-      // Group rows by ticketId
+      // Group ALL rows by ticketId (regardless of setId)
       const ticketGroups: { [ticketId: string]: RawTicketRow[] } = {};
-      setRows.forEach(row => {
+      rawData.forEach(row => {
         const ticketKey = row.ticketId.toString();
         if (!ticketGroups[ticketKey]) {
           ticketGroups[ticketKey] = [];
@@ -479,21 +471,22 @@ class FirebaseService {
       });
       
       // Get all unique ticket IDs and sort them numerically
-      const ticketIds = Object.keys(ticketGroups).sort((a, b) => parseInt(a) - parseInt(b));
+      const allTicketIds = Object.keys(ticketGroups).sort((a, b) => parseInt(a) - parseInt(b));
       
-      console.log(`🎫 Processing tickets for setId ${targetSetId}:`, {
-        totalTicketGroups: ticketIds.length,
-        ticketIdRange: ticketIds.length > 0 ? `${ticketIds[0]} to ${ticketIds[ticketIds.length - 1]}` : 'none',
+      console.log(`🎫 Processing tickets from arrangement ${setId}:`, {
+        totalTicketGroups: allTicketIds.length,
+        ticketIdRange: allTicketIds.length > 0 ? `${allTicketIds[0]} to ${allTicketIds[allTicketIds.length - 1]}` : 'none',
         expectedTickets: 600
       });
       
-      // Convert each ticket group to proper format
+      // Convert each ticket group to proper format with RENUMBERED ticket IDs
+      let newTicketIdCounter = 1;
       let processedCount = 0;
       let skippedCount = 0;
       const skippedTickets: string[] = [];
       
-      ticketIds.forEach(ticketId => {
-        const rows = ticketGroups[ticketId];
+      allTicketIds.forEach(originalTicketId => {
+        const rows = ticketGroups[originalTicketId];
         
         // Sort by rowId to ensure correct order (1, 2, 3)
         rows.sort((a, b) => a.rowId - b.rowId);
@@ -503,35 +496,43 @@ class FirebaseService {
         const actualRowIds = rows.map(r => r.rowId);
         
         if (rows.length === 3 && expectedRowIds.every(id => actualRowIds.includes(id))) {
-          // Create ticket with original ticket ID from JSON
-          tickets[ticketId] = {
-            ticketId: ticketId,
+          // Calculate sheet ID (which 6-ticket sheet this belongs to)
+          const sheetId = Math.ceil(newTicketIdCounter / 6);
+          
+          // Create ticket with RENUMBERED ticket ID for consistent display
+          const newTicketId = newTicketIdCounter.toString();
+          
+          tickets[newTicketId] = {
+            ticketId: newTicketId,  // Use sequential numbering 1-600
             rows: [
               rows.find(r => r.rowId === 1)!.numbers, // Row 1
               rows.find(r => r.rowId === 2)!.numbers, // Row 2
               rows.find(r => r.rowId === 3)!.numbers  // Row 3
             ],
-            isBooked: false
+            isBooked: false,
+            sheetId: sheetId,  // Track which sheet (1-100)
+            originalTicketId: parseInt(originalTicketId)  // Keep original for reference
           };
+          
+          newTicketIdCounter++;
           processedCount++;
         } else {
-          console.warn(`⚠️ Skipping ticket ${ticketId} - expected rows [1,2,3], got [${actualRowIds.join(',')}]`);
-          skippedTickets.push(ticketId);
+          console.warn(`⚠️ Skipping ticket ${originalTicketId} - expected rows [1,2,3], got [${actualRowIds.join(',')}]`);
+          skippedTickets.push(originalTicketId);
           skippedCount++;
         }
       });
       
       const finalTicketCount = Object.keys(tickets).length;
       
-      console.log(`✅ Ticket set ${setId} processing complete:`, {
+      console.log(`✅ Ticket arrangement ${setId} processing complete:`, {
         rawDataRows: rawData.length,
-        filteredRowsForThisSet: setRows.length,
-        uniqueTicketGroups: ticketIds.length,
+        uniqueTicketGroups: allTicketIds.length,
         successfullyProcessed: processedCount,
         skippedDueToErrors: skippedCount,
         finalAvailableTickets: finalTicketCount,
-        firstFewTicketIds: Object.keys(tickets).slice(0, 10),
-        lastFewTicketIds: Object.keys(tickets).slice(-10)
+        sheetsCount: Math.ceil(finalTicketCount / 6),
+        ticketIdRange: finalTicketCount > 0 ? `1-${finalTicketCount}` : 'none'
       });
       
       if (skippedCount > 0) {
@@ -540,7 +541,7 @@ class FirebaseService {
       
       // Verify we got a reasonable number of tickets
       if (finalTicketCount < 500) {
-        console.warn(`⚠️ Warning: Only ${finalTicketCount} tickets loaded for set ${setId}. Expected around 600.`);
+        console.warn(`⚠️ Warning: Only ${finalTicketCount} tickets loaded for arrangement ${setId}. Expected around 600.`);
       }
       
       return {
@@ -549,7 +550,7 @@ class FirebaseService {
       };
       
     } catch (error: any) {
-      console.error(`❌ Error loading ticket set ${setId}:`, error);
+      console.error(`❌ Error loading ticket arrangement ${setId}:`, error);
       
       return {
         ticketCount: 0,
@@ -1144,51 +1145,6 @@ class FirebaseService {
       await signOut(auth);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to logout');
-    }
-  }
-
-  // Debug method for ticket transformation (temporary)
-  async debugTicketTransformation(setId: string): Promise<void> {
-    console.log(`\n🔍 Debug: Testing ticket transformation for set ${setId}`);
-    
-    try {
-      // Load raw data
-      const response = await fetch(`/data/${setId}.json`);
-      const rawData = await response.json();
-      
-      console.log(`📊 Raw data sample:`, rawData.slice(0, 3));
-      console.log(`📊 Total rows in file: ${rawData.length}`);
-      
-      // Test transformation
-      const ticketSet = await this.loadTicketSet(setId);
-      
-      console.log(`📋 Transformation result:`, {
-        ticketCount: ticketSet.ticketCount,
-        firstTicketId: Object.keys(ticketSet.tickets)[0],
-        sampleTicket: Object.values(ticketSet.tickets)[0]
-      });
-      
-      // Validate first ticket structure
-      const firstTicket = Object.values(ticketSet.tickets)[0];
-      if (firstTicket) {
-        console.log(`✅ First ticket structure:`, {
-          ticketId: firstTicket.ticketId,
-          rowCount: firstTicket.rows.length,
-          row1Numbers: firstTicket.rows[0],
-          row2Numbers: firstTicket.rows[1], 
-          row3Numbers: firstTicket.rows[2],
-          isBooked: firstTicket.isBooked
-        });
-        
-        // Count non-zero numbers in each row
-        firstTicket.rows.forEach((row, index) => {
-          const nonZeroCount = row.filter(n => n !== 0).length;
-          console.log(`Row ${index + 1}: ${nonZeroCount} numbers, ${9 - nonZeroCount} empty cells`);
-        });
-      }
-      
-    } catch (error) {
-      console.error(`❌ Debug error for set ${setId}:`, error);
     }
   }
 }
