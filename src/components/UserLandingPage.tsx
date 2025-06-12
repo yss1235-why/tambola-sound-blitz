@@ -1,4 +1,4 @@
-// src/components/UserLandingPage.tsx - Updated version (removed pricing, dates, how to play)
+// src/components/UserLandingPage.tsx - Final version with proper ticket handling
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,6 +25,31 @@ export const UserLandingPage: React.FC = () => {
   // Subscription management
   const selectedGameUnsubscribeRef = useRef<(() => void) | null>(null);
   const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Helper function to get effective max tickets (what host actually set as limit)
+  const getEffectiveMaxTickets = useCallback((game: GameData): number => {
+    // Use the host's maxTickets setting, since JSON files contain 600 tickets
+    // and host can limit to any number they want
+    return game.maxTickets;
+  }, []);
+
+  // Helper function to get available tickets count for display
+  const getAvailableTicketsForDisplay = useCallback((game: GameData): number => {
+    if (!game.tickets) return game.maxTickets;
+    
+    const totalTicketsInSet = Object.keys(game.tickets).length; // All tickets in JSON
+    const hostMaxLimit = game.maxTickets; // What host set as limit
+    const effectiveLimit = Math.min(hostMaxLimit, totalTicketsInSet); // Actual usable tickets
+    const bookedCount = Object.values(game.tickets).filter(t => t.isBooked).length;
+    
+    return effectiveLimit - bookedCount;
+  }, []);
+
+  // Helper function to get booked count
+  const getBookedCount = useCallback((game: GameData): number => {
+    if (!game.tickets) return 0;
+    return Object.values(game.tickets).filter(t => t.isBooked).length;
+  }, []);
 
   // Enhanced real-time subscription for selected game
   const setupSelectedGameSubscription = useCallback((game: GameData) => {
@@ -147,8 +172,8 @@ export const UserLandingPage: React.FC = () => {
 
   const getAvailableTicketsCount = () => {
     if (!selectedGame) return 0;
-    const totalTickets = Math.min(selectedGame.maxTickets, Object.keys(tickets).length);
-    return totalTickets - getBookedTicketsCount();
+    const effectiveMax = getEffectiveMaxTickets(selectedGame);
+    return effectiveMax - getBookedTicketsCount();
   };
 
   const handleGameSelect = (game: GameData) => {
@@ -237,18 +262,18 @@ export const UserLandingPage: React.FC = () => {
                       <div className="space-y-2 text-sm text-gray-600">
                         <div className="flex justify-between">
                           <span>Max Tickets:</span>
-                          <span className="font-medium">{game.maxTickets}</span>
+                          <span className="font-medium">{getEffectiveMaxTickets(game)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Booked:</span>
                           <span className="font-medium text-green-600">
-                            {game.tickets ? Object.values(game.tickets).filter(t => t.isBooked).length : 0}
+                            {getBookedCount(game)}
                           </span>
                         </div>
                         <div className="flex justify-between">
                           <span>Available:</span>
                           <span className="font-medium text-blue-600">
-                            {game.tickets ? Math.min(game.maxTickets, Object.keys(game.tickets).length) - Object.values(game.tickets).filter(t => t.isBooked).length : 0}
+                            {getAvailableTicketsForDisplay(game)}
                           </span>
                         </div>
                         <div className="flex justify-between">
@@ -323,7 +348,7 @@ export const UserLandingPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-yellow-100">Max Tickets</p>
-                    <p className="text-2xl font-bold">{selectedGame.maxTickets}</p>
+                    <p className="text-2xl font-bold">{getEffectiveMaxTickets(selectedGame)}</p>
                   </div>
                   <Trophy className="w-8 h-8 text-yellow-200" />
                 </div>
