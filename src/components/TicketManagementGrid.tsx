@@ -1,4 +1,4 @@
-// src/components/TicketManagementGrid.tsx - Simplified Ticket Management for Hosts
+// src/components/TicketManagementGrid.tsx - Cleaned up version
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useToast } from '@/components/ui/use-toast';
 import { 
   Ticket, 
   Users, 
@@ -56,8 +55,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     playerName: '',
     playerPhone: ''
   });
-
-  const { toast } = useToast();
 
   // Subscribe to real-time ticket updates
   useEffect(() => {
@@ -134,20 +131,12 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
   const handleBookTickets = async () => {
     if (selectedTickets.length === 0) {
-      toast({
-        title: "No Tickets Selected",
-        description: "Please select at least one ticket to book",
-        variant: "destructive",
-      });
+      alert('Please select at least one ticket to book');
       return;
     }
 
     if (!bookingForm.playerName.trim()) {
-      toast({
-        title: "Player Name Required",
-        description: "Please enter the player's name",
-        variant: "destructive",
-      });
+      alert('Please enter the player\'s name');
       return;
     }
 
@@ -163,11 +152,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         );
       }
 
-      toast({
-        title: "Tickets Booked Successfully!",
-        description: `${selectedTickets.length} ticket(s) booked for ${bookingForm.playerName}`,
-      });
-
       // Reset form and selections
       setSelectedTickets([]);
       setBookingForm({ playerName: '', playerPhone: '' });
@@ -176,11 +160,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     } catch (error: any) {
       console.error('Error booking tickets:', error);
-      toast({
-        title: "Booking Failed",
-        description: error.message || "Failed to book tickets",
-        variant: "destructive",
-      });
+      alert(error.message || 'Failed to book tickets');
     } finally {
       setIsLoading(false);
     }
@@ -190,17 +170,13 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     if (!editingTicket) return;
 
     if (!editForm.playerName.trim()) {
-      toast({
-        title: "Player Name Required",
-        description: "Please enter the player's name",
-        variant: "destructive",
-      });
+      alert('Please enter the player\'s name');
       return;
     }
 
     setIsLoading(true);
     try {
-      // Update the ticket with new player information using updateTicket function
+      // Update the ticket with new player information
       await firebaseService.updateTicket(
         gameData.gameId,
         editingTicket.ticketId,
@@ -211,11 +187,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         }
       );
 
-      toast({
-        title: "Ticket Updated",
-        description: `Ticket ${editingTicket.ticketId} updated successfully`,
-      });
-
       setShowEditDialog(false);
       setEditingTicket(null);
       setEditForm({ playerName: '', playerPhone: '' });
@@ -223,11 +194,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     } catch (error: any) {
       console.error('Error updating ticket:', error);
-      toast({
-        title: "Update Failed",
-        description: error.message || "Failed to update ticket",
-        variant: "destructive",
-      });
+      alert(error.message || 'Failed to update ticket');
     } finally {
       setIsLoading(false);
     }
@@ -240,20 +207,10 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     setIsLoading(true);
     try {
       await firebaseService.unbookTicket(gameData.gameId, ticketId);
-      
-      toast({
-        title: "Booking Cancelled",
-        description: `Ticket ${ticketId} booking has been cancelled`,
-      });
-
       onRefreshGame();
     } catch (error: any) {
       console.error('Error cancelling booking:', error);
-      toast({
-        title: "Cancellation Failed",
-        description: error.message || "Failed to cancel booking",
-        variant: "destructive",
-      });
+      alert(error.message || 'Failed to cancel booking');
     } finally {
       setIsLoading(false);
     }
