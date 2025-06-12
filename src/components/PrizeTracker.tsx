@@ -1,4 +1,4 @@
-
+// src/components/PrizeTracker.tsx - Cleaned up version
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Prize } from './TambolaGame';
