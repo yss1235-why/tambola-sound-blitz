@@ -1,10 +1,11 @@
-// src/components/UserLandingPage.tsx - Final version with proper ticket handling
+// src/components/UserLandingPage.tsx - Updated with Smart Polling
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TicketBookingGrid } from './TicketBookingGrid';
 import { TambolaGame } from './TambolaGame';
+import { useSmartPolling } from '@/hooks/useSmartPolling';
 import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
 import { 
   Loader2, 
@@ -12,46 +13,66 @@ import {
   Trophy, 
   Gamepad2, 
   Phone,
-  Ticket
+  Ticket,
+  RefreshCw,
+  Clock,
+  Activity,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export const UserLandingPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<'tickets' | 'game'>('tickets');
-  const [activeGames, setActiveGames] = useState<GameData[]>([]);
   const [selectedGame, setSelectedGame] = useState<GameData | null>(null);
   const [tickets, setTickets] = useState<{ [key: string]: TambolaTicket }>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [showPollingDetails, setShowPollingDetails] = useState(false);
   
-  // Subscription management
+  // Subscription management for selected game (real-time)
   const selectedGameUnsubscribeRef = useRef<(() => void) | null>(null);
   const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Helper function to get effective max tickets (what host actually set as limit)
+  // ✅ Smart polling for game list (replaces real-time subscription)
+  const {
+    games: activeGames,
+    isLoading,
+    lastUpdate,
+    isActive,
+    isVisible,
+    pollCount,
+    error,
+    refresh,
+    currentInterval,
+    getStatusText,
+    getNextUpdateIn
+  } = useSmartPolling({
+    activeInterval: 10000,   // 10 seconds when active
+    idleInterval: 30000,     // 30 seconds when idle
+    activityTimeout: 30000,  // 30 seconds to consider idle
+    enabled: currentView === 'tickets' // Only poll on landing page, not during gameplay
+  });
+
+  // Helper functions
   const getEffectiveMaxTickets = useCallback((game: GameData): number => {
-    // Use the host's maxTickets setting, since JSON files contain 600 tickets
-    // and host can limit to any number they want
     return game.maxTickets;
   }, []);
 
-  // Helper function to get available tickets count for display
   const getAvailableTicketsForDisplay = useCallback((game: GameData): number => {
     if (!game.tickets) return game.maxTickets;
     
-    const totalTicketsInSet = Object.keys(game.tickets).length; // All tickets in JSON
-    const hostMaxLimit = game.maxTickets; // What host set as limit
-    const effectiveLimit = Math.min(hostMaxLimit, totalTicketsInSet); // Actual usable tickets
+    const totalTicketsInSet = Object.keys(game.tickets).length;
+    const hostMaxLimit = game.maxTickets;
+    const effectiveLimit = Math.min(hostMaxLimit, totalTicketsInSet);
     const bookedCount = Object.values(game.tickets).filter(t => t.isBooked).length;
     
     return effectiveLimit - bookedCount;
   }, []);
 
-  // Helper function to get booked count
   const getBookedCount = useCallback((game: GameData): number => {
     if (!game.tickets) return 0;
     return Object.values(game.tickets).filter(t => t.isBooked).length;
   }, []);
 
-  // Enhanced real-time subscription for selected game
+  // ✅ Real-time subscription for selected game (kept for immediate updates)
   const setupSelectedGameSubscription = useCallback((game: GameData) => {
     // Clean up previous subscription
     if (selectedGameUnsubscribeRef.current) {
@@ -59,21 +80,19 @@ export const UserLandingPage: React.FC = () => {
       selectedGameUnsubscribeRef.current = null;
     }
 
+    console.log('🎮 Setting up real-time subscription for selected game:', game.name);
+
     const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
       if (updatedGame) {
+        console.log('📡 Real-time update for selected game:', updatedGame.name);
         setSelectedGame(updatedGame);
-        
-        // Update game in active games list
-        setActiveGames(prev => prev.map(g => 
-          g.gameId === updatedGame.gameId ? updatedGame : g
-        ));
       }
     });
 
     selectedGameUnsubscribeRef.current = unsubscribe;
   }, []);
 
-  // Real-time subscription for tickets
+  // ✅ Real-time subscription for tickets (kept for booking updates)
   const setupTicketsSubscription = useCallback((gameId: string) => {
     // Clean up previous subscription
     if (ticketsUnsubscribeRef.current) {
@@ -81,8 +100,11 @@ export const UserLandingPage: React.FC = () => {
       ticketsUnsubscribeRef.current = null;
     }
 
+    console.log('🎫 Setting up real-time subscription for tickets:', gameId);
+
     const unsubscribe = firebaseService.subscribeToTickets(gameId, (updatedTickets) => {
       if (updatedTickets) {
+        console.log('📡 Real-time update for tickets:', Object.keys(updatedTickets).length);
         setTickets(updatedTickets);
       }
     });
@@ -90,61 +112,27 @@ export const UserLandingPage: React.FC = () => {
     ticketsUnsubscribeRef.current = unsubscribe;
   }, []);
 
-  const loadActiveGames = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const games = await firebaseService.getAllActiveGames();
-      
-      // Filter for games that are not over and have available tickets
-      const availableGames = games.filter(game => 
-        !game.gameState.gameOver && 
-        game.tickets && 
-        Object.keys(game.tickets).length > 0
-      );
-      
-      setActiveGames(availableGames);
-      
-      // Auto-select first game and setup subscriptions
-      if (availableGames.length > 0) {
-        const firstGame = availableGames[0];
-        
-        // Only change selected game if we don't have one or current one is not in the list
-        if (!selectedGame || !availableGames.find(g => g.gameId === selectedGame.gameId)) {
-          setSelectedGame(firstGame);
-          setupSelectedGameSubscription(firstGame);
-          
-          // Load tickets for the selected game
-          if (firstGame.tickets) {
-            setTickets(firstGame.tickets);
-            setupTicketsSubscription(firstGame.gameId);
-          }
-        }
-      } else {
-        // No games available, clean up subscriptions
-        setSelectedGame(null);
-        setTickets({});
-        
-        if (selectedGameUnsubscribeRef.current) {
-          selectedGameUnsubscribeRef.current();
-          selectedGameUnsubscribeRef.current = null;
-        }
-        if (ticketsUnsubscribeRef.current) {
-          ticketsUnsubscribeRef.current();
-          ticketsUnsubscribeRef.current = null;
-        }
-      }
-      
-    } catch (error: any) {
-      console.error('Error loading games:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedGame, setupSelectedGameSubscription, setupTicketsSubscription]);
-
-  // Initial load and cleanup
+  // Auto-select first game when games list updates
   useEffect(() => {
-    loadActiveGames();
+    if (activeGames.length > 0 && !selectedGame) {
+      const firstGame = activeGames[0];
+      console.log('🎯 Auto-selecting first available game:', firstGame.name);
+      setSelectedGame(firstGame);
+      setupSelectedGameSubscription(firstGame);
+      
+      if (firstGame.tickets) {
+        setTickets(firstGame.tickets);
+        setupTicketsSubscription(firstGame.gameId);
+      }
+    } else if (activeGames.length === 0 && selectedGame) {
+      // No games available, clean up
+      setSelectedGame(null);
+      setTickets({});
+    }
+  }, [activeGames, selectedGame, setupSelectedGameSubscription, setupTicketsSubscription]);
 
+  // Cleanup subscriptions on unmount
+  useEffect(() => {
     return () => {
       if (selectedGameUnsubscribeRef.current) {
         selectedGameUnsubscribeRef.current();
@@ -153,7 +141,7 @@ export const UserLandingPage: React.FC = () => {
         ticketsUnsubscribeRef.current();
       }
     };
-  }, [loadActiveGames]);
+  }, []);
 
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
     if (!selectedGame) return;
@@ -177,6 +165,7 @@ export const UserLandingPage: React.FC = () => {
   };
 
   const handleGameSelect = (game: GameData) => {
+    console.log('🎯 User selected game:', game.name);
     setSelectedGame(game);
     
     // Setup real-time subscriptions for the selected game
@@ -188,6 +177,38 @@ export const UserLandingPage: React.FC = () => {
     }
   };
 
+  // Switch to game view (this will disable polling and enable full real-time)
+  const handleGameStart = () => {
+    console.log('🎮 Switching to game view - enabling full real-time mode');
+    setCurrentView('game');
+  };
+
+  const handleBackToTickets = () => {
+    console.log('🔙 Returning to ticket view - resuming smart polling');
+    setCurrentView('tickets');
+  };
+
+  // Format time for display
+  const formatTime = (date: Date | null) => {
+    if (!date) return 'Never';
+    return date.toLocaleTimeString('en-US', { 
+      hour12: false, 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
+  };
+
+  const formatInterval = (ms: number) => {
+    return `${ms / 1000}s`;
+  };
+
+  // Show game view with full real-time
+  if (currentView === 'game' && selectedGame) {
+    return <TambolaGame gameData={selectedGame} onBackToTickets={handleBackToTickets} />;
+  }
+
+  // Loading state
   if (isLoading && activeGames.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 flex items-center justify-center">
@@ -196,7 +217,7 @@ export const UserLandingPage: React.FC = () => {
             <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
             <div>
               <p className="text-lg text-gray-700">Loading active games...</p>
-              <p className="text-sm text-gray-500">Connecting to live games...</p>
+              <p className="text-sm text-gray-500">Setting up smart polling...</p>
             </div>
           </CardContent>
         </Card>
@@ -204,14 +225,10 @@ export const UserLandingPage: React.FC = () => {
     );
   }
 
-  if (currentView === 'game' && selectedGame) {
-    return <TambolaGame gameData={selectedGame} onBackToTickets={() => setCurrentView('tickets')} />;
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Welcome Section */}
+        {/* Welcome Section with Smart Polling Status */}
         <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
@@ -220,8 +237,75 @@ export const UserLandingPage: React.FC = () => {
             <p className="text-gray-600 text-lg mt-2">
               Join the excitement! Book your tickets and play live Tambola games.
             </p>
+            
+            {/* Smart Polling Status */}
+            <div className="flex items-center justify-center space-x-4 mt-4">
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+                <span className="text-sm font-medium">
+                  {isActive ? 'Fast Updates' : 'Standard Updates'} ({formatInterval(currentInterval)})
+                </span>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                {isVisible ? <Eye className="w-4 h-4 text-green-600" /> : <EyeOff className="w-4 h-4 text-gray-400" />}
+                <span className="text-sm text-gray-600">{getStatusText()}</span>
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowPollingDetails(!showPollingDetails)}
+                className="text-xs"
+              >
+                <Activity className="w-3 h-3 mr-1" />
+                Details
+              </Button>
+            </div>
+
+            {/* Detailed Polling Info (Collapsible) */}
+            {showPollingDetails && (
+              <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <span className="font-medium">Last Update:</span>
+                    <div>{formatTime(lastUpdate)}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Poll Count:</span>
+                    <div>{pollCount}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Mode:</span>
+                    <div>{isActive ? '🏃 Active (10s)' : '😴 Idle (30s)'}</div>
+                  </div>
+                  <div>
+                    <span className="font-medium">Tab Status:</span>
+                    <div>{isVisible ? '👁️ Visible' : '🙈 Hidden'}</div>
+                  </div>
+                </div>
+              </div>
+            )}
           </CardHeader>
         </Card>
+
+        {/* Error Display */}
+        {error && (
+          <Card className="border-red-500 bg-red-50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                  <span className="text-red-700">{error}</span>
+                </div>
+                <Button onClick={refresh} size="sm" variant="outline">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Retry
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Active Games List */}
         {activeGames.length > 1 && (
@@ -229,9 +313,24 @@ export const UserLandingPage: React.FC = () => {
             <CardHeader>
               <CardTitle className="text-2xl text-gray-800 text-center flex items-center justify-between">
                 <span>Available Games</span>
-                <Badge variant="outline">{activeGames.length} Available</Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline">{activeGames.length} Available</Badge>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={refresh}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                  </Button>
+                </div>
               </CardTitle>
-              <p className="text-gray-600 text-center">Choose a game to join</p>
+              <p className="text-gray-600 text-center">
+                Choose a game to join • Updates every {formatInterval(currentInterval)} 
+                {lastUpdate && (
+                  <span className="text-gray-500"> • Last updated {formatTime(lastUpdate)}</span>
+                )}
+              </p>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -248,16 +347,21 @@ export const UserLandingPage: React.FC = () => {
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-bold text-gray-800 truncate">{game.name}</h3>
-                        <Badge 
-                          variant={
-                            game.gameState.isActive ? "default" :
-                            game.gameState.isCountdown ? "secondary" :
-                            "outline"
-                          }
-                        >
-                          {game.gameState.isActive ? '🟢 Live' : 
-                           game.gameState.isCountdown ? '🟡 Starting' : '⚪ Waiting'}
-                        </Badge>
+                        <div className="flex items-center space-x-1">
+                          {selectedGame?.gameId === game.gameId && (
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Real-time updates active"></div>
+                          )}
+                          <Badge 
+                            variant={
+                              game.gameState.isActive ? "default" :
+                              game.gameState.isCountdown ? "secondary" :
+                              "outline"
+                            }
+                          >
+                            {game.gameState.isActive ? '🟢 Live' : 
+                             game.gameState.isCountdown ? '🟡 Starting' : '⚪ Waiting'}
+                          </Badge>
+                        </div>
                       </div>
                       <div className="space-y-2 text-sm text-gray-600">
                         <div className="flex justify-between">
@@ -300,7 +404,7 @@ export const UserLandingPage: React.FC = () => {
           </Card>
         )}
 
-        {/* Game Status */}
+        {/* Game Status Cards */}
         {selectedGame ? (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
@@ -361,14 +465,30 @@ export const UserLandingPage: React.FC = () => {
               <div className="text-6xl mb-4">🎯</div>
               <h2 className="text-2xl font-bold text-gray-800 mb-2">No Active Games</h2>
               <p className="text-gray-600 mb-4">
-                There are currently no active Tambola games. Please check back later or contact the host to start a new game.
+                There are currently no active Tambola games. New games will appear automatically when hosts create them.
               </p>
+              <div className="flex items-center justify-center space-x-2 text-sm">
+                <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`}></div>
+                <span className="text-gray-600">
+                  Checking for new games every {formatInterval(currentInterval)}
+                </span>
+              </div>
               <Button 
-                onClick={loadActiveGames}
-                className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                onClick={refresh}
+                className="mt-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
                 disabled={isLoading}
               >
-                Refresh Games
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Checking...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Check Now
+                  </>
+                )}
               </Button>
             </CardContent>
           </Card>
@@ -380,7 +500,7 @@ export const UserLandingPage: React.FC = () => {
             tickets={tickets}
             gameData={selectedGame}
             onBookTicket={handleBookTicket}
-            onGameStart={() => setCurrentView('game')}
+            onGameStart={handleGameStart}
           />
         )}
       </div>
