@@ -1,4 +1,4 @@
-// src/components/AdminDashboard.tsx - Cleaned up version
+// src/components/AdminDashboard.tsx - Complete file with Option 1 implementation
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -99,6 +99,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     return () => unsubscribe();
   }, [loadHosts]);
 
+  // OPTION 1 IMPLEMENTATION: Handle create host with credential switch
   const handleCreateHost = async () => {
     if (!createForm.name.trim() || !createForm.email.trim() || !createForm.phone.trim() || !createForm.password.trim()) {
       alert('Please fill in all required fields');
@@ -116,12 +117,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         createForm.subscriptionMonths
       );
 
-      setShowCreateDialog(false);
-      setCreateForm({ name: '', email: '', phone: '', password: '', subscriptionMonths: 12 });
-      
     } catch (error: any) {
-      console.error('Create host error:', error);
-      alert(error.message || 'Failed to create host');
+      if (error.message.startsWith('SUCCESS:')) {
+        // Host created successfully
+        setShowCreateDialog(false);
+        setCreateForm({ name: '', email: '', phone: '', password: '', subscriptionMonths: 12 });
+        alert(error.message);
+        // User will be automatically logged out and redirected to login
+      } else {
+        // Real error
+        console.error('Create host error:', error);
+        alert(error.message || 'Failed to create host');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -464,7 +471,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <div className="space-y-4">
               <Alert>
                 <AlertDescription>
-                  You will remain logged in as admin after creating the host account.
+                  After creating the host, you will be logged out automatically. Please log back in as admin to continue.
                 </AlertDescription>
               </Alert>
               <div>
