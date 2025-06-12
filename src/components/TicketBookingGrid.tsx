@@ -1,4 +1,4 @@
-// src/components/TicketBookingGrid.tsx - Fixed WhatsApp booking with simple ticket naming
+// src/components/TicketBookingGrid.tsx - Cleaned up version
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,15 +29,11 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
         // First try to get phone from game data
         if (gameData.hostPhone) {
           setHostPhone(gameData.hostPhone);
-          console.log('✅ Host phone loaded from game data:', gameData.hostPhone);
         } else {
           // Fallback to host profile
           const host = await firebaseService.getHostById(gameData.hostId);
           if (host && host.phone) {
             setHostPhone(host.phone);
-            console.log('✅ Host phone loaded from profile:', host.phone);
-          } else {
-            console.log('❌ No host phone found');
           }
         }
       } catch (error) {
@@ -65,7 +61,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       .sort((a, b) => a - b) // Sort numbers in ascending order
       .join(', ');
     
-    // Create WhatsApp message without game name and with simple ticket naming
+    // Create WhatsApp message
     const message = `Hi! I want to book Ticket ${ticketId}. Numbers: ${ticketNumbers}. Please confirm my booking.`;
     const whatsappUrl = `https://wa.me/${hostPhone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
