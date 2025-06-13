@@ -1,4 +1,4 @@
-// src/components/AudioManager.tsx - Fixed with proper imports
+// src/components/AudioManager.tsx - Enhanced with human-like speech
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Prize } from '@/services/firebase';
 
@@ -104,7 +104,6 @@ const numberCalls: { [key: number]: string } = {
 export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prizes }) => {
   const lastCalledNumber = useRef<number | null>(null);
   const announcedPrizes = useRef<Set<string>>(new Set());
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const utteranceQueue = useRef<string[]>([]);
   const isProcessingQueue = useRef(false);
 
@@ -152,9 +151,9 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
 
     speak(text).finally(() => {
       isProcessingQueue.current = false;
-      // Process next item in queue
+      // Process next item in queue with a natural pause
       if (utteranceQueue.current.length > 0) {
-        setTimeout(() => processQueue(), 500); // Small delay between announcements
+        setTimeout(() => processQueue(), 800); // Natural pause between announcements
       }
     });
   }, []);
@@ -165,7 +164,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
     processQueue();
   }, [processQueue]);
 
-  // Enhanced text-to-speech functionality
+  // Enhanced text-to-speech functionality for more human-like speech
   const speak = (text: string): Promise<void> => {
     return new Promise((resolve) => {
       if (!('speechSynthesis' in window)) {
@@ -178,35 +177,46 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
         // Cancel any ongoing speech
         window.speechSynthesis.cancel();
         
-        setIsSpeaking(true);
-        
         const utterance = new SpeechSynthesisUtterance(text);
         
         // Get available voices
         const voices = window.speechSynthesis.getVoices();
         
-        // Try to find the best voice
+        // Try to find the best voice for human-like speech
         let selectedVoice = null;
         
-        // First priority: Google UK English Female
-        selectedVoice = voices.find(voice => 
-          voice.name.includes('Google UK English Female') ||
-          (voice.lang === 'en-GB' && voice.name.includes('Female'))
-        );
-        
-        // Second priority: Any UK English voice
-        if (!selectedVoice) {
-          selectedVoice = voices.find(voice => voice.lang === 'en-GB');
+        // Priority order for natural sounding voices
+        const voicePreferences = [
+          // Premium voices (often sound more natural)
+          { name: 'Google UK English Female', lang: 'en-GB' },
+          { name: 'Google UK English Male', lang: 'en-GB' },
+          { name: 'Microsoft Zira - English (United States)', lang: 'en-US' },
+          { name: 'Microsoft David - English (United States)', lang: 'en-US' },
+          { name: 'Samantha', lang: 'en-US' }, // macOS
+          { name: 'Alex', lang: 'en-US' }, // macOS
+          { name: 'Victoria', lang: 'en-US' }, // macOS
+          { name: 'Karen', lang: 'en-AU' }, // macOS Australian
+        ];
+
+        // Try to find preferred voice
+        for (const pref of voicePreferences) {
+          selectedVoice = voices.find(voice => 
+            voice.name.includes(pref.name) || 
+            (voice.name.toLowerCase().includes(pref.name.toLowerCase()) && voice.lang === pref.lang)
+          );
+          if (selectedVoice) break;
         }
-        
-        // Third priority: Google US English
+
+        // Fallback to any natural-sounding English voice
         if (!selectedVoice) {
           selectedVoice = voices.find(voice => 
-            voice.name.includes('Google') && voice.lang.startsWith('en')
+            voice.lang.startsWith('en') && 
+            !voice.name.toLowerCase().includes('compact') && // Avoid compact voices
+            !voice.name.toLowerCase().includes('siri') // Avoid Siri voices
           );
         }
-        
-        // Fourth priority: Any English voice
+
+        // Final fallback to any English voice
         if (!selectedVoice && voices.length > 0) {
           selectedVoice = voices.find(voice => voice.lang.startsWith('en'));
         }
@@ -216,20 +226,27 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
           console.log('Using voice:', selectedVoice.name);
         }
         
-        // Optimize speech settings
-        utterance.rate = 0.85; // Slightly slower for clarity
-        utterance.pitch = 1.1; // Slightly higher pitch
+        // Optimize speech settings for more natural sound
+        utterance.rate = 0.9; // Slightly slower for clarity and naturalness
+        utterance.pitch = 1.0; // Natural pitch
         utterance.volume = 1.0; // Full volume
+        
+        // Add emphasis and pauses for more natural speech
+        // Replace exclamation marks with periods for less robotic emphasis
+        const naturalText = text
+          .replace(/!+/g, '.') // Soften exclamations
+          .replace(/,/g, ', ') // Add slight pauses after commas
+          .replace(/\. /g, '.. '); // Add longer pauses after periods
+        
+        utterance.text = naturalText;
         
         // Event handlers
         utterance.onend = () => {
-          setIsSpeaking(false);
           resolve();
         };
         
         utterance.onerror = (event) => {
           console.error('Speech synthesis error:', event);
-          setIsSpeaking(false);
           resolve();
         };
         
@@ -238,25 +255,32 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
         
         // Fallback timeout
         setTimeout(() => {
-          if (isSpeaking) {
-            window.speechSynthesis.cancel();
-            setIsSpeaking(false);
-            resolve();
-          }
-        }, 10000); // 10 second timeout
+          window.speechSynthesis.cancel();
+          resolve();
+        }, 15000); // 15 second timeout
         
       } catch (error) {
         console.error('Speech synthesis error:', error);
-        setIsSpeaking(false);
         resolve();
       }
     });
   };
 
-  // Handle number calling
+  // Handle number calling with natural variations
   useEffect(() => {
     if (currentNumber && currentNumber !== lastCalledNumber.current) {
-      const callText = numberCalls[currentNumber] || `Number ${currentNumber}!`;
+      // Add slight variations to make it sound more natural
+      const variations = [
+        numberCalls[currentNumber] || `Number ${currentNumber}`,
+        numberCalls[currentNumber] || `And the number is... ${currentNumber}`,
+        numberCalls[currentNumber] || `Next up, number ${currentNumber}`,
+      ];
+      
+      // Pick a random variation occasionally for variety
+      const useVariation = Math.random() > 0.7; // 30% chance of variation
+      const callText = useVariation && !numberCalls[currentNumber] 
+        ? variations[Math.floor(Math.random() * variations.length)]
+        : (numberCalls[currentNumber] || `Number ${currentNumber}`);
       
       // Queue the number call
       queueSpeech(callText);
@@ -265,27 +289,38 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
     }
   }, [currentNumber, queueSpeech]);
 
-  // Handle prize announcements
+  // Handle prize announcements with more natural language
   useEffect(() => {
     prizes.forEach(prize => {
       // Only announce if prize is won AND hasn't been announced before
       if (prize.won && !announcedPrizes.current.has(prize.id)) {
-        let announcement = `Congratulations! ${prize.name} has been won`;
+        let announcement = '';
+        
+        // Create more natural, varied announcements
+        const excitementLevel = Math.random();
+        
+        if (excitementLevel < 0.33) {
+          announcement = `Great news everyone. ${prize.name} has been won`;
+        } else if (excitementLevel < 0.66) {
+          announcement = `We have a winner. ${prize.name} is complete`;
+        } else {
+          announcement = `Congratulations. ${prize.name} has been claimed`;
+        }
         
         if (prize.winners && prize.winners.length > 0) {
           if (prize.winners.length === 1) {
             announcement += ` by ${prize.winners[0].name}`;
           } else {
-            announcement += ` by ${prize.winners.length} players`;
+            announcement += ` by ${prize.winners.length} lucky players`;
           }
         }
         
-        announcement += '!';
+        announcement += '. Well done.';
         
-        // Queue the prize announcement
+        // Queue the prize announcement with a delay
         setTimeout(() => {
           queueSpeech(announcement);
-        }, 2000); // Delay to not overlap with number call
+        }, 2500); // Slightly longer delay for natural flow
         
         // Mark this prize as announced
         announcedPrizes.current.add(prize.id);
@@ -304,15 +339,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
     }
   }, [prizes]);
 
-  // Visual indicator for speaking (optional - can be removed if not needed)
-  if (isSpeaking) {
-    return (
-      <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 z-50">
-        <div className="animate-pulse">🔊</div>
-        <span className="text-sm">Speaking...</span>
-      </div>
-    );
-  }
-
+  // No visual indicator - removed the speaking toast
   return null;
 };
