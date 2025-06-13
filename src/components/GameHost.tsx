@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Fixed with all imports
+// src/components/GameHost.tsx - Fixed version with proper ticket booking
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { NumberGrid } from './NumberGrid';
 import { TicketDisplay } from './TicketDisplay';
+import { TicketManagementGrid } from './TicketManagementGrid';  // ADD THIS IMPORT
 import { PrizeManagementPanel } from './PrizeManagementPanel';
 import { 
   Play, 
@@ -28,7 +29,7 @@ import {
   RefreshCw,
   CheckCircle,
   Gamepad2,
-  Trash2  // THIS WAS MISSING - ADDED NOW
+  Trash2
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -759,7 +760,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </Card>
         )}
 
-        {/* BOOKING PHASE */}
+        {/* BOOKING PHASE - THIS IS THE CRITICAL FIX */}
         {gamePhase === 'booking' && !editMode && hostGame && (
           <div className="space-y-6">
             {/* Game Status */}
@@ -826,20 +827,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardContent>
             </Card>
 
-            {/* Ticket Grid Component would go here */}
-            {hostGame.tickets && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Live Ticket Bookings</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TicketDisplay 
-                    calledNumbers={[]} 
-                    tickets={Object.values(hostGame.tickets).filter(ticket => ticket.isBooked)} 
-                  />
-                </CardContent>
-              </Card>
-            )}
+            {/* THIS IS THE KEY FIX - Replace TicketDisplay with TicketManagementGrid */}
+            <TicketManagementGrid
+              gameData={hostGame}
+              onRefreshGame={loadHostCurrentGame}
+            />
           </div>
         )}
 
@@ -1157,7 +1149,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             {/* Prize Winners */}
             <PrizeManagementPanel
               gameData={hostGame}
-              onUpdate={loadHostCurrentGame}
+              onRefreshGame={loadHostCurrentGame}
               isHostView={true}
             />
           </div>
