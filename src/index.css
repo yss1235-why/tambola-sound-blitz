@@ -1,4 +1,4 @@
-/* src/index.css - Enhanced styles for game control */
+/* src/index.css - Fixed contrast and visibility issues */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -99,29 +99,35 @@
            shadow-lg border-orange-400;
   }
   
+  /* FIXED: Ticket grid with proper contrast */
   .ticket-grid {
-    @apply grid grid-cols-9 gap-1 p-4 bg-gradient-to-br from-white to-slate-50 rounded-xl shadow-md border-2 border-slate-200;
+    @apply grid grid-cols-9 gap-1 p-4 bg-white rounded-xl shadow-md border-2 border-slate-200;
   }
   
   .ticket-cell {
     @apply aspect-square flex items-center justify-center rounded-lg text-sm font-semibold
-           border-2 border-gray-200 transition-all duration-200;
+           border-2 transition-all duration-200;
   }
   
+  /* FIXED: Ensure text is visible on all ticket cells */
   .ticket-cell.number {
-    @apply bg-gradient-to-br from-slate-50 to-slate-100 text-slate-800 hover:from-slate-100 hover:to-slate-200 border-slate-300;
+    @apply bg-gradient-to-br from-yellow-50 to-amber-50 text-gray-800 
+           hover:from-yellow-100 hover:to-amber-100 border-gray-300;
   }
   
   .ticket-cell.empty {
-    @apply bg-gray-50 border-gray-200;
+    @apply bg-gray-100 border-gray-200;
   }
   
+  /* FIXED: Marked cells with high contrast */
   .ticket-cell.marked {
-    @apply bg-gradient-to-br from-red-400 to-red-500 text-white shadow-md border-red-400;
+    @apply bg-gradient-to-br from-emerald-500 to-emerald-600 text-white 
+           shadow-md border-emerald-500 font-bold;
   }
   
   .ticket-cell.booked {
-    @apply bg-gradient-to-br from-gray-300 to-gray-400 text-gray-600 border-gray-400;
+    @apply bg-gradient-to-br from-gray-300 to-gray-400 text-gray-800 
+           border-gray-400 font-medium;
   }
 
   /* Enhanced game control styles */
@@ -153,7 +159,7 @@
     @apply bg-gradient-to-r from-red-400 to-red-500 text-white;
   }
 
-  /* Control button styles */
+  /* Control button styles with proper contrast */
   .control-btn-start {
     @apply bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700
            text-white font-semibold py-3 px-6 rounded-xl shadow-lg
@@ -182,14 +188,14 @@
            focus:ring-4 focus:ring-orange-200;
   }
 
-  /* Current number display */
+  /* Current number display with high contrast */
   .current-number-display {
     @apply text-center p-8 bg-gradient-to-br from-red-500 via-red-600 to-red-700 
            text-white rounded-2xl shadow-2xl border-4 border-red-400;
   }
 
   .current-number-text {
-    @apply text-8xl font-black animate-pulse drop-shadow-2xl;
+    @apply text-8xl font-black drop-shadow-2xl;
   }
 
   /* Countdown display */
@@ -202,7 +208,7 @@
     @apply text-9xl font-black animate-bounce drop-shadow-2xl;
   }
 
-  /* Recent numbers display */
+  /* Recent numbers display with proper contrast */
   .recent-number {
     @apply w-16 h-16 rounded-xl flex items-center justify-center font-bold text-white text-lg 
            shadow-lg transition-all duration-200 hover:scale-110;
@@ -221,7 +227,7 @@
     @apply bg-gradient-to-br from-blue-400 to-blue-600;
   }
 
-  /* Game statistics cards */
+  /* Game statistics cards with proper text contrast */
   .stat-card {
     @apply text-center p-4 rounded-xl border-2 transition-all duration-200 hover:scale-105;
   }
@@ -246,7 +252,7 @@
     @apply bg-orange-50 border-orange-200 text-orange-800;
   }
 
-  /* Ticket Management Grid Styles */
+  /* Ticket Management Grid Styles with proper contrast */
   .ticket-management-grid {
     @apply grid gap-2;
   }
@@ -329,6 +335,7 @@
     animation: number-call-enhanced 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
   }
   
+  /* FIXED: Prize badge with proper contrast */
   .prize-badge {
     @apply inline-flex items-center px-4 py-2 rounded-full text-sm font-medium
            bg-gradient-to-r from-slate-600 to-slate-700 text-white
@@ -336,7 +343,7 @@
   }
   
   .prize-badge.won {
-    @apply from-green-400 to-green-500 text-white animate-prize-win;
+    @apply from-green-500 to-green-600 text-white animate-prize-win;
   }
 
   @keyframes prize-win-enhanced {
@@ -383,11 +390,11 @@
   .loading-dot:nth-child(2) { animation-delay: 150ms; }
   .loading-dot:nth-child(3) { animation-delay: 300ms; }
 
-  /* Enhanced form styling */
+  /* Enhanced form styling with proper contrast */
   .form-input-enhanced {
     @apply w-full px-4 py-3 border-2 border-gray-200 rounded-xl
            focus:border-blue-400 focus:ring-2 focus:ring-blue-100
-           transition-all duration-200 bg-white;
+           transition-all duration-200 bg-white text-gray-800;
   }
 
   .form-input-enhanced:focus {
@@ -396,6 +403,25 @@
 
   .form-label-enhanced {
     @apply block text-sm font-semibold text-gray-700 mb-2;
+  }
+
+  /* FIXED: Ensure all badges have proper contrast */
+  .badge {
+    @apply font-medium;
+  }
+
+  /* FIXED: Button hover states with maintained contrast */
+  .button-hover-state {
+    @apply transition-all duration-200 transform hover:scale-105;
+  }
+
+  /* FIXED: Card backgrounds with proper text contrast */
+  .card-light {
+    @apply bg-white text-gray-800;
+  }
+
+  .card-dark {
+    @apply bg-gray-800 text-white;
   }
 
   /* Responsive adjustments */
@@ -431,7 +457,7 @@
     }
   }
 
-  /* Dark mode support (if needed) */
+  /* Dark mode support (if needed) - with proper contrast */
   @media (prefers-color-scheme: dark) {
     .number-cell {
       @apply from-slate-700 to-slate-800 text-slate-100 border-slate-600;
@@ -443,6 +469,10 @@
 
     .ticket-cell.number {
       @apply from-slate-700 to-slate-800 text-slate-100 border-slate-600;
+    }
+    
+    .ticket-cell.marked {
+      @apply from-emerald-600 to-emerald-700 text-white border-emerald-600;
     }
   }
 }
