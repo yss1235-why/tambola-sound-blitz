@@ -1,4 +1,4 @@
-// src/components/TicketDisplay.tsx - Updated for search functionality
+// src/components/TicketDisplay.tsx - Fixed visibility and contrast
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TambolaTicket } from '@/services/firebase';
@@ -22,16 +22,6 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({ calledNumbers, tic
   const isNumberMarked = (number: number) => number !== 0 && calledNumbers.includes(number);
   const isEmpty = (number: number) => number === 0;
 
-  const getCellStyle = (number: number) => {
-    if (isEmpty(number)) {
-      return 'ticket-cell empty';
-    }
-    if (isNumberMarked(number)) {
-      return 'ticket-cell marked animate-bounce-in';
-    }
-    return 'ticket-cell number';
-  };
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {tickets.map((ticket) => (
@@ -43,15 +33,28 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({ calledNumbers, tic
             )}
           </CardHeader>
           <CardContent className="p-4">
-            <div className="ticket-grid">
-              {ticket.rows.flat().map((number, index) => (
-                <div
-                  key={index}
-                  className={getCellStyle(number)}
-                >
-                  {number !== 0 ? number : ''}
-                </div>
-              ))}
+            <div className="grid grid-cols-9 gap-1">
+              {ticket.rows.flat().map((number, index) => {
+                const marked = isNumberMarked(number);
+                const empty = isEmpty(number);
+                
+                return (
+                  <div
+                    key={index}
+                    className={`
+                      aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-300
+                      ${empty 
+                        ? 'bg-gray-100' 
+                        : marked 
+                          ? 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white shadow-md transform scale-105' 
+                          : 'bg-gradient-to-br from-yellow-50 to-amber-50 text-gray-800 border border-gray-300 hover:border-gray-400'
+                      }
+                    `}
+                  >
+                    {number !== 0 ? number : ''}
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-3 text-center">
               <div className="text-sm text-gray-600">
