@@ -1,6 +1,6 @@
-// src/components/AudioManager.tsx - Cleaned up version
-import React, { useEffect, useRef } from 'react';
-import { Prize } from './TambolaGame';
+// src/components/AudioManager.tsx - Fixed Speech Synthesis
+import React, { useEffect, useRef, useState } from 'react';
+import { Prize } from '@/services/firebase';
 
 interface AudioManagerProps {
   currentNumber: number | null;
@@ -104,39 +104,153 @@ const numberCalls: { [key: number]: string } = {
 export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prizes }) => {
   const lastCalledNumber = useRef<number | null>(null);
   const announcedPrizes = useRef<Set<string>>(new Set());
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const utteranceQueue = useRef<string[]>([]);
+  const isProcessingQueue = useRef(false);
+
+  // Initialize speech synthesis and ensure voices are loaded
+  useEffect(() => {
+    const initSpeech = () => {
+      if ('speechSynthesis' in window) {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+        
+        // Force voice list to load
+        const loadVoices = () => {
+          const voices = window.speechSynthesis.getVoices();
+          console.log(`Loaded ${voices.length} voices`);
+        };
+
+        // Some browsers need this event to populate voices
+        if (window.speechSynthesis.onvoiceschanged !== undefined) {
+          window.speechSynthesis.onvoiceschanged = loadVoices;
+        }
+        
+        // Initial load attempt
+        loadVoices();
+      }
+    };
+
+    initSpeech();
+    
+    // Cleanup on unmount
+    return () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // Process speech queue
+  const processQueue = useCallback(() => {
+    if (isProcessingQueue.current || utteranceQueue.current.length === 0) {
+      return;
+    }
+
+    isProcessingQueue.current = true;
+    const text = utteranceQueue.current.shift()!;
+
+    speak(text).finally(() => {
+      isProcessingQueue.current = false;
+      // Process next item in queue
+      if (utteranceQueue.current.length > 0) {
+        setTimeout(() => processQueue(), 500); // Small delay between announcements
+      }
+    });
+  }, []);
+
+  // Add text to speech queue
+  const queueSpeech = useCallback((text: string) => {
+    utteranceQueue.current.push(text);
+    processQueue();
+  }, [processQueue]);
 
   // Enhanced text-to-speech functionality
-  const speak = (text: string) => {
-    if ('speechSynthesis' in window) {
-      // Cancel any ongoing speech
-      speechSynthesis.cancel();
-      
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      // Try to get a more natural voice
-      const voices = speechSynthesis.getVoices();
-      const preferredVoices = voices.filter(voice => 
-        voice.lang.startsWith('en') && 
-        (voice.name.includes('Google') || voice.name.includes('Microsoft') || voice.name.includes('Natural'))
-      );
-      
-      if (preferredVoices.length > 0) {
-        utterance.voice = preferredVoices[0];
-      } else if (voices.length > 0) {
-        // Fallback to first English voice
-        const englishVoices = voices.filter(voice => voice.lang.startsWith('en'));
-        if (englishVoices.length > 0) {
-          utterance.voice = englishVoices[0];
-        }
+  const speak = (text: string): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!('speechSynthesis' in window)) {
+        console.warn('Speech synthesis not supported');
+        resolve();
+        return;
       }
-      
-      // Optimize speech settings for more natural sound
-      utterance.rate = 0.9;
-      utterance.pitch = 1.0;
-      utterance.volume = 0.9;
-      
-      speechSynthesis.speak(utterance);
-    }
+
+      try {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+        
+        setIsSpeaking(true);
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        
+        // Get available voices
+        const voices = window.speechSynthesis.getVoices();
+        
+        // Try to find the best voice
+        let selectedVoice = null;
+        
+        // First priority: Google UK English Female
+        selectedVoice = voices.find(voice => 
+          voice.name.includes('Google UK English Female') ||
+          (voice.lang === 'en-GB' && voice.name.includes('Female'))
+        );
+        
+        // Second priority: Any UK English voice
+        if (!selectedVoice) {
+          selectedVoice = voices.find(voice => voice.lang === 'en-GB');
+        }
+        
+        // Third priority: Google US English
+        if (!selectedVoice) {
+          selectedVoice = voices.find(voice => 
+            voice.name.includes('Google') && voice.lang.startsWith('en')
+          );
+        }
+        
+        // Fourth priority: Any English voice
+        if (!selectedVoice && voices.length > 0) {
+          selectedVoice = voices.find(voice => voice.lang.startsWith('en'));
+        }
+        
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+          console.log('Using voice:', selectedVoice.name);
+        }
+        
+        // Optimize speech settings
+        utterance.rate = 0.85; // Slightly slower for clarity
+        utterance.pitch = 1.1; // Slightly higher pitch
+        utterance.volume = 1.0; // Full volume
+        
+        // Event handlers
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          resolve();
+        };
+        
+        utterance.onerror = (event) => {
+          console.error('Speech synthesis error:', event);
+          setIsSpeaking(false);
+          resolve();
+        };
+        
+        // Speak
+        window.speechSynthesis.speak(utterance);
+        
+        // Fallback timeout
+        setTimeout(() => {
+          if (isSpeaking) {
+            window.speechSynthesis.cancel();
+            setIsSpeaking(false);
+            resolve();
+          }
+        }, 10000); // 10 second timeout
+        
+      } catch (error) {
+        console.error('Speech synthesis error:', error);
+        setIsSpeaking(false);
+        resolve();
+      }
+    });
   };
 
   // Handle number calling
@@ -144,54 +258,61 @@ export const AudioManager: React.FC<AudioManagerProps> = ({ currentNumber, prize
     if (currentNumber && currentNumber !== lastCalledNumber.current) {
       const callText = numberCalls[currentNumber] || `Number ${currentNumber}!`;
       
-      // Add a slight delay to make it feel more natural
-      setTimeout(() => {
-        speak(callText);
-      }, 300);
+      // Queue the number call
+      queueSpeech(callText);
       
       lastCalledNumber.current = currentNumber;
     }
-  }, [currentNumber]);
+  }, [currentNumber, queueSpeech]);
 
-  // Handle prize announcements - only announce each prize once
+  // Handle prize announcements
   useEffect(() => {
     prizes.forEach(prize => {
       // Only announce if prize is won AND hasn't been announced before
       if (prize.won && !announcedPrizes.current.has(prize.id)) {
-        const announcement = `Congratulations! ${prize.name} has been won!`;
+        let announcement = `Congratulations! ${prize.name} has been won`;
         
+        if (prize.winners && prize.winners.length > 0) {
+          if (prize.winners.length === 1) {
+            announcement += ` by ${prize.winners[0].name}`;
+          } else {
+            announcement += ` by ${prize.winners.length} players`;
+          }
+        }
+        
+        announcement += '!';
+        
+        // Queue the prize announcement
         setTimeout(() => {
-          speak(announcement);
-        }, 1500);
+          queueSpeech(announcement);
+        }, 2000); // Delay to not overlap with number call
         
         // Mark this prize as announced
         announcedPrizes.current.add(prize.id);
       }
     });
-  }, [prizes]);
+  }, [prizes, queueSpeech]);
 
-  // Clear announced prizes when game resets (all prizes become unwon)
+  // Clear announced prizes when game resets
   useEffect(() => {
     const wonPrizes = prizes.filter(p => p.won);
     
-    // If no prizes are won, reset the announced prizes (game was reset)
+    // If no prizes are won, reset the announced prizes
     if (wonPrizes.length === 0 && announcedPrizes.current.size > 0) {
       announcedPrizes.current.clear();
+      lastCalledNumber.current = null;
     }
   }, [prizes]);
 
-  // Load voices when component mounts
-  useEffect(() => {
-    const loadVoices = () => {
-      speechSynthesis.getVoices();
-    };
-    
-    if (speechSynthesis.onvoiceschanged !== undefined) {
-      speechSynthesis.onvoiceschanged = loadVoices;
-    }
-    
-    loadVoices();
-  }, []);
+  // Visual indicator for speaking (optional - can be removed if not needed)
+  if (isSpeaking) {
+    return (
+      <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2 z-50">
+        <div className="animate-pulse">🔊</div>
+        <span className="text-sm">Speaking...</span>
+      </div>
+    );
+  }
 
-  return null; // This component doesn't render anything
+  return null;
 };
