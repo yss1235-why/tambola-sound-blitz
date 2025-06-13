@@ -1,5 +1,5 @@
-// src/components/AudioManager.tsx - Fixed Speech Synthesis
-import React, { useEffect, useRef, useState } from 'react';
+// src/components/AudioManager.tsx - Fixed with proper imports
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Prize } from '@/services/firebase';
 
 interface AudioManagerProps {
