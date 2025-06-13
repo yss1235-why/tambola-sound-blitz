@@ -1,7 +1,7 @@
-// src/components/PrizeTracker.tsx - Cleaned up version
+// src/components/PrizeTracker.tsx - Updated for compatibility
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Prize } from './TambolaGame';
+import { Prize } from '@/services/firebase';
 
 interface PrizeTrackerProps {
   prizes: Prize[];
@@ -31,9 +31,9 @@ export const PrizeTracker: React.FC<PrizeTrackerProps> = ({ prizes }) => {
                 <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
                   {prize.pattern}
                 </p>
-                {prize.winner && (
+                {prize.won && prize.winners && prize.winners.length > 0 && (
                   <p className="text-xs text-green-700 font-medium mt-1">
-                    Won by: {prize.winner.name} (Ticket #{prize.winner.ticketId})
+                    Won by: {prize.winners.map(w => `${w.name} (Ticket #${w.ticketId})`).join(', ')}
                   </p>
                 )}
               </div>
