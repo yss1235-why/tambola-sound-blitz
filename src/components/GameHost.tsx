@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Fixed version with proper ticket booking
+// src/components/GameHost.tsx - Fixed version with all issues resolved
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,8 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { NumberGrid } from './NumberGrid';
-import { TicketDisplay } from './TicketDisplay';
-import { TicketManagementGrid } from './TicketManagementGrid';  // ADD THIS IMPORT
+import { TicketManagementGrid } from './TicketManagementGrid';
 import { PrizeManagementPanel } from './PrizeManagementPanel';
 import { 
   Play, 
@@ -24,12 +23,12 @@ import {
   Edit,
   Save,
   Phone,
-  RotateCcw,
-  Timer,
   RefreshCw,
   CheckCircle,
   Gamepad2,
-  Trash2
+  Trash2,
+  Timer,
+  Hash
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -133,19 +132,26 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
   const [currentCountdown, setCurrentCountdown] = useState(0);
   const [countdownDuration] = useState(10);
-  const [isGamePaused, setIsGamePaused] = useState(false);
+  
+  // Track if game has started (to maintain playing phase)
+  const [gameStarted, setGameStarted] = useState(false);
 
   // Refs
   const gameUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Determine game phase
+  // FIXED: Determine game phase - once in playing, stay in playing until game over
   const gamePhase = (() => {
     if (!hostGame) return 'creation';
     if (hostGame.gameState.gameOver) return 'finished';
-    if (hostGame.gameState.isActive || hostGame.gameState.isCountdown || 
+    
+    // FIXED: Once game has started (has called numbers or is/was active), stay in playing phase
+    if (gameStarted || 
+        hostGame.gameState.isActive || 
+        hostGame.gameState.isCountdown || 
         (hostGame.gameState.calledNumbers && hostGame.gameState.calledNumbers.length > 0)) {
       return 'playing';
     }
+    
     return 'booking';
   })();
 
@@ -183,6 +189,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       if (game) {
         setHostGame(game);
         
+        // Check if game has started
+        if (game.gameState.calledNumbers && game.gameState.calledNumbers.length > 0) {
+          setGameStarted(true);
+        }
+        
         // Setup form with existing game data for editing
         setCreateGameForm(prev => ({
           ...prev,
@@ -218,23 +229,22 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           .filter(num => !calledNums.includes(num));
         setAvailableNumbers(availableNums);
         
+        // Track if game has started
+        if (calledNums.length > 0) {
+          setGameStarted(true);
+        }
+        
         // Handle game state changes
         if (updatedGame.gameState.gameOver && gameInterval) {
           clearInterval(gameInterval);
           setGameInterval(null);
-          setIsGamePaused(false);
+          setGameStarted(false);
         }
 
         // Handle countdown updates
         if (updatedGame.gameState.isCountdown) {
           setCurrentCountdown(updatedGame.gameState.countdownTime);
         }
-
-        // Update paused state
-        setIsGamePaused(!updatedGame.gameState.isActive && 
-                        !updatedGame.gameState.isCountdown && 
-                        !updatedGame.gameState.gameOver &&
-                        (updatedGame.gameState.calledNumbers?.length || 0) > 0);
       }
     });
 
@@ -304,42 +314,23 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         selectedPrizes: createGameForm.selectedPrizes
       });
 
-      // Prepare prizes
-      const prizes: { [key: string]: Prize } = {};
-      createGameForm.selectedPrizes.forEach(prizeId => {
-        const prizeDef = AVAILABLE_PRIZES.find(p => p.id === prizeId);
-        if (prizeDef) {
-          prizes[prizeId] = {
-            id: prizeId,
-            name: prizeDef.name,
-            pattern: prizeDef.pattern,
-            won: false
-          };
-        }
-      });
-
-      // Create game data
-      const gameData: Omit<GameData, 'gameId' | 'createdAt'> = {
+      // Create game
+      const gameConfig = {
         name: `Tambola Game ${new Date().toLocaleDateString()}`,
-        hostId: user.uid,
-        hostPhone: createGameForm.hostPhone,
         maxTickets: createGameForm.maxTickets,
         ticketPrice: 0,
-        ticketSetId: createGameForm.selectedTicketSet,
-        gameState: {
-          isActive: false,
-          isCountdown: false,
-          countdownTime: 0,
-          gameOver: false,
-          calledNumbers: [],
-          currentNumber: null,
-          callInterval: callInterval
-        },
-        prizes
+        hostPhone: createGameForm.hostPhone
       };
 
-      const newGame = await firebaseService.createGame(gameData);
+      const newGame = await firebaseService.createGame(
+        gameConfig,
+        user.uid,
+        createGameForm.selectedTicketSet,
+        createGameForm.selectedPrizes
+      );
+      
       setHostGame(newGame);
+      setGameStarted(false);
       
       // Subscribe to updates
       subscribeToGameUpdates(newGame);
@@ -358,26 +349,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsLoading(true);
     try {
-      const updatedGameData = {
+      await firebaseService.updateGameData(hostGame.gameId, {
         maxTickets: createGameForm.maxTickets,
-        hostPhone: createGameForm.hostPhone,
-        prizes: {} as { [key: string]: Prize }
-      };
-
-      // Rebuild prizes
-      createGameForm.selectedPrizes.forEach(prizeId => {
-        const prizeDef = AVAILABLE_PRIZES.find(p => p.id === prizeId);
-        if (prizeDef) {
-          updatedGameData.prizes[prizeId] = {
-            id: prizeId,
-            name: prizeDef.name,
-            pattern: prizeDef.pattern,
-            won: false
-          };
-        }
+        hostPhone: createGameForm.hostPhone
       });
-
-      await firebaseService.updateGameData(hostGame.gameId, updatedGameData);
+      
       setEditMode(false);
 
     } catch (error: any) {
@@ -394,6 +370,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     try {
       setCurrentCountdown(countdownDuration);
+      setGameStarted(true); // Mark game as started
       
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
@@ -431,6 +408,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         countdownTime: 0
       });
 
+      // Start auto-calling numbers
       const interval = setInterval(() => {
         callNextNumber();
       }, callInterval * 1000);
@@ -443,12 +421,16 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const pauseGame = async () => {
-    if (!hostGame || !gameInterval) return;
+    if (!hostGame) return;
 
-    clearInterval(gameInterval);
-    setGameInterval(null);
+    // Clear the interval but don't change game state
+    if (gameInterval) {
+      clearInterval(gameInterval);
+      setGameInterval(null);
+    }
 
     try {
+      // FIXED: Only set isActive to false, don't end the game
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
         isActive: false
@@ -467,6 +449,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         isActive: true
       });
 
+      // Resume auto-calling numbers
       const interval = setInterval(() => {
         callNextNumber();
       }, callInterval * 1000);
@@ -477,19 +460,37 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  // FIXED: Auto-calling function
   const callNextNumber = async () => {
     if (!hostGame || availableNumbers.length === 0) return;
 
     const randomIndex = Math.floor(Math.random() * availableNumbers.length);
     const number = availableNumbers[randomIndex];
 
-    const newAvailable = availableNumbers.filter(n => n !== number);
-    setAvailableNumbers(newAvailable);
-
     try {
-      await firebaseService.callNumber(hostGame.gameId, number);
-
-      if (newAvailable.length === 0) {
+      // FIXED: Use the correct method name
+      const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
+      
+      // Update available numbers locally
+      setAvailableNumbers(prev => prev.filter(n => n !== number));
+      
+      // Check if game ended due to all prizes won
+      if (result.gameEnded) {
+        if (gameInterval) {
+          clearInterval(gameInterval);
+          setGameInterval(null);
+        }
+        setGameStarted(false);
+      }
+      
+      // Handle prize announcements if any
+      if (result.announcements && result.announcements.length > 0) {
+        // You can add toast notifications here
+        console.log('🎉 Prize Winners:', result.announcements);
+      }
+      
+      // If no numbers left, end the game
+      if (availableNumbers.length === 1) { // 1 because we haven't filtered yet
         endGame();
       }
     } catch (error) {
@@ -497,16 +498,33 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
+  // FIXED: Manual number calling
   const manualCallNumber = async (number: number) => {
-    if (!hostGame) return;
-
-    const newAvailable = availableNumbers.filter(n => n !== number);
-    setAvailableNumbers(newAvailable);
+    if (!hostGame || !availableNumbers.includes(number)) return;
 
     try {
-      await firebaseService.callNumber(hostGame.gameId, number);
-
-      if (newAvailable.length === 0) {
+      // FIXED: Use the correct method name
+      const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
+      
+      // Update available numbers locally
+      setAvailableNumbers(prev => prev.filter(n => n !== number));
+      
+      // Check if game ended due to all prizes won
+      if (result.gameEnded) {
+        if (gameInterval) {
+          clearInterval(gameInterval);
+          setGameInterval(null);
+        }
+        setGameStarted(false);
+      }
+      
+      // Handle prize announcements
+      if (result.announcements && result.announcements.length > 0) {
+        alert('🎉 ' + result.announcements.join('\n'));
+      }
+      
+      // If no numbers left, end the game
+      if (availableNumbers.length === 1) {
         endGame();
       }
     } catch (error) {
@@ -528,6 +546,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         isActive: false,
         gameOver: true
       });
+      
+      setGameStarted(false);
     } catch (error) {
       console.error('Failed to end game:', error);
     }
@@ -543,6 +563,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     try {
       await firebaseService.deleteGame(hostGame.gameId);
       setHostGame(null);
+      setGameStarted(false);
     } catch (error: any) {
       console.error('Delete game error:', error);
       alert(error.message || 'Failed to delete game');
@@ -554,6 +575,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const createNewGameFromFinished = () => {
     setHostGame(null);
     setEditMode(false);
+    setGameStarted(false);
   };
 
   // Helper functions
@@ -760,7 +782,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </Card>
         )}
 
-        {/* BOOKING PHASE - THIS IS THE CRITICAL FIX */}
+        {/* BOOKING PHASE */}
         {gamePhase === 'booking' && !editMode && hostGame && (
           <div className="space-y-6">
             {/* Game Status */}
@@ -776,7 +798,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                       <Edit className="w-4 h-4 mr-2" />
                       Edit Settings
                     </Button>
-                    <Button onClick={startCountdown} className="bg-green-600 hover:bg-green-700">
+                    <Button 
+                      onClick={startCountdown} 
+                      className="bg-green-600 hover:bg-green-700"
+                      disabled={getBookedTicketsCount() === 0}
+                    >
                       <Play className="w-4 h-4 mr-2" />
                       Start Game
                     </Button>
@@ -827,7 +853,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardContent>
             </Card>
 
-            {/* THIS IS THE KEY FIX - Replace TicketDisplay with TicketManagementGrid */}
+            {/* Ticket Management Grid */}
             <TicketManagementGrid
               gameData={hostGame}
               onRefreshGame={loadHostCurrentGame}
@@ -881,40 +907,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 </p>
               </div>
 
-              {/* Prize Selection */}
-              <div>
-                <Label>Edit Prizes</Label>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                  {AVAILABLE_PRIZES.map((prize) => (
-                    <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
-                      <Checkbox
-                        id={`edit-${prize.id}`}
-                        checked={createGameForm.selectedPrizes.includes(prize.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setCreateGameForm(prev => ({
-                              ...prev,
-                              selectedPrizes: [...prev.selectedPrizes, prize.id]
-                            }));
-                          } else {
-                            setCreateGameForm(prev => ({
-                              ...prev,
-                              selectedPrizes: prev.selectedPrizes.filter(id => id !== prize.id)
-                            }));
-                          }
-                        }}
-                      />
-                      <div className="flex-1">
-                        <Label htmlFor={`edit-${prize.id}`} className="font-medium cursor-pointer">
-                          {prize.name}
-                        </Label>
-                        <p className="text-sm text-gray-600">{prize.pattern}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="flex space-x-4">
                 <Button
                   onClick={updateGameSettings}
@@ -929,7 +921,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   ) : (
                     <>
                       <Save className="w-4 h-4 mr-2" />
-                      Save & Return to Booking
+                      Save Changes
                     </>
                   )}
                 </Button>
@@ -954,7 +946,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </Card>
         )}
 
-        {/* PLAYING PHASE */}
+        {/* PLAYING PHASE - SIMPLIFIED UI */}
         {gamePhase === 'playing' && hostGame && (
           <div className="space-y-6">
             {/* Game Controls */}
@@ -967,16 +959,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   </span>
                   <Badge variant={hostGame.gameState.isActive ? 'default' : 'secondary'} className="text-lg px-4">
                     {hostGame.gameState.isCountdown && `Countdown: ${currentCountdown}s`}
-                    {hostGame.gameState.isActive && 'Game Active'}
-                    {isGamePaused && 'Game Paused'}
-                    {hostGame.gameState.gameOver && 'Game Finished'}
+                    {hostGame.gameState.isActive && '🟢 Game Active'}
+                    {!hostGame.gameState.isActive && !hostGame.gameState.isCountdown && !hostGame.gameState.gameOver && '⏸️ Game Paused'}
+                    {hostGame.gameState.gameOver && '🏆 Game Finished'}
                   </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                {/* Game Statistics */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <p className="text-3xl font-bold text-blue-800">
+                    <p className="text-4xl font-bold text-blue-800">
                       {hostGame.gameState.currentNumber || '-'}
                     </p>
                     <p className="text-sm text-blue-600">Current Number</p>
@@ -993,31 +986,40 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                     </p>
                     <p className="text-sm text-purple-600">Numbers Left</p>
                   </div>
+                  <div className="text-center p-4 bg-orange-50 rounded-lg">
+                    <p className="text-3xl font-bold text-orange-800">
+                      {getBookedTicketsCount()}
+                    </p>
+                    <p className="text-sm text-orange-600">Players</p>
+                  </div>
                 </div>
 
-                {/* Game Control Buttons */}
-                <div className="flex space-x-4 mb-6">
+                {/* Game Control Buttons - FIXED PAUSE/PLAY */}
+                <div className="flex flex-wrap gap-4 mb-6">
                   {hostGame.gameState.isCountdown ? (
                     <Button disabled className="flex-1">
                       <Clock className="w-4 h-4 mr-2 animate-spin" />
                       Starting in {currentCountdown}s...
                     </Button>
-                  ) : hostGame.gameState.isActive ? (
-                    <Button onClick={pauseGame} variant="secondary" className="flex-1">
-                      <Pause className="w-4 h-4 mr-2" />
-                      Pause Game
-                    </Button>
-                  ) : isGamePaused ? (
-                    <Button onClick={resumeGame} className="flex-1 bg-green-600 hover:bg-green-700">
-                      <Play className="w-4 h-4 mr-2" />
-                      Resume Game
-                    </Button>
-                  ) : !hostGame.gameState.gameOver ? (
-                    <Button onClick={startCountdown} className="flex-1 bg-green-600 hover:bg-green-700">
-                      <Play className="w-4 h-4 mr-2" />
-                      Start Game
-                    </Button>
-                  ) : null}
+                  ) : (
+                    <>
+                      {hostGame.gameState.isActive ? (
+                        <Button onClick={pauseGame} variant="secondary" className="flex-1">
+                          <Pause className="w-4 h-4 mr-2" />
+                          Pause Game
+                        </Button>
+                      ) : (
+                        <Button 
+                          onClick={hostGame.gameState.calledNumbers?.length > 0 ? resumeGame : startCountdown} 
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                          disabled={hostGame.gameState.gameOver}
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          {hostGame.gameState.calledNumbers?.length > 0 ? 'Resume Game' : 'Start Game'}
+                        </Button>
+                      )}
+                    </>
+                  )}
 
                   {!hostGame.gameState.gameOver && hostGame.gameState.calledNumbers && hostGame.gameState.calledNumbers.length > 0 && (
                     <Button onClick={endGame} variant="destructive">
@@ -1043,58 +1045,103 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                         id="call-interval"
                         type="range"
                         min="3"
-                        max="10"
+                        max="15"
                         value={callInterval}
                         onChange={(e) => setCallInterval(parseInt(e.target.value))}
                         className="flex-1"
                         disabled={hostGame.gameState.isActive}
                       />
-                      <span className="text-sm text-gray-600 w-20">
+                      <span className="text-sm text-gray-600 w-20 text-center">
                         {callInterval}s
                       </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Adjust the speed of automatic number calling (only when paused)
+                    </p>
+                  </div>
+                )}
+
+                {/* Recent Numbers */}
+                {hostGame.gameState.calledNumbers && hostGame.gameState.calledNumbers.length > 0 && (
+                  <div className="mt-6">
+                    <h4 className="font-semibold mb-3">Recent Numbers Called:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {hostGame.gameState.calledNumbers
+                        .slice(-20)
+                        .reverse()
+                        .map((num, index) => (
+                          <div
+                            key={`${num}-${index}`}
+                            className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-white
+                              ${index === 0 
+                                ? 'bg-gradient-to-br from-red-500 to-red-600 ring-2 ring-red-300 text-lg' 
+                                : 'bg-gradient-to-br from-blue-500 to-blue-600 text-sm'
+                              }`}
+                          >
+                            {num}
+                          </div>
+                        ))}
                     </div>
                   </div>
                 )}
               </CardContent>
             </Card>
 
-            {/* Number Grid */}
+            {/* Number Grid for Manual Calling */}
             <Card>
               <CardHeader>
-                <CardTitle>Number Board</CardTitle>
+                <CardTitle className="flex items-center">
+                  <Hash className="w-5 h-5 mr-2" />
+                  Number Board - Click to Call Manually
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <NumberGrid
                   calledNumbers={hostGame.gameState.calledNumbers || []}
+                  currentNumber={hostGame.gameState.currentNumber}
                   onNumberClick={manualCallNumber}
-                  availableNumbers={availableNumbers}
-                  isHostView={true}
-                  isGameActive={hostGame.gameState.isActive || isGamePaused}
+                  isHost={true}
                 />
               </CardContent>
             </Card>
 
-            {/* Prize Management */}
+            {/* Prize Management - Shows status and winners */}
             <PrizeManagementPanel
               gameData={hostGame}
-              onUpdate={loadHostCurrentGame}
-              isHostView={true}
+              onRefreshGame={loadHostCurrentGame}
             />
 
-            {/* Booked Tickets */}
-            {hostGame.tickets && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Player Tickets</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TicketDisplay
-                    calledNumbers={hostGame.gameState.calledNumbers || []}
-                    tickets={Object.values(hostGame.tickets).filter(ticket => ticket.isBooked)}
-                  />
-                </CardContent>
-              </Card>
-            )}
+            {/* REMOVED: Full ticket display - only showing count */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Users className="w-5 h-5 mr-2" />
+                  Player Statistics
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <p className="text-2xl font-bold text-blue-800">{getBookedTicketsCount()}</p>
+                    <p className="text-sm text-blue-600">Total Players</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <p className="text-2xl font-bold text-green-800">
+                      {Object.values(hostGame.prizes).filter(p => p.won).length}
+                    </p>
+                    <p className="text-sm text-green-600">Prizes Won</p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <p className="text-2xl font-bold text-purple-800">
+                      {Object.values(hostGame.prizes).reduce((total, prize) => 
+                        total + (prize.winners?.length || 0), 0
+                      )}
+                    </p>
+                    <p className="text-sm text-purple-600">Total Winners</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -1150,7 +1197,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             <PrizeManagementPanel
               gameData={hostGame}
               onRefreshGame={loadHostCurrentGame}
-              isHostView={true}
             />
           </div>
         )}
