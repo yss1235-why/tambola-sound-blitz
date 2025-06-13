@@ -1,4 +1,4 @@
-// src/components/TicketDisplay.tsx - Updated with simple ticket naming
+// src/components/TicketDisplay.tsx - Updated for search functionality
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TambolaTicket } from '@/services/firebase';
@@ -14,8 +14,7 @@ export const TicketDisplay: React.FC<TicketDisplayProps> = ({ calledNumbers, tic
     return (
       <div className="text-center py-8">
         <div className="text-6xl mb-4">🎫</div>
-        <p className="text-gray-600 text-lg">No tickets booked yet</p>
-        <p className="text-gray-500 text-sm">Tickets will appear here once players book them</p>
+        <p className="text-gray-600 text-lg">No tickets to display</p>
       </div>
     );
   }
