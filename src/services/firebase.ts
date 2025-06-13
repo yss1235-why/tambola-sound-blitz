@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete implementation with single-game management
+// src/services/firebase.ts - Complete implementation with all fixes
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -406,11 +406,7 @@ class FirebaseService {
     }
   }
 
-  // NEW: Single game management methods
-  
-  /**
-   * Get host's current active game (only one game allowed per host)
-   */
+  // Get host's current active game (only one game allowed per host)
   async getHostCurrentGame(hostId: string): Promise<GameData | null> {
     try {
       const gamesQuery = query(
@@ -426,7 +422,6 @@ class FirebaseService {
       const games = Object.values(gamesData) as GameData[];
       
       // Find the most recent non-finished game
-      // This enforces the "one game at a time" rule
       const activeGame = games
         .filter(game => !game.gameState.gameOver)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -437,9 +432,7 @@ class FirebaseService {
     }
   }
 
-  /**
-   * Subscribe to host's current game with real-time updates
-   */
+  // Subscribe to host's current game with real-time updates
   subscribeToHostCurrentGame(hostId: string, callback: (game: GameData | null) => void): () => void {
     const gamesQuery = query(
       ref(database, 'games'),
@@ -452,7 +445,6 @@ class FirebaseService {
         const gamesData = snapshot.val();
         const games = Object.values(gamesData) as GameData[];
         
-        // Find the most recent non-finished game
         const activeGame = games
           .filter(game => !game.gameState.gameOver)
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -466,9 +458,7 @@ class FirebaseService {
     return () => off(gamesQuery, 'value', unsubscribe);
   }
 
-  /**
-   * Check if host can create a new game (enforces single game rule)
-   */
+  // Check if host can create a new game
   async canHostCreateNewGame(hostId: string): Promise<{
     canCreate: boolean;
     reason?: string;
@@ -494,12 +484,9 @@ class FirebaseService {
     }
   }
 
-  /**
-   * Delete a game (for hosts who want to start over)
-   */
+  // Delete a game
   async deleteGame(gameId: string): Promise<void> {
     try {
-      // Verify game exists and get its data
       const gameSnapshot = await get(ref(database, `games/${gameId}`));
       if (!gameSnapshot.exists()) {
         throw new Error('Game not found');
@@ -507,18 +494,15 @@ class FirebaseService {
 
       const gameData = gameSnapshot.val() as GameData;
       
-      // Verify current user owns this game
       const currentUser = auth.currentUser;
       if (!currentUser || currentUser.uid !== gameData.hostId) {
         throw new Error('You can only delete your own games');
       }
 
-      // Check if game has started (protect players)
       if (gameData.gameState.isActive || gameData.gameState.isCountdown) {
         throw new Error('Cannot delete a game that is currently running. Please end the game first.');
       }
 
-      // Check if there are booked tickets (protect players)
       const bookedTickets = gameData.tickets ? 
         Object.values(gameData.tickets).filter(ticket => ticket.isBooked).length : 0;
       
@@ -526,80 +510,10 @@ class FirebaseService {
         throw new Error(`Cannot delete game with ${bookedTickets} booked tickets. Please contact players first.`);
       }
 
-      // Safe to delete
       await remove(ref(database, `games/${gameId}`));
       console.log('✅ Game deleted successfully:', gameId);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to delete game');
-    }
-  }
-
-  /**
-   * Get simplified host statistics (for single game)
-   */
-  async getHostStatistics(hostId: string): Promise<{
-    totalGamesHosted: number;
-    totalPlayersServed: number;
-    totalPrizesAwarded: number;
-    averagePlayersPerGame: number;
-    hasActiveGame: boolean;
-    currentGameId?: string;
-  }> {
-    try {
-      const gamesQuery = query(
-        ref(database, 'games'),
-        orderByChild('hostId'),
-        equalTo(hostId)
-      );
-      
-      const gamesSnapshot = await get(gamesQuery);
-      if (!gamesSnapshot.exists()) {
-        return {
-          totalGamesHosted: 0,
-          totalPlayersServed: 0,
-          totalPrizesAwarded: 0,
-          averagePlayersPerGame: 0,
-          hasActiveGame: false
-        };
-      }
-
-      const gamesData = gamesSnapshot.val();
-      const games = Object.values(gamesData) as GameData[];
-
-      const totalGamesHosted = games.length;
-      let totalPlayersServed = 0;
-      let totalPrizesAwarded = 0;
-      let activeGame: GameData | null = null;
-
-      games.forEach(game => {
-        if (game.tickets) {
-          const bookedTickets = Object.values(game.tickets).filter(t => t.isBooked).length;
-          totalPlayersServed += bookedTickets;
-        }
-        
-        if (game.prizes) {
-          const wonPrizes = Object.values(game.prizes).filter(p => p.won).length;
-          totalPrizesAwarded += wonPrizes;
-        }
-
-        if (!game.gameState.gameOver && !activeGame) {
-          activeGame = game;
-        }
-      });
-
-      const averagePlayersPerGame = totalGamesHosted > 0 ? 
-        Math.round(totalPlayersServed / totalGamesHosted) : 0;
-
-      return {
-        totalGamesHosted,
-        totalPlayersServed,
-        totalPrizesAwarded,
-        averagePlayersPerGame,
-        hasActiveGame: !!activeGame,
-        currentGameId: activeGame?.gameId
-      };
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to get host statistics');
     }
   }
 
@@ -630,7 +544,7 @@ class FirebaseService {
   // Load ticket set from JSON
   async loadTicketSet(setId: string): Promise<TicketSetData> {
     try {
-      console.log(`📁 Loading ticket arrangement ${setId} (ALL sheets) from JSON...`);
+      console.log(`📁 Loading ticket arrangement ${setId} from JSON...`);
       
       const response = await fetch(`/data/${setId}.json`);
       
@@ -644,8 +558,6 @@ class FirebaseService {
       
       const tickets: { [key: string]: TambolaTicket } = {};
       
-      console.log(`📋 Processing ALL sheets from arrangement ${setId}...`);
-      
       const ticketGroups: { [ticketId: string]: RawTicketRow[] } = {};
       rawData.forEach(row => {
         const ticketKey = row.ticketId.toString();
@@ -657,16 +569,8 @@ class FirebaseService {
       
       const allTicketIds = Object.keys(ticketGroups).sort((a, b) => parseInt(a) - parseInt(b));
       
-      console.log(`🎫 Processing tickets from arrangement ${setId}:`, {
-        totalTicketGroups: allTicketIds.length,
-        ticketIdRange: allTicketIds.length > 0 ? `${allTicketIds[0]} to ${allTicketIds[allTicketIds.length - 1]}` : 'none',
-        expectedTickets: 600
-      });
-      
       let newTicketIdCounter = 1;
       let processedCount = 0;
-      let skippedCount = 0;
-      const skippedTickets: string[] = [];
       
       allTicketIds.forEach(originalTicketId => {
         const rows = ticketGroups[originalTicketId];
@@ -695,32 +599,12 @@ class FirebaseService {
           
           newTicketIdCounter++;
           processedCount++;
-        } else {
-          console.warn(`⚠️ Skipping ticket ${originalTicketId} - expected rows [1,2,3], got [${actualRowIds.join(',')}]`);
-          skippedTickets.push(originalTicketId);
-          skippedCount++;
         }
       });
       
       const finalTicketCount = Object.keys(tickets).length;
       
-      console.log(`✅ Ticket arrangement ${setId} processing complete:`, {
-        rawDataRows: rawData.length,
-        uniqueTicketGroups: allTicketIds.length,
-        successfullyProcessed: processedCount,
-        skippedDueToErrors: skippedCount,
-        finalAvailableTickets: finalTicketCount,
-        sheetsCount: Math.ceil(finalTicketCount / 6),
-        ticketIdRange: finalTicketCount > 0 ? `1-${finalTicketCount}` : 'none'
-      });
-      
-      if (skippedCount > 0) {
-        console.warn(`⚠️ Skipped ${skippedCount} tickets due to row structure issues:`, skippedTickets.slice(0, 10));
-      }
-      
-      if (finalTicketCount < 500) {
-        console.warn(`⚠️ Warning: Only ${finalTicketCount} tickets loaded for arrangement ${setId}. Expected around 600.`);
-      }
+      console.log(`✅ Ticket arrangement ${setId} loaded: ${finalTicketCount} tickets`);
       
       return {
         ticketCount: finalTicketCount,
@@ -761,7 +645,6 @@ class FirebaseService {
         throw new Error('Insufficient permissions. Please contact administrator.');
       }
 
-      // Check if host already has an active game (enforce single game rule)
       const existingGame = await this.getHostCurrentGame(hostId);
       if (existingGame) {
         throw new Error('You already have an active game. Please finish or delete it before creating a new one.');
@@ -821,29 +704,11 @@ class FirebaseService {
       const cleanedGameData = removeUndefinedValues(gameData);
       await set(gameRef, cleanedGameData);
       
-      console.log('✅ Single game created successfully:', gameId);
+      console.log('✅ Game created successfully:', gameId);
       return gameData;
     } catch (error: any) {
       console.error('❌ Game creation failed:', error);
       throw new Error(error.message || 'Failed to create game');
-    }
-  }
-
-  async getHostGames(hostId: string): Promise<GameData[]> {
-    try {
-      const gamesQuery = query(
-        ref(database, 'games'),
-        orderByChild('hostId'),
-        equalTo(hostId)
-      );
-      
-      const gamesSnapshot = await get(gamesQuery);
-      if (!gamesSnapshot.exists()) return [];
-      
-      const gamesData = gamesSnapshot.val();
-      return Object.values(gamesData) as GameData[];
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch host games');
     }
   }
 
@@ -858,7 +723,6 @@ class FirebaseService {
 
   async updateGameData(gameId: string, gameData: Partial<GameData>): Promise<void> {
     try {
-      // Get current game data for validation
       const gameSnapshot = await get(ref(database, `games/${gameId}`));
       if (!gameSnapshot.exists()) {
         throw new Error('Game not found');
@@ -866,18 +730,15 @@ class FirebaseService {
 
       const currentGameData = gameSnapshot.val() as GameData;
       
-      // Verify ownership
       const currentUser = auth.currentUser;
       if (!currentUser || currentUser.uid !== currentGameData.hostId) {
         throw new Error('You can only modify your own games');
       }
 
-      // Prevent modifications during active gameplay (protect players)
       if (currentGameData.gameState.isActive || currentGameData.gameState.isCountdown) {
         throw new Error('Cannot modify game settings while game is running');
       }
 
-      // Validate maxTickets if being updated
       if (gameData.maxTickets !== undefined) {
         const bookedCount = currentGameData.tickets ? 
           Object.values(currentGameData.tickets).filter(ticket => ticket.isBooked).length : 0;
@@ -894,6 +755,11 @@ class FirebaseService {
     } catch (error: any) {
       throw new Error(error.message || 'Failed to update game data');
     }
+  }
+
+  // FIXED: Add simple callNumber method
+  async callNumber(gameId: string, number: number) {
+    return this.callNumberWithPrizeValidation(gameId, number);
   }
 
   async callNumberWithPrizeValidation(gameId: string, number: number): Promise<{
@@ -1195,28 +1061,50 @@ class FirebaseService {
   // Ticket operations
   async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<void> {
     try {
+      // First, get the game data to find ticket set
+      const gameSnapshot = await get(ref(database, `games/${gameId}`));
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+      
+      const gameData = gameSnapshot.val() as GameData;
+      const ticketSetId = gameData.ticketSetId || '1';
+      
+      // Load ticket set if ticket doesn't exist yet
       const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
       const ticketSnapshot = await get(ticketRef);
       
-      if (!ticketSnapshot.exists()) {
-        throw new Error('Ticket not found');
+      let ticketData: TambolaTicket;
+      
+      if (ticketSnapshot.exists()) {
+        ticketData = ticketSnapshot.val() as TambolaTicket;
+        if (ticketData.isBooked) {
+          throw new Error('Ticket is already booked');
+        }
+      } else {
+        // Load ticket from set
+        const ticketSetData = await this.loadTicketSet(ticketSetId);
+        ticketData = ticketSetData.tickets[ticketId];
+        
+        if (!ticketData) {
+          throw new Error(`Ticket ${ticketId} not found in set`);
+        }
       }
 
-      const ticketData = ticketSnapshot.val() as TambolaTicket;
-      if (ticketData.isBooked) {
-        throw new Error('Ticket is already booked');
-      }
-
-      const updatedTicket = removeUndefinedValues({
+      // Update ticket with booking info
+      const bookedTicket = removeUndefinedValues({
         ...ticketData,
+        ticketId: ticketId,
         isBooked: true,
-        playerName,
-        playerPhone,
+        playerName: playerName.trim(),
+        playerPhone: playerPhone.trim() || null,
         bookedAt: new Date().toISOString()
       });
 
-      await set(ticketRef, updatedTicket);
+      await set(ticketRef, bookedTicket);
+      console.log(`✅ Ticket ${ticketId} booked for ${playerName}`);
     } catch (error: any) {
+      console.error('Book ticket error:', error);
       throw new Error(error.message || 'Failed to book ticket');
     }
   }
@@ -1238,6 +1126,7 @@ class FirebaseService {
       });
 
       await set(ticketRef, updatedTicket);
+      console.log(`✅ Ticket ${ticketId} updated`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to update ticket');
     }
@@ -1253,18 +1142,19 @@ class FirebaseService {
       }
 
       const currentTicket = ticketSnapshot.val() as TambolaTicket;
-      const unBookedTicket = removeUndefinedValues({
+      const unbookedTicket = removeUndefinedValues({
         ...currentTicket,
         isBooked: false,
-        playerName: undefined,
-        playerPhone: undefined,
-        bookedAt: undefined,
+        playerName: null,
+        playerPhone: null,
+        bookedAt: null,
         updatedAt: new Date().toISOString()
       });
 
-      await set(ticketRef, unBookedTicket);
+      await set(ticketRef, unbookedTicket);
+      console.log(`✅ Ticket ${ticketId} booking cancelled`);
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to unbook ticket');
+      throw new Error(error.message || 'Failed to cancel booking');
     }
   }
 
@@ -1313,27 +1203,6 @@ class FirebaseService {
     return () => off(hostsRef, 'value', unsubscribe);
   }
 
-  subscribeToHostGames(hostId: string, callback: (games: GameData[]) => void): () => void {
-    const gamesQuery = query(
-      ref(database, 'games'),
-      orderByChild('hostId'),
-      equalTo(hostId)
-    );
-    
-    const unsubscribe = onValue(gamesQuery, (snapshot) => {
-      if (snapshot.exists()) {
-        const gamesData = snapshot.val();
-        const games = Object.values(gamesData) as GameData[];
-        callback(games);
-      } else {
-        callback([]);
-      }
-    });
-
-    return () => off(gamesQuery, 'value', unsubscribe);
-  }
-
-  // Real-time subscription for all active games (for UserLandingPage)
   subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
     const gamesRef = ref(database, 'games');
     
@@ -1342,7 +1211,6 @@ class FirebaseService {
         const gamesData = snapshot.val();
         const allGames = Object.values(gamesData) as GameData[];
         
-        // Filter for active games that are not over and have tickets
         const activeGames = allGames.filter(game => 
           !game.gameState.gameOver && 
           game.tickets && 
