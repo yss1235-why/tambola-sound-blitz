@@ -1,8 +1,8 @@
-// src/components/WinnerDisplay.tsx - Cleaned up version
+// src/components/WinnerDisplay.tsx - Updated for compatibility
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Prize } from './TambolaGame';
+import { Prize } from '@/services/firebase';
 
 interface WinnerDisplayProps {
   prizes: Prize[];
@@ -10,9 +10,13 @@ interface WinnerDisplayProps {
 
 export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({ prizes }) => {
   const exportWinners = () => {
-    const winnerText = prizes.map(prize => 
-      `${prize.name}: ${prize.winner?.name || 'Unknown'} (Ticket #${prize.winner?.ticketId || 'Unknown'})`
-    ).join('\n');
+    const winnerText = prizes
+      .filter(p => p.won && p.winners && p.winners.length > 0)
+      .map(prize => 
+        prize.winners!.map(winner => 
+          `${prize.name}: ${winner.name} (Ticket #${winner.ticketId})`
+        ).join('\n')
+      ).join('\n');
     
     // Create a simple text export
     const blob = new Blob([`Tambola Game Winners\n\n${winnerText}`], { type: 'text/plain' });
@@ -24,6 +28,8 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({ prizes }) => {
     URL.revokeObjectURL(url);
   };
 
+  const wonPrizes = prizes.filter(p => p.won);
+
   return (
     <Card className="tambola-card border-4 border-yellow-400 bg-gradient-to-br from-yellow-50 to-orange-50">
       <CardHeader className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-center">
@@ -31,10 +37,10 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({ prizes }) => {
         <p className="text-yellow-100">Congratulations to all our winners!</p>
       </CardHeader>
       <CardContent className="space-y-4 p-6">
-        {prizes.length > 0 ? (
+        {wonPrizes.length > 0 ? (
           <>
             <div className="space-y-3">
-              {prizes.map((prize, index) => (
+              {wonPrizes.map((prize, index) => (
                 <div
                   key={prize.id}
                   className="p-4 bg-white rounded-lg border-2 border-yellow-300 shadow-md animate-bounce-in"
@@ -46,12 +52,20 @@ export const WinnerDisplay: React.FC<WinnerDisplayProps> = ({ prizes }) => {
                       <p className="text-gray-600">{prize.pattern}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-green-600">
-                        {prize.winner?.name || 'Unknown Winner'}
-                      </p>
-                      <p className="text-sm text-gray-600">
-                        Ticket #{prize.winner?.ticketId || 'Unknown'}
-                      </p>
+                      {prize.winners && prize.winners.length > 0 ? (
+                        <>
+                          <p className="text-lg font-bold text-green-600">
+                            {prize.winners.length} Winner{prize.winners.length > 1 ? 's' : ''}
+                          </p>
+                          {prize.winners.map((winner, idx) => (
+                            <p key={idx} className="text-sm text-gray-600">
+                              {winner.name} (#{winner.ticketId})
+                            </p>
+                          ))}
+                        </>
+                      ) : (
+                        <p className="text-lg font-bold text-green-600">Won</p>
+                      )}
                     </div>
                   </div>
                 </div>
