@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Simplified Single-Page Design
+// src/components/GameHost.tsx - Fixed with all imports
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,8 @@ import {
   Timer,
   RefreshCw,
   CheckCircle,
-  Gamepad2
+  Gamepad2,
+  Trash2  // THIS WAS MISSING - ADDED NOW
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -103,115 +104,103 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     description: 'Complete the bottom row of any ticket'
   },
   {
-    id: 'fourCorners',
-    name: 'Four Corners',
-    pattern: 'All four corner numbers',
-    description: 'Mark all four corner numbers of any ticket'
-  },
-  {
     id: 'fullHouse',
     name: 'Full House',
-    pattern: 'Complete ticket',
-    description: 'Complete all numbers on any ticket'
+    pattern: 'All numbers',
+    description: 'Mark all numbers on the ticket'
   }
 ];
 
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
-  // Single game state
+  // State management
   const [hostGame, setHostGame] = useState<GameData | null>(null);
-  const [editMode, setEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Game creation form
+  const [editMode, setEditMode] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
     hostPhone: '',
     maxTickets: 100,
     selectedTicketSet: '1',
-    selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fourCorners', 'fullHouse']
+    selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fullHouse']
   });
 
-  // Game control states
-  const [gameInterval, setGameInterval] = useState<NodeJS.Timeout | null>(null);
+  // Game play states
   const [availableNumbers, setAvailableNumbers] = useState<number[]>(
     Array.from({ length: 90 }, (_, i) => i + 1)
   );
-  const [callInterval, setCallInterval] = useState<number>(5);
-  const [countdownDuration, setCountdownDuration] = useState<number>(10);
-  const [isGamePaused, setIsGamePaused] = useState<boolean>(false);
-  const [currentCountdown, setCurrentCountdown] = useState<number>(0);
+  const [gameInterval, setGameInterval] = useState<NodeJS.Timeout | null>(null);
+  const [callInterval, setCallInterval] = useState(5);
   const [countdownInterval, setCountdownInterval] = useState<NodeJS.Timeout | null>(null);
-  
-  // Subscription management
+  const [currentCountdown, setCurrentCountdown] = useState(0);
+  const [countdownDuration] = useState(10);
+  const [isGamePaused, setIsGamePaused] = useState(false);
+
+  // Refs
   const gameUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Determine current phase
-  const gamePhase = React.useMemo(() => {
+  // Determine game phase
+  const gamePhase = (() => {
     if (!hostGame) return 'creation';
     if (hostGame.gameState.gameOver) return 'finished';
-    if (hostGame.gameState.isActive || hostGame.gameState.isCountdown) return 'playing';
+    if (hostGame.gameState.isActive || hostGame.gameState.isCountdown || 
+        (hostGame.gameState.calledNumbers && hostGame.gameState.calledNumbers.length > 0)) {
+      return 'playing';
+    }
     return 'booking';
-  }, [hostGame]);
+  })();
 
-  // Check subscription status
+  // Check subscription validity
   const isSubscriptionValid = useCallback(() => {
-    if (!user.isActive) return false;
-    if (!user.subscriptionEndDate) return false;
-    
-    const subscriptionEnd = new Date(user.subscriptionEndDate);
     const now = new Date();
-    
-    return subscriptionEnd > now && user.isActive;
-  }, [user.isActive, user.subscriptionEndDate]);
+    const endDate = new Date(user.subscriptionEndDate);
+    return endDate > now && user.isActive;
+  }, [user.subscriptionEndDate, user.isActive]);
 
   const getSubscriptionStatus = useCallback(() => {
-    if (!user.isActive) {
-      return { status: 'inactive', message: 'Account is deactivated', variant: 'destructive' as const };
-    }
-    
-    if (!user.subscriptionEndDate) {
-      return { status: 'no-subscription', message: 'No subscription date', variant: 'destructive' as const };
-    }
-    
-    const subscriptionEnd = new Date(user.subscriptionEndDate);
     const now = new Date();
+    const endDate = new Date(user.subscriptionEndDate);
+    const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
-    if (isNaN(subscriptionEnd.getTime())) {
-      return { status: 'invalid-date', message: 'Invalid subscription date', variant: 'destructive' as const };
+    if (!user.isActive) {
+      return { message: 'Account is inactive', variant: 'destructive' as const };
     }
     
-    const daysLeft = Math.ceil((subscriptionEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysLeft <= 0) {
+      return { message: 'Subscription expired', variant: 'destructive' as const };
+    }
     
-    if (daysLeft < 0) return { status: 'expired', message: 'Subscription expired', variant: 'destructive' as const };
-    if (daysLeft <= 7) return { status: 'expiring', message: `Expires in ${daysLeft} days`, variant: 'secondary' as const };
-    return { status: 'active', message: `Active (${daysLeft} days left)`, variant: 'default' as const };
-  }, [user.isActive, user.subscriptionEndDate]);
+    if (daysLeft <= 7) {
+      return { message: `${daysLeft} days left`, variant: 'secondary' as const };
+    }
+    
+    return { message: `Active until ${endDate.toLocaleDateString()}`, variant: 'default' as const };
+  }, [user.subscriptionEndDate, user.isActive]);
 
   // Load host's current game
   const loadHostCurrentGame = useCallback(async () => {
-    setIsLoading(true);
     try {
-      const currentGame = await firebaseService.getHostCurrentGame(user.uid);
-      setHostGame(currentGame);
-      
-      if (currentGame) {
-        // Set up subscription for the current game
-        setupGameSubscription(currentGame);
+      const game = await firebaseService.getHostCurrentGame(user.uid);
+      if (game) {
+        setHostGame(game);
         
-        // Update available numbers if game in progress
-        const called = currentGame.gameState.calledNumbers || [];
-        const available = Array.from({ length: 90 }, (_, i) => i + 1)
-          .filter(num => !called.includes(num));
-        setAvailableNumbers(available);
+        // Setup form with existing game data for editing
+        setCreateGameForm(prev => ({
+          ...prev,
+          hostPhone: game.hostPhone || prev.hostPhone,
+          maxTickets: game.maxTickets,
+          selectedPrizes: Object.keys(game.prizes)
+        }));
+        
+        // Subscribe to updates
+        subscribeToGameUpdates(game);
       }
-    } catch (error: any) {
-      console.error('Error loading current game:', error);
+    } catch (error) {
+      console.error('Failed to load host game:', error);
     } finally {
       setIsLoading(false);
     }
   }, [user.uid]);
 
-  // Set up game subscription
-  const setupGameSubscription = useCallback((game: GameData) => {
+  const subscribeToGameUpdates = useCallback((game: GameData) => {
     // Clean up previous subscription
     if (gameUnsubscribeRef.current) {
       gameUnsubscribeRef.current();
@@ -275,82 +264,84 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           }));
         }
       } catch (error) {
-        console.error('Error loading previous settings:', error);
+        console.error('Failed to load host settings:', error);
       }
     };
-    
+
     loadPreviousSettings();
   }, [user.uid]);
 
-  // Cleanup
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (gameUnsubscribeRef.current) {
+        gameUnsubscribeRef.current();
+      }
       if (gameInterval) {
         clearInterval(gameInterval);
       }
       if (countdownInterval) {
         clearInterval(countdownInterval);
       }
-      if (gameUnsubscribeRef.current) {
-        gameUnsubscribeRef.current();
-      }
     };
   }, [gameInterval, countdownInterval]);
 
-  // Save settings
-  const savePreviousSettings = async () => {
+  // Create new game
+  const createNewGame = async () => {
+    if (!isSubscriptionValid()) {
+      alert('Your subscription has expired. Please contact the administrator.');
+      return;
+    }
+
+    setIsLoading(true);
     try {
+      // Save host settings
       await firebaseService.saveHostSettings(user.uid, {
         hostPhone: createGameForm.hostPhone,
         maxTickets: createGameForm.maxTickets,
         selectedTicketSet: createGameForm.selectedTicketSet,
         selectedPrizes: createGameForm.selectedPrizes
       });
-    } catch (error) {
-      console.error('Error saving settings:', error);
-    }
-  };
 
-  // Create new game
-  const createNewGame = async () => {
-    if (!isSubscriptionValid()) {
-      alert('Your subscription has expired or account is inactive');
-      return;
-    }
+      // Prepare prizes
+      const prizes: { [key: string]: Prize } = {};
+      createGameForm.selectedPrizes.forEach(prizeId => {
+        const prizeDef = AVAILABLE_PRIZES.find(p => p.id === prizeId);
+        if (prizeDef) {
+          prizes[prizeId] = {
+            id: prizeId,
+            name: prizeDef.name,
+            pattern: prizeDef.pattern,
+            won: false
+          };
+        }
+      });
 
-    if (!createGameForm.hostPhone.trim()) {
-      alert('Please enter your WhatsApp phone number');
-      return;
-    }
-
-    if (createGameForm.selectedPrizes.length === 0) {
-      alert('Please select at least one prize');
-      return;
-    }
-
-    if (createGameForm.maxTickets < 1 || createGameForm.maxTickets > 600) {
-      alert('Max tickets must be between 1 and 600');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const gameData = await firebaseService.createGame(
-        {
-          name: 'Tambola Game', // Simple fixed name
-          maxTickets: createGameForm.maxTickets,
-          ticketPrice: 0,
-          hostPhone: createGameForm.hostPhone
+      // Create game data
+      const gameData: Omit<GameData, 'gameId' | 'createdAt'> = {
+        name: `Tambola Game ${new Date().toLocaleDateString()}`,
+        hostId: user.uid,
+        hostPhone: createGameForm.hostPhone,
+        maxTickets: createGameForm.maxTickets,
+        ticketPrice: 0,
+        ticketSetId: createGameForm.selectedTicketSet,
+        gameState: {
+          isActive: false,
+          isCountdown: false,
+          countdownTime: 0,
+          gameOver: false,
+          calledNumbers: [],
+          currentNumber: null,
+          callInterval: callInterval
         },
-        user.uid,
-        createGameForm.selectedTicketSet,
-        createGameForm.selectedPrizes
-      );
+        prizes
+      };
 
-      await savePreviousSettings();
-      setHostGame(gameData);
-      setupGameSubscription(gameData);
-      setAvailableNumbers(Array.from({ length: 90 }, (_, i) => i + 1));
+      const newGame = await firebaseService.createGame(gameData);
+      setHostGame(newGame);
+      
+      // Subscribe to updates
+      subscribeToGameUpdates(newGame);
 
     } catch (error: any) {
       console.error('Create game error:', error);
@@ -423,147 +414,121 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       }, 1000);
 
       setCountdownInterval(countdown);
-    } catch (error: any) {
-      console.error('Start countdown error:', error);
+    } catch (error) {
+      console.error('Failed to start countdown:', error);
     }
   };
 
   const startGame = async () => {
-    if (!hostGame) return;
+    if (!hostGame || !isSubscriptionValid()) return;
 
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
-        isCountdown: false,
         isActive: true,
+        isCountdown: false,
         countdownTime: 0
       });
 
-      setIsGamePaused(false);
-      startNumberCalling();
+      const interval = setInterval(() => {
+        callNextNumber();
+      }, callInterval * 1000);
 
-    } catch (error: any) {
-      console.error('Start game error:', error);
+      setGameInterval(interval);
+
+    } catch (error) {
+      console.error('Failed to start game:', error);
     }
-  };
-
-  const startNumberCalling = () => {
-    if (!hostGame) return;
-
-    const interval = setInterval(async () => {
-      if (availableNumbers.length === 0) {
-        clearInterval(interval);
-        await endGame();
-        return;
-      }
-
-      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-      const numberToBeCalled = availableNumbers[randomIndex];
-      
-      setAvailableNumbers(prev => prev.filter(n => n !== numberToBeCalled));
-      
-      try {
-        const result = await firebaseService.callNumberWithPrizeValidation(
-          hostGame.gameId, 
-          numberToBeCalled
-        );
-
-        if (result.gameEnded) {
-          clearInterval(interval);
-          setGameInterval(null);
-          setIsGamePaused(false);
-          return;
-        }
-
-        setTimeout(async () => {
-          if (hostGame) {
-            await firebaseService.clearCurrentNumber(hostGame.gameId);
-          }
-        }, 3000);
-
-      } catch (error) {
-        console.error('Error calling number:', error);
-        setAvailableNumbers(prev => {
-          if (!prev.includes(numberToBeCalled)) {
-            return [...prev, numberToBeCalled].sort((a, b) => a - b);
-          }
-          return prev;
-        });
-      }
-    }, callInterval * 1000);
-
-    setGameInterval(interval);
   };
 
   const pauseGame = async () => {
-    if (gameInterval) {
-      clearInterval(gameInterval);
-      setGameInterval(null);
-    }
+    if (!hostGame || !gameInterval) return;
 
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-      setCountdownInterval(null);
-    }
+    clearInterval(gameInterval);
+    setGameInterval(null);
 
-    setIsGamePaused(true);
-
-    if (hostGame) {
-      try {
-        await firebaseService.updateGameState(hostGame.gameId, {
-          ...hostGame.gameState,
-          isActive: false,
-          isCountdown: false
-        });
-      } catch (error: any) {
-        console.error('Pause game error:', error);
-      }
+    try {
+      await firebaseService.updateGameState(hostGame.gameId, {
+        ...hostGame.gameState,
+        isActive: false
+      });
+    } catch (error) {
+      console.error('Failed to pause game:', error);
     }
   };
 
   const resumeGame = async () => {
-    if (!hostGame) return;
+    if (!hostGame || !isSubscriptionValid()) return;
 
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
-        isActive: true,
-        isCountdown: false
+        isActive: true
       });
 
-      setIsGamePaused(false);
-      startNumberCalling();
+      const interval = setInterval(() => {
+        callNextNumber();
+      }, callInterval * 1000);
 
-    } catch (error: any) {
-      console.error('Resume game error:', error);
+      setGameInterval(interval);
+    } catch (error) {
+      console.error('Failed to resume game:', error);
+    }
+  };
+
+  const callNextNumber = async () => {
+    if (!hostGame || availableNumbers.length === 0) return;
+
+    const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+    const number = availableNumbers[randomIndex];
+
+    const newAvailable = availableNumbers.filter(n => n !== number);
+    setAvailableNumbers(newAvailable);
+
+    try {
+      await firebaseService.callNumber(hostGame.gameId, number);
+
+      if (newAvailable.length === 0) {
+        endGame();
+      }
+    } catch (error) {
+      console.error('Failed to call number:', error);
+    }
+  };
+
+  const manualCallNumber = async (number: number) => {
+    if (!hostGame) return;
+
+    const newAvailable = availableNumbers.filter(n => n !== number);
+    setAvailableNumbers(newAvailable);
+
+    try {
+      await firebaseService.callNumber(hostGame.gameId, number);
+
+      if (newAvailable.length === 0) {
+        endGame();
+      }
+    } catch (error) {
+      console.error('Failed to manually call number:', error);
     }
   };
 
   const endGame = async () => {
+    if (!hostGame) return;
+
     if (gameInterval) {
       clearInterval(gameInterval);
       setGameInterval(null);
     }
 
-    if (countdownInterval) {
-      clearInterval(countdownInterval);
-      setCountdownInterval(null);
-    }
-
-    setIsGamePaused(false);
-
-    if (hostGame) {
-      try {
-        await firebaseService.updateGameState(hostGame.gameId, {
-          ...hostGame.gameState,
-          isActive: false,
-          isCountdown: false,
-          gameOver: true,
-          currentNumber: null
-        });
-      } catch (error: any) {
-        console.error('End game error:', error);
-      }
+    try {
+      await firebaseService.updateGameState(hostGame.gameId, {
+        ...hostGame.gameState,
+        isActive: false,
+        gameOver: true
+      });
+    } catch (error) {
+      console.error('Failed to end game:', error);
     }
   };
 
@@ -692,24 +657,22 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
                   className="border-2 border-gray-200 focus:border-blue-400"
                 />
-                <p className="text-sm text-gray-500 mt-1">
-                  Players will use this number to book tickets via WhatsApp
-                </p>
+                <p className="text-sm text-gray-500 mt-1">Players will contact you on this number</p>
               </div>
 
               {/* Max Tickets */}
               <div>
-                <Label htmlFor="max-tickets">Maximum Tickets (1-600)</Label>
+                <Label htmlFor="max-tickets">Maximum Tickets</Label>
                 <Input
                   id="max-tickets"
                   type="number"
                   min="1"
                   max="600"
-                  placeholder="100"
                   value={createGameForm.maxTickets || ''}
                   onChange={(e) => setCreateGameForm(prev => ({ ...prev, maxTickets: parseInt(e.target.value) || 100 }))}
                   className="border-2 border-gray-200 focus:border-blue-400"
                 />
+                <p className="text-sm text-gray-500 mt-1">How many tickets can be sold for this game</p>
               </div>
 
               {/* Ticket Set Selection */}
@@ -719,10 +682,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   {TICKET_SETS.map((ticketSet) => (
                     <Card
                       key={ticketSet.id}
-                      className={`cursor-pointer transition-all duration-200 ${
+                      className={`cursor-pointer transition-all ${
                         createGameForm.selectedTicketSet === ticketSet.id
-                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-                          : 'border-gray-200 hover:border-blue-300'
+                          ? 'ring-2 ring-blue-500 bg-blue-50'
+                          : 'hover:shadow-md'
                       } ${!ticketSet.available ? 'opacity-50 cursor-not-allowed' : ''}`}
                       onClick={() => ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
                     >
@@ -822,38 +785,42 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="text-center p-3 bg-blue-50 rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">{hostGame.maxTickets}</div>
-                    <div className="text-sm text-blue-700">Max Tickets</div>
+                    <Users className="w-8 h-8 mx-auto mb-2 text-blue-600" />
+                    <p className="text-2xl font-bold text-blue-800">{getBookedTicketsCount()}</p>
+                    <p className="text-sm text-blue-600">Booked Tickets</p>
                   </div>
                   <div className="text-center p-3 bg-green-50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">{getBookedTicketsCount()}</div>
-                    <div className="text-sm text-green-700">Booked</div>
-                  </div>
-                  <div className="text-center p-3 bg-gray-50 rounded-lg">
-                    <div className="text-2xl font-bold text-gray-600">{hostGame.maxTickets - getBookedTicketsCount()}</div>
-                    <div className="text-sm text-gray-700">Available</div>
+                    <Ticket className="w-8 h-8 mx-auto mb-2 text-green-600" />
+                    <p className="text-2xl font-bold text-green-800">{hostGame.maxTickets}</p>
+                    <p className="text-sm text-green-600">Max Tickets</p>
                   </div>
                   <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <div className="text-2xl font-bold text-purple-600">{Object.keys(hostGame.prizes).length}</div>
-                    <div className="text-sm text-purple-700">Prizes</div>
+                    <Trophy className="w-8 h-8 mx-auto mb-2 text-purple-600" />
+                    <p className="text-2xl font-bold text-purple-800">{Object.keys(hostGame.prizes).length}</p>
+                    <p className="text-sm text-purple-600">Prizes</p>
+                  </div>
+                  <div className="text-center p-3 bg-gray-50 rounded-lg">
+                    <Phone className="w-8 h-8 mx-auto mb-2 text-gray-600" />
+                    <p className="text-lg font-bold text-gray-800">{hostGame.hostPhone}</p>
+                    <p className="text-sm text-gray-600">Contact</p>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 text-sm">
-                    <Phone className="w-4 h-4 text-blue-600" />
-                    <span>WhatsApp Booking: +{hostGame.hostPhone}</span>
-                  </div>
-                  
-                  <div>
-                    <h4 className="font-medium text-gray-800 mb-2">Selected Prizes:</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.values(hostGame.prizes).map(prize => (
-                        <Badge key={prize.id} variant="outline">
-                          {prize.name}
-                        </Badge>
-                      ))}
-                    </div>
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Game is ready for booking. Share your contact number with players to book tickets.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="mt-4">
+                  <h4 className="font-semibold mb-2">Configured Prizes:</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {Object.values(hostGame.prizes).map(prize => (
+                      <Badge key={prize.id} variant="outline">
+                        {prize.name}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
               </CardContent>
@@ -985,9 +952,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   onClick={deleteGame}
                   variant="destructive"
                   disabled={isLoading || getBookedTicketsCount() > 0}
-                  title={getBookedTicketsCount() > 0 ? "Cannot delete game with booked tickets" : "Delete game"}
+                  title={getBookedTicketsCount() > 0 ? 'Cannot delete game with booked tickets' : 'Delete this game'}
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Game
                 </Button>
               </div>
             </CardContent>
@@ -997,137 +965,102 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         {/* PLAYING PHASE */}
         {gamePhase === 'playing' && hostGame && (
           <div className="space-y-6">
-            {/* Game Control Panel */}
+            {/* Game Controls */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  <span>Live Game Control</span>
-                  <Badge variant="default" className="bg-red-600">
-                    🔴 LIVE
+                  <span className="flex items-center">
+                    <Gamepad2 className="w-6 h-6 mr-2" />
+                    Live Game Control
+                  </span>
+                  <Badge variant={hostGame.gameState.isActive ? 'default' : 'secondary'} className="text-lg px-4">
+                    {hostGame.gameState.isCountdown && `Countdown: ${currentCountdown}s`}
+                    {hostGame.gameState.isActive && 'Game Active'}
+                    {isGamePaused && 'Game Paused'}
+                    {hostGame.gameState.gameOver && 'Game Finished'}
                   </Badge>
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Control Buttons */}
-                <div className="flex flex-wrap gap-3">
-                  {!hostGame.gameState.isActive && !hostGame.gameState.isCountdown && (
-                    <>
-                      <Button
-                        onClick={startCountdown}
-                        className="bg-yellow-600 hover:bg-yellow-700"
-                      >
-                        <Timer className="w-4 h-4 mr-2" />
-                        Start Countdown ({countdownDuration}s)
-                      </Button>
-                      <Button
-                        onClick={startGame}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        Start Game
-                      </Button>
-                    </>
-                  )}
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <p className="text-3xl font-bold text-blue-800">
+                      {hostGame.gameState.currentNumber || '-'}
+                    </p>
+                    <p className="text-sm text-blue-600">Current Number</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <p className="text-3xl font-bold text-green-800">
+                      {hostGame.gameState.calledNumbers?.length || 0}
+                    </p>
+                    <p className="text-sm text-green-600">Numbers Called</p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <p className="text-3xl font-bold text-purple-800">
+                      {90 - (hostGame.gameState.calledNumbers?.length || 0)}
+                    </p>
+                    <p className="text-sm text-purple-600">Numbers Left</p>
+                  </div>
+                </div>
 
-                  {hostGame.gameState.isActive && (
-                    <Button
-                      onClick={pauseGame}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
+                {/* Game Control Buttons */}
+                <div className="flex space-x-4 mb-6">
+                  {hostGame.gameState.isCountdown ? (
+                    <Button disabled className="flex-1">
+                      <Clock className="w-4 h-4 mr-2 animate-spin" />
+                      Starting in {currentCountdown}s...
+                    </Button>
+                  ) : hostGame.gameState.isActive ? (
+                    <Button onClick={pauseGame} variant="secondary" className="flex-1">
                       <Pause className="w-4 h-4 mr-2" />
                       Pause Game
                     </Button>
-                  )}
-
-                  {isGamePaused && (
-                    <Button
-                      onClick={resumeGame}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
+                  ) : isGamePaused ? (
+                    <Button onClick={resumeGame} className="flex-1 bg-green-600 hover:bg-green-700">
                       <Play className="w-4 h-4 mr-2" />
                       Resume Game
                     </Button>
+                  ) : !hostGame.gameState.gameOver ? (
+                    <Button onClick={startCountdown} className="flex-1 bg-green-600 hover:bg-green-700">
+                      <Play className="w-4 h-4 mr-2" />
+                      Start Game
+                    </Button>
+                  ) : null}
+
+                  {!hostGame.gameState.gameOver && hostGame.gameState.calledNumbers && hostGame.gameState.calledNumbers.length > 0 && (
+                    <Button onClick={endGame} variant="destructive">
+                      <Square className="w-4 h-4 mr-2" />
+                      End Game
+                    </Button>
                   )}
 
-                  <Button
-                    onClick={endGame}
-                    variant="destructive"
-                  >
-                    <Square className="w-4 h-4 mr-2" />
-                    End Game
-                  </Button>
+                  {hostGame.gameState.gameOver && (
+                    <Button onClick={createNewGameFromFinished} className="flex-1 bg-blue-600 hover:bg-blue-700">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create New Game
+                    </Button>
+                  )}
                 </div>
 
-                {/* Game Settings */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="call-interval">Number Calling Interval (seconds)</Label>
-                    <Input
-                      id="call-interval"
-                      type="number"
-                      min="3"
-                      max="15"
-                      value={callInterval}
-                      onChange={(e) => setCallInterval(parseInt(e.target.value) || 5)}
-                      disabled={hostGame.gameState.isActive}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="countdown-duration">Countdown Duration (seconds)</Label>
-                    <Input
-                      id="countdown-duration"
-                      type="number"
-                      min="5"
-                      max="30"
-                      value={countdownDuration}
-                      onChange={(e) => setCountdownDuration(parseInt(e.target.value) || 10)}
-                      disabled={hostGame.gameState.isActive || hostGame.gameState.isCountdown}
-                    />
-                  </div>
-                </div>
-
-                {/* Game Statistics */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-3 bg-blue-50 rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">
-                      {(hostGame.gameState.calledNumbers || []).length}
+                {/* Call Interval Control */}
+                {!hostGame.gameState.gameOver && (
+                  <div className="mb-6">
+                    <Label htmlFor="call-interval">Auto Call Interval: {callInterval} seconds</Label>
+                    <div className="flex items-center space-x-4 mt-2">
+                      <Input
+                        id="call-interval"
+                        type="range"
+                        min="3"
+                        max="10"
+                        value={callInterval}
+                        onChange={(e) => setCallInterval(parseInt(e.target.value))}
+                        className="flex-1"
+                        disabled={hostGame.gameState.isActive}
+                      />
+                      <span className="text-sm text-gray-600 w-20">
+                        {callInterval}s
+                      </span>
                     </div>
-                    <div className="text-sm text-blue-700">Numbers Called</div>
-                  </div>
-                  <div className="text-center p-3 bg-green-50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">
-                      {getBookedTicketsCount()}
-                    </div>
-                    <div className="text-sm text-green-700">Active Players</div>
-                  </div>
-                  <div className="text-center p-3 bg-purple-50 rounded-lg">
-                    <div className="text-2xl font-bold text-purple-600">
-                      {Object.values(hostGame.prizes).filter(p => p.won).length}
-                    </div>
-                    <div className="text-sm text-purple-700">Prizes Won</div>
-                  </div>
-                  <div className="text-center p-3 bg-orange-50 rounded-lg">
-                    <div className="text-2xl font-bold text-orange-600">
-                      {90 - (hostGame.gameState.calledNumbers || []).length}
-                    </div>
-                    <div className="text-sm text-orange-700">Numbers Left</div>
-                  </div>
-                </div>
-
-                {/* Countdown Display */}
-                {hostGame.gameState.isCountdown && (
-                  <div className="text-center p-8 bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-xl">
-                    <Clock className="w-12 h-12 mx-auto mb-4 animate-pulse" />
-                    <div className="text-6xl font-bold animate-bounce">{currentCountdown}</div>
-                    <p className="text-xl mt-2">Game starting...</p>
-                  </div>
-                )}
-
-                {/* Current Number Display */}
-                {hostGame.gameState.currentNumber && (
-                  <div className="text-center p-8 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl">
-                    <div className="text-8xl font-bold animate-pulse">{hostGame.gameState.currentNumber}</div>
-                    <p className="text-xl mt-4">Current Number</p>
                   </div>
                 )}
               </CardContent>
@@ -1136,12 +1069,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             {/* Number Grid */}
             <Card>
               <CardHeader>
-                <CardTitle>Numbers Board</CardTitle>
+                <CardTitle>Number Board</CardTitle>
               </CardHeader>
               <CardContent>
                 <NumberGrid
                   calledNumbers={hostGame.gameState.calledNumbers || []}
-                  currentNumber={hostGame.gameState.currentNumber}
+                  onNumberClick={manualCallNumber}
+                  availableNumbers={availableNumbers}
+                  isHostView={true}
+                  isGameActive={hostGame.gameState.isActive || isGamePaused}
                 />
               </CardContent>
             </Card>
@@ -1149,97 +1085,81 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             {/* Prize Management */}
             <PrizeManagementPanel
               gameData={hostGame}
-              onRefreshGame={() => {}} // Real-time updates handle this
+              onUpdate={loadHostCurrentGame}
+              isHostView={true}
             />
+
+            {/* Booked Tickets */}
+            {hostGame.tickets && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Player Tickets</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TicketDisplay
+                    calledNumbers={hostGame.gameState.calledNumbers || []}
+                    tickets={Object.values(hostGame.tickets).filter(ticket => ticket.isBooked)}
+                  />
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
         {/* FINISHED PHASE */}
         {gamePhase === 'finished' && hostGame && (
           <div className="space-y-6">
-            <Card className="border-4 border-yellow-400 bg-gradient-to-br from-yellow-50 to-orange-50">
-              <CardHeader className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-center">
-                <CardTitle className="text-3xl font-bold">🏆 Game Complete! 🏆</CardTitle>
-                <p className="text-yellow-100">Congratulations to all winners!</p>
-              </CardHeader>
-              <CardContent className="p-6 space-y-6">
-                {/* Game Statistics */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-white rounded-lg shadow">
-                    <div className="text-2xl font-bold text-blue-600">{getBookedTicketsCount()}</div>
-                    <div className="text-sm text-blue-700">Total Players</div>
-                  </div>
-                  <div className="text-center p-4 bg-white rounded-lg shadow">
-                    <div className="text-2xl font-bold text-green-600">
-                      {Object.values(hostGame.prizes).filter(p => p.won).length}
-                    </div>
-                    <div className="text-sm text-green-700">Prizes Won</div>
-                  </div>
-                  <div className="text-center p-4 bg-white rounded-lg shadow">
-                    <div className="text-2xl font-bold text-purple-600">
-                      {(hostGame.gameState.calledNumbers || []).length}
-                    </div>
-                    <div className="text-sm text-purple-700">Numbers Called</div>
-                  </div>
-                  <div className="text-center p-4 bg-white rounded-lg shadow">
-                    <div className="text-2xl font-bold text-orange-600">
-                      {Object.values(hostGame.prizes).reduce((total, prize) => 
-                        total + (prize.winners?.length || 0), 0
-                      )}
-                    </div>
-                    <div className="text-sm text-orange-700">Total Winners</div>
-                  </div>
-                </div>
-
-                {/* Winners Display */}
-                <div className="space-y-3">
-                  <h3 className="text-xl font-bold text-gray-800 mb-4">🏆 Winners</h3>
-                  {Object.values(hostGame.prizes)
-                    .filter(prize => prize.won)
-                    .map((prize, index) => (
-                      <div
-                        key={prize.id}
-                        className="p-4 bg-white rounded-lg border-2 border-yellow-300 shadow-md"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="text-lg font-bold text-gray-800">{prize.name}</h4>
-                            <p className="text-gray-600">{prize.pattern}</p>
-                          </div>
-                          <div className="text-right">
-                            {prize.winners && prize.winners.length > 0 && (
-                              <div>
-                                {prize.winners.map((winner, winnerIndex) => (
-                                  <div key={winnerIndex}>
-                                    <p className="text-lg font-bold text-green-600">
-                                      {winner.name}
-                                    </p>
-                                    <p className="text-sm text-gray-600">
-                                      Ticket #{winner.ticketId}
-                                    </p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="text-center pt-4">
-                  <Button
-                    onClick={createNewGameFromFinished}
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold px-8 py-3 rounded-lg shadow-lg transform transition-transform hover:scale-105"
-                    size="lg"
-                  >
-                    <Plus className="w-5 h-5 mr-2" />
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Trophy className="w-6 h-6 mr-2" />
+                    Game Complete
+                  </span>
+                  <Button onClick={createNewGameFromFinished} className="bg-blue-600 hover:bg-blue-700">
+                    <Plus className="w-4 h-4 mr-2" />
                     Create New Game
                   </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Alert className="mb-6">
+                  <CheckCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Game has ended successfully. All {hostGame.gameState.calledNumbers?.length || 0} numbers were called.
+                  </AlertDescription>
+                </Alert>
+
+                {/* Game Summary */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <p className="text-2xl font-bold text-blue-800">
+                      {getBookedTicketsCount()}
+                    </p>
+                    <p className="text-sm text-blue-600">Total Players</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <p className="text-2xl font-bold text-green-800">
+                      {Object.values(hostGame.prizes).filter(p => p.won).length}
+                    </p>
+                    <p className="text-sm text-green-600">Prizes Awarded</p>
+                  </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <p className="text-2xl font-bold text-purple-800">
+                      {hostGame.gameState.calledNumbers?.length || 0}
+                    </p>
+                    <p className="text-sm text-purple-600">Numbers Called</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
+
+            {/* Prize Winners */}
+            <PrizeManagementPanel
+              gameData={hostGame}
+              onUpdate={loadHostCurrentGame}
+              isHostView={true}
+            />
           </div>
         )}
       </div>
