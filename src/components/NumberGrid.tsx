@@ -1,4 +1,4 @@
-// src/components/NumberGrid.tsx - Cleaned up version
+// src/components/NumberGrid.tsx - Simplified for Users (No Statistics)
 import React from 'react';
 
 interface NumberGridProps {
@@ -66,23 +66,41 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
 
   return (
     <div className="w-full max-w-4xl mx-auto p-4">
-      {/* Header */}
-      <div className="mb-4 text-center">
-        <div className="flex justify-center space-x-4 text-sm text-gray-600">
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300 rounded"></div>
-            <span>Available</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded"></div>
-            <span>Called</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded"></div>
-            <span>Current</span>
+      {/* Header - Only for host view */}
+      {isHost && (
+        <div className="mb-4 text-center">
+          <div className="flex justify-center space-x-4 text-sm text-gray-600">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300 rounded"></div>
+              <span>Available</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded"></div>
+              <span>Called</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded"></div>
+              <span>Current</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* Legend for users - Simple version */}
+      {!isHost && (
+        <div className="mb-4 text-center">
+          <div className="flex justify-center space-x-4 text-sm text-gray-600">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded"></div>
+              <span>Called</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded"></div>
+              <span>Current</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Number Grid */}
       <div className="space-y-2">
@@ -105,25 +123,7 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
         ))}
       </div>
 
-      {/* Statistics */}
-      <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-          <div className="text-2xl font-bold text-blue-600">{calledNumbers.length}</div>
-          <div className="text-sm text-blue-700">Numbers Called</div>
-        </div>
-        <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-          <div className="text-2xl font-bold text-green-600">{90 - calledNumbers.length}</div>
-          <div className="text-sm text-green-700">Numbers Remaining</div>
-        </div>
-        <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-          <div className="text-2xl font-bold text-purple-600">
-            {Math.round((calledNumbers.length / 90) * 100)}%
-          </div>
-          <div className="text-sm text-purple-700">Game Progress</div>
-        </div>
-      </div>
-
-      {/* Host Instructions */}
+      {/* Host Instructions - Only for host view */}
       {isHost && onNumberClick && (
         <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-sm text-amber-800 text-center">
