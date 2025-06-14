@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete implementation with all fixes
+// src/services/firebase.ts - Optimized version with ticket loading fix
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -188,11 +188,8 @@ class FirebaseService {
   // Admin operations
   async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
     try {
-      console.log('🔐 Attempting admin login...');
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
-      console.log('✅ Firebase auth successful for:', user.email, 'UID:', user.uid);
 
       const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
       if (!adminSnapshot.exists()) {
@@ -205,10 +202,9 @@ class FirebaseService {
         throw new Error('Admin account does not have sufficient permissions.');
       }
 
-      console.log('✅ Admin login successful');
       return adminData;
     } catch (error: any) {
-      console.error('❌ Admin login failed:', error);
+      console.error('Admin login failed:', error);
       throw new Error(error.message || 'Admin login failed');
     }
   }
@@ -216,11 +212,8 @@ class FirebaseService {
   // Host operations
   async loginHost(email: string, password: string): Promise<HostUser | null> {
     try {
-      console.log('🔐 Attempting host login...');
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-
-      console.log('✅ Firebase auth successful for:', user.email);
 
       const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
       if (!hostSnapshot.exists()) {
@@ -237,10 +230,9 @@ class FirebaseService {
         throw new Error('Host subscription has expired');
       }
 
-      console.log('✅ Host login successful');
       return hostData;
     } catch (error: any) {
-      console.error('❌ Host login failed:', error);
+      console.error('Host login failed:', error);
       throw new Error(error.message || 'Host login failed');
     }
   }
@@ -265,11 +257,8 @@ class FirebaseService {
         throw new Error('Admin does not have permission to create hosts.');
       }
 
-      console.log('✅ Admin permissions verified');
-
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const newUser = userCredential.user;
-      console.log('✅ Firebase auth account created');
 
       const subscriptionEndDate = new Date();
       subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
@@ -287,10 +276,8 @@ class FirebaseService {
       };
 
       await set(ref(database, `hosts/${newUser.uid}`), removeUndefinedValues(hostData));
-      console.log('✅ Host profile created');
 
       await signOut(auth);
-      console.log('✅ Signed out new user');
 
       throw new Error(`SUCCESS: Host account created for ${email}! Please log in again as admin to continue.`);
 
@@ -511,7 +498,6 @@ class FirebaseService {
       }
 
       await remove(ref(database, `games/${gameId}`));
-      console.log('✅ Game deleted successfully:', gameId);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to delete game');
     }
@@ -544,8 +530,6 @@ class FirebaseService {
   // Load ticket set from JSON
   async loadTicketSet(setId: string): Promise<TicketSetData> {
     try {
-      console.log(`📁 Loading ticket arrangement ${setId} from JSON...`);
-      
       const response = await fetch(`/data/${setId}.json`);
       
       if (!response.ok) {
@@ -553,8 +537,6 @@ class FirebaseService {
       }
       
       const rawData = await response.json() as RawTicketRow[];
-      
-      console.log(`📊 Raw data loaded: ${rawData.length} rows for arrangement ${setId}`);
       
       const tickets: { [key: string]: TambolaTicket } = {};
       
@@ -604,15 +586,13 @@ class FirebaseService {
       
       const finalTicketCount = Object.keys(tickets).length;
       
-      console.log(`✅ Ticket arrangement ${setId} loaded: ${finalTicketCount} tickets`);
-      
       return {
         ticketCount: finalTicketCount,
         tickets
       };
       
     } catch (error: any) {
-      console.error(`❌ Error loading ticket arrangement ${setId}:`, error);
+      console.error(`Error loading ticket set ${setId}:`, error);
       
       return {
         ticketCount: 0,
@@ -621,7 +601,7 @@ class FirebaseService {
     }
   }
 
-  // Game operations
+  // Game operations - OPTIMIZED VERSION
   async createGame(
     gameConfig: { name: string; maxTickets: number; ticketPrice: number; hostPhone?: string },
     hostId: string,
@@ -629,8 +609,6 @@ class FirebaseService {
     selectedPrizes: string[]
   ): Promise<GameData> {
     try {
-      console.log('🎮 Creating game with single-game validation...');
-      
       const currentUser = auth.currentUser;
       if (!currentUser) {
         throw new Error('No authenticated user. Please log in again.');
@@ -650,12 +628,21 @@ class FirebaseService {
         throw new Error('You already have an active game. Please finish or delete it before creating a new one.');
       }
 
-      console.log('✅ Single game validation passed');
-
       const gameRef = push(ref(database, 'games'));
       const gameId = gameRef.key!;
 
       const ticketSetData = await this.loadTicketSet(ticketSetId);
+
+      // FIX: Only take the tickets we need, not all 600
+      const ticketsNeeded: { [key: string]: TambolaTicket } = {};
+      const maxTicketsToStore = Math.min(gameConfig.maxTickets, ticketSetData.ticketCount);
+      
+      // Get only the required number of tickets
+      const ticketEntries = Object.entries(ticketSetData.tickets);
+      for (let i = 0; i < maxTicketsToStore && i < ticketEntries.length; i++) {
+        const [ticketId, ticket] = ticketEntries[i];
+        ticketsNeeded[ticketId] = ticket;
+      }
 
       const prizes: { [key: string]: Prize } = {};
       const prizeDefinitions = {
@@ -696,7 +683,7 @@ class FirebaseService {
           callInterval: 5000
         },
         prizes,
-        tickets: ticketSetData.tickets,
+        tickets: ticketsNeeded, // FIX: Only store needed tickets
         createdAt: new Date().toISOString(),
         ticketSetId
       };
@@ -704,10 +691,9 @@ class FirebaseService {
       const cleanedGameData = removeUndefinedValues(gameData);
       await set(gameRef, cleanedGameData);
       
-      console.log('✅ Game created successfully:', gameId);
       return gameData;
     } catch (error: any) {
-      console.error('❌ Game creation failed:', error);
+      console.error('Game creation failed:', error);
       throw new Error(error.message || 'Failed to create game');
     }
   }
@@ -750,14 +736,12 @@ class FirebaseService {
 
       const cleanedGameData = removeUndefinedValues(gameData);
       await update(ref(database, `games/${gameId}`), cleanedGameData);
-      
-      console.log('✅ Game data updated successfully');
     } catch (error: any) {
       throw new Error(error.message || 'Failed to update game data');
     }
   }
 
-  // FIXED: Add simple callNumber method
+  // Add simple callNumber method
   async callNumber(gameId: string, number: number) {
     return this.callNumberWithPrizeValidation(gameId, number);
   }
@@ -835,7 +819,7 @@ class FirebaseService {
       const allPrizesWon = Object.values(allPrizesAfterUpdate).every(prize => prize.won);
       let gameEnded = false;
 
-      if (allPrizesWon) {
+      if (allPrizesWon || updatedCalledNumbers.length >= 90) {
         gameUpdates.gameState = removeUndefinedValues({
           ...gameData.gameState,
           calledNumbers: updatedCalledNumbers,
@@ -1102,7 +1086,6 @@ class FirebaseService {
       });
 
       await set(ticketRef, bookedTicket);
-      console.log(`✅ Ticket ${ticketId} booked for ${playerName}`);
     } catch (error: any) {
       console.error('Book ticket error:', error);
       throw new Error(error.message || 'Failed to book ticket');
@@ -1126,7 +1109,6 @@ class FirebaseService {
       });
 
       await set(ticketRef, updatedTicket);
-      console.log(`✅ Ticket ${ticketId} updated`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to update ticket');
     }
@@ -1152,7 +1134,6 @@ class FirebaseService {
       });
 
       await set(ticketRef, unbookedTicket);
-      console.log(`✅ Ticket ${ticketId} booking cancelled`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to cancel booking');
     }
@@ -1217,10 +1198,8 @@ class FirebaseService {
           Object.keys(game.tickets).length > 0
         );
         
-        console.log(`📡 Real-time games update: ${activeGames.length} active games found`);
         callback(activeGames);
       } else {
-        console.log('📡 Real-time games update: no games found');
         callback([]);
       }
     });
