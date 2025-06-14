@@ -164,9 +164,12 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
   // Convert prizes for display
   const prizes = Object.values(gameData.prizes);
 
-  // Game phases
+  // Game phases - FIXED: Don't redirect on pause, only on game over
   const isGameActive = gameData.gameState.isActive || gameData.gameState.isCountdown;
   const isGameOver = gameData.gameState.gameOver;
+  const hasGameStarted = (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0) || 
+                        gameData.gameState.isActive || 
+                        gameData.gameState.isCountdown;
 
   // Helper function to render a ticket with proper visibility
   const renderTicketWithVisibility = (ticket: TambolaTicket, showPlayerInfo: boolean = true) => {
@@ -288,8 +291,8 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           </Card>
         )}
 
-        {/* Main Game Content */}
-        {!isGameOver && (
+        {/* Main Game Content - FIXED: Show if game has started (even when paused) */}
+        {!isGameOver && hasGameStarted && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Number Grid - Simplified */}
             <div className="lg:col-span-2">
@@ -369,8 +372,8 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           </div>
         )}
 
-        {/* Player Tickets with Search - Individual ticket management */}
-        {isGameActive && !isGameOver && Object.keys(tickets).length > 0 && (
+        {/* Player Tickets with Search - Show if game has started (even when paused) */}
+        {hasGameStarted && !isGameOver && Object.keys(tickets).length > 0 && (
           <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
             <CardHeader>
               <CardTitle className="text-gray-800 flex items-center">
