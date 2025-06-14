@@ -1,4 +1,4 @@
-// src/components/TambolaGame.tsx - Fixed all search and visibility issues
+// src/components/TambolaGame.tsx - Fixed with individual ticket management
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,10 +25,10 @@ interface TambolaGameProps {
   onBackToTickets?: () => void;
 }
 
-interface SearchedPlayer {
+interface SearchedTicket {
+  ticket: TambolaTicket;
   playerName: string;
-  tickets: TambolaTicket[];
-  searchId: string; // Unique ID for managing deletion
+  uniqueId: string; // Unique ID for individual ticket management
 }
 
 export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameData }) => {
@@ -37,16 +37,27 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
   const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
   const [currentNumber, setCurrentNumber] = useState<number | null>(null);
   
-  // Prize details expansion state
+  // Prize details expansion state - persist won prizes as expanded
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
   
-  // Ticket search state - Back to grouping by player
+  // Ticket search state - Track individual tickets
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchedPlayers, setSearchedPlayers] = useState<SearchedPlayer[]>([]);
+  const [searchedTickets, setSearchedTickets] = useState<SearchedTicket[]>([]);
   
   // Subscription management
   const gameUnsubscribeRef = useRef<(() => void) | null>(null);
   const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Initialize expanded prizes for won prizes (for persistence)
+  useEffect(() => {
+    const wonPrizeIds = Object.values(gameData.prizes)
+      .filter(prize => prize.won)
+      .map(prize => prize.id);
+    
+    if (wonPrizeIds.length > 0 && gameData.gameState.gameOver) {
+      setExpandedPrizes(new Set(wonPrizeIds));
+    }
+  }, [gameData.prizes, gameData.gameState.gameOver]);
 
   // Game subscription
   const setupGameSubscription = useCallback(() => {
@@ -117,7 +128,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
     });
   };
 
-  // Handle ticket search - Find all tickets by player
+  // Handle ticket search - Add all tickets by player
   const handleSearch = () => {
     if (!searchQuery.trim()) return;
 
@@ -130,34 +141,22 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
         t => t.isBooked && t.playerName === ticket.playerName
       );
 
-      // Check if we already have this player in search results
-      const existingPlayerIndex = searchedPlayers.findIndex(
-        p => p.playerName === ticket.playerName
-      );
+      // Add each ticket individually to the search results
+      const newSearchedTickets: SearchedTicket[] = playerTickets.map(t => ({
+        ticket: t,
+        playerName: t.playerName!,
+        uniqueId: `${t.ticketId}-${Date.now()}-${Math.random()}` // Unique ID for each ticket
+      }));
 
-      if (existingPlayerIndex === -1) {
-        // Add new player search result with unique ID
-        setSearchedPlayers(prev => [...prev, {
-          playerName: ticket.playerName!,
-          tickets: playerTickets,
-          searchId: `${ticket.playerName}-${Date.now()}` // Unique ID for deletion
-        }]);
-      } else {
-        // Player already exists, add as a new search instance (for stacking)
-        setSearchedPlayers(prev => [...prev, {
-          playerName: ticket.playerName!,
-          tickets: playerTickets,
-          searchId: `${ticket.playerName}-${Date.now()}` // New unique ID
-        }]);
-      }
+      setSearchedTickets(prev => [...prev, ...newSearchedTickets]);
     }
 
     setSearchQuery('');
   };
 
-  // Remove searched player group
-  const removeSearchedPlayer = (searchId: string) => {
-    setSearchedPlayers(prev => prev.filter(item => item.searchId !== searchId));
+  // Remove individual searched ticket
+  const removeSearchedTicket = (uniqueId: string) => {
+    setSearchedTickets(prev => prev.filter(item => item.uniqueId !== uniqueId));
   };
 
   // Convert prizes for display
@@ -203,6 +202,51 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
       </div>
     );
   };
+
+  // Helper to render prize winner tickets (used in both playing and game over phases)
+  const renderPrizeWinnerTickets = (prize: Prize) => {
+    if (!prize.winners || prize.winners.length === 0) return null;
+
+    return (
+      <div className="mt-3 p-4 bg-white rounded-lg border border-green-200">
+        <div className="space-y-4">
+          {prize.winners.map((winner, idx) => {
+            const winnerTicket = tickets[winner.ticketId];
+            return winnerTicket ? (
+              <div key={idx} className="space-y-2">
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="font-medium text-gray-800">
+                    <User className="w-4 h-4 inline mr-1" />
+                    {winner.name} - Ticket {winner.ticketId}
+                  </h5>
+                  {prize.winningNumber && (
+                    <Badge variant="outline" className="text-gray-700 border-gray-300">
+                      Won on #{prize.winningNumber}
+                    </Badge>
+                  )}
+                </div>
+                {/* Show the actual ticket grid */}
+                {renderTicketWithVisibility(winnerTicket, false)}
+              </div>
+            ) : (
+              <div key={idx} className="text-center py-4 text-gray-500">
+                <p>Ticket {winner.ticketId} data not available</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // Group searched tickets by player for display
+  const groupedSearchResults = searchedTickets.reduce((acc, item) => {
+    if (!acc[item.playerName]) {
+      acc[item.playerName] = [];
+    }
+    acc[item.playerName].push(item);
+    return acc;
+  }, {} as { [playerName: string]: SearchedTicket[] });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
@@ -263,7 +307,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
               </Card>
             </div>
 
-            {/* Prizes with Expandable Winner Details - Fixed visibility */}
+            {/* Prizes with Expandable Winner Details - Shows ticket grids during game */}
             <div>
               <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
                 <CardHeader>
@@ -291,6 +335,12 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                             <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
                               {prize.pattern}
                             </p>
+                            {/* Show "Won by" text during game */}
+                            {prize.won && prize.winners && prize.winners.length > 0 && (
+                              <p className="text-sm font-medium text-green-700 mt-1">
+                                Won by: {prize.winners.map(w => w.name).join(', ')}
+                              </p>
+                            )}
                           </div>
                           <div className="flex items-center space-x-2">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -309,41 +359,8 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                         </div>
                       </div>
 
-                      {/* Winner Details - Fixed visibility */}
-                      {prize.won && expandedPrizes.has(prize.id) && prize.winners && (
-                        <div className="mt-2 p-3 bg-white rounded border border-green-200">
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium text-gray-700">
-                                Winners: {prize.winners.length}
-                              </span>
-                              {prize.winningNumber && (
-                                <Badge variant="outline" className="text-gray-700 border-gray-300">
-                                  Won on #{prize.winningNumber}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="space-y-1">
-                              {prize.winners.map((winner, idx) => (
-                                <div key={idx} className="flex items-center justify-between text-sm p-2 bg-green-50 rounded">
-                                  <div className="flex items-center space-x-2">
-                                    <User className="w-3 h-3 text-green-600" />
-                                    <span className="font-medium text-gray-800">{winner.name}</span>
-                                  </div>
-                                  <Badge variant="secondary" className="bg-white text-gray-700 border-gray-300">
-                                    Ticket {winner.ticketId}
-                                  </Badge>
-                                </div>
-                              ))}
-                            </div>
-                            {prize.wonAt && (
-                              <p className="text-xs text-gray-500 text-center">
-                                Won at {new Date(prize.wonAt).toLocaleTimeString()}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                      {/* Winner Tickets Display During Game */}
+                      {prize.won && expandedPrizes.has(prize.id) && renderPrizeWinnerTickets(prize)}
                     </div>
                   ))}
                 </CardContent>
@@ -352,7 +369,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           </div>
         )}
 
-        {/* Player Tickets with Search - Shows all player tickets */}
+        {/* Player Tickets with Search - Individual ticket management */}
         {isGameActive && !isGameOver && Object.keys(tickets).length > 0 && (
           <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
             <CardHeader>
@@ -376,45 +393,56 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                   <Search className="w-4 h-4 mr-2" />
                   Search
                 </Button>
+                {searchedTickets.length > 0 && (
+                  <Button 
+                    onClick={() => setSearchedTickets([])} 
+                    variant="outline"
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    Clear All
+                  </Button>
+                )}
               </div>
 
               {/* Search Instructions */}
-              {searchedPlayers.length === 0 && (
+              {searchedTickets.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
                   <Ticket className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                   <p>Search for any of your ticket numbers to view all your booked tickets</p>
-                  <p className="text-sm mt-2">Enter any ticket number and we'll show all tickets booked by you</p>
+                  <p className="text-sm mt-2">You can remove individual tickets to track only the ones you want</p>
                 </div>
               )}
 
-              {/* Search Results - Grouped by player with all tickets */}
-              {searchedPlayers.map((player) => (
-                <div key={player.searchId} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-bold text-gray-800 flex items-center">
-                      <User className="w-4 h-4 mr-2" />
-                      {player.playerName}'s Tickets ({player.tickets.length})
-                    </h4>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeSearchedPlayer(player.searchId)}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
+              {/* Search Results - Grouped by player but with individual ticket removal */}
+              {Object.entries(groupedSearchResults).map(([playerName, playerTickets]) => (
+                <div key={playerName} className="border rounded-lg p-4 bg-gray-50">
+                  <h4 className="font-bold text-gray-800 flex items-center mb-3">
+                    <User className="w-4 h-4 mr-2" />
+                    {playerName}'s Tickets ({playerTickets.length})
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {playerTickets.map((item) => (
+                      <div key={item.uniqueId} className="relative">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeSearchedTicket(item.uniqueId)}
+                          className="absolute top-2 right-2 z-10 bg-white/90 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title={`Remove Ticket ${item.ticket.ticketId}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                        {renderTicketWithVisibility(item.ticket, true)}
+                      </div>
+                    ))}
                   </div>
-                  <TicketDisplay 
-                    calledNumbers={calledNumbers} 
-                    tickets={player.tickets}
-                  />
                 </div>
               ))}
             </CardContent>
           </Card>
         )}
 
-        {/* Game Over Display - Fixed winner ticket display */}
+        {/* Game Over Display - Winners persist */}
         {isGameOver && (
           <div className="space-y-6">
             {/* Game Over Header */}
@@ -426,7 +454,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
               </CardContent>
             </Card>
 
-            {/* Prize Winners - Fixed ticket display and visibility */}
+            {/* Prize Winners - Persistent display */}
             <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
               <CardHeader>
                 <CardTitle className="text-gray-800">Prize Winners</CardTitle>
@@ -453,7 +481,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                           }
                         </div>
                       </div>
-                      {/* Fixed: Show "Won by" text with proper visibility */}
+                      {/* Show "Won by" text */}
                       {prize.winners && prize.winners.length > 0 && (
                         <div className="mt-2">
                           <p className="text-sm font-medium text-green-700">
@@ -463,37 +491,8 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                       )}
                     </div>
 
-                    {/* Winner Tickets - Fixed to show ticket grids */}
-                    {expandedPrizes.has(prize.id) && prize.winners && (
-                      <div className="mt-3 p-4 bg-white rounded-lg border border-green-200">
-                        <div className="space-y-4">
-                          {prize.winners.map((winner, idx) => {
-                            const winnerTicket = tickets[winner.ticketId];
-                            return winnerTicket ? (
-                              <div key={idx} className="space-y-2">
-                                <div className="flex items-center justify-between mb-2">
-                                  <h5 className="font-medium text-gray-800">
-                                    <User className="w-4 h-4 inline mr-1" />
-                                    {winner.name} - Ticket {winner.ticketId}
-                                  </h5>
-                                  {prize.winningNumber && (
-                                    <Badge variant="outline" className="text-gray-700 border-gray-300">
-                                      Won on #{prize.winningNumber}
-                                    </Badge>
-                                  )}
-                                </div>
-                                {/* Show the actual ticket grid */}
-                                {renderTicketWithVisibility(winnerTicket, false)}
-                              </div>
-                            ) : (
-                              <div key={idx} className="text-center py-4 text-gray-500">
-                                <p>Ticket {winner.ticketId} data not available</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    {/* Winner Tickets Display */}
+                    {expandedPrizes.has(prize.id) && renderPrizeWinnerTickets(prize)}
                   </div>
                 ))}
 
