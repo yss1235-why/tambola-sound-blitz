@@ -1,11 +1,12 @@
-// src/components/AudioManager.tsx - Enhanced with reliable audio and user interaction handling
+// src/components/AudioManager.tsx - Enhanced with reliable audio and force enable
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Prize } from '@/services/firebase';
 
 interface AudioManagerProps {
   currentNumber: number | null;
   prizes: Prize[];
-  onAudioComplete?: () => void; // Callback when audio finishes
+  onAudioComplete?: () => void;
+  forceEnable?: boolean; // New prop to force enable audio
 }
 
 // Audio item types
@@ -26,7 +27,7 @@ enum AudioState {
   ERROR = 'ERROR'
 }
 
-// Traditional Tambola number calls - kept exactly the same
+// Traditional Tambola number calls
 const numberCalls: { [key: number]: string } = {
   1: "Kelly's Eyes, number one",
   2: "One little duck, number two",
@@ -123,7 +124,8 @@ const numberCalls: { [key: number]: string } = {
 export const AudioManager: React.FC<AudioManagerProps> = ({ 
   currentNumber, 
   prizes, 
-  onAudioComplete 
+  onAudioComplete,
+  forceEnable = false 
 }) => {
   // State management
   const audioState = useRef<AudioState>(AudioState.IDLE);
@@ -134,22 +136,16 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
   
   // Completion detection
-  const completionCheckInterval = useRef<NodeJS.Timeout | null>(null);
   const completionTimeout = useRef<NodeJS.Timeout | null>(null);
-  const isCheckingCompletion = useRef<boolean>(false);
-
+  
   // Speech synthesis setup
   const selectedVoice = useRef<SpeechSynthesisVoice | null>(null);
-  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(false);
-  const [userInteracted, setUserInteracted] = useState<boolean>(false);
+  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(forceEnable);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const initAttempted = useRef<boolean>(false);
 
   // Cleanup function
   const cleanup = useCallback(() => {
-    if (completionCheckInterval.current) {
-      clearInterval(completionCheckInterval.current);
-      completionCheckInterval.current = null;
-    }
     if (completionTimeout.current) {
       clearTimeout(completionTimeout.current);
       completionTimeout.current = null;
@@ -160,7 +156,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     audioState.current = AudioState.IDLE;
     currentAudio.current = null;
     currentUtterance.current = null;
-    isCheckingCompletion.current = false;
   }, []);
 
   // Initialize speech synthesis
@@ -208,82 +203,47 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         window.speechSynthesis.onvoiceschanged = loadVoices;
       }
       loadVoices();
+
+      // If force enable, try to enable immediately
+      if (forceEnable && !initAttempted.current) {
+        initAttempted.current = true;
+        setTimeout(() => {
+          enableAudioSilently();
+        }, 500);
+      }
     };
 
     initSpeech();
 
-    // Add user interaction detection
-    const handleUserInteraction = () => {
-      if (!userInteracted) {
-        setUserInteracted(true);
-        console.log('✅ User interaction detected - audio can now be enabled');
-      }
-    };
-
-    // Listen for any user interaction
-    const events = ['click', 'touch', 'keydown', 'mousedown'];
-    events.forEach(event => {
-      document.addEventListener(event, handleUserInteraction, { once: true, passive: true });
-    });
-
     return () => {
       cleanup();
-      events.forEach(event => {
-        document.removeEventListener(event, handleUserInteraction);
-      });
     };
-  }, [userInteracted, cleanup]);
+  }, [forceEnable, cleanup]);
 
-  // Manual audio enable function
-  const enableAudio = useCallback(async () => {
+  // Silent audio enable for force enable mode
+  const enableAudioSilently = async () => {
     if (!('speechSynthesis' in window)) {
-      setAudioError('Speech synthesis not supported in this browser');
-      return false;
-    }
-
-    if (!userInteracted) {
-      setAudioError('Please interact with the page first (click anywhere)');
-      return false;
+      return;
     }
 
     try {
-      // Test speech synthesis with a short, silent utterance
-      const testUtterance = new SpeechSynthesisUtterance(' ');
-      testUtterance.volume = 0.01; // Very quiet
-      testUtterance.rate = 10; // Very fast
+      // Test with empty speech
+      const testUtterance = new SpeechSynthesisUtterance('');
+      testUtterance.volume = 0;
       
-      return new Promise<boolean>((resolve) => {
-        testUtterance.onend = () => {
-          setIsAudioEnabled(true);
-          setAudioError(null);
-          console.log('✅ Audio enabled successfully');
-          resolve(true);
-        };
-        
-        testUtterance.onerror = (event) => {
-          console.error('Audio test failed:', event.error);
-          if (event.error === 'not-allowed') {
-            setAudioError('Audio blocked by browser. Please check browser settings and allow audio.');
-          } else {
-            setAudioError(`Audio error: ${event.error}`);
-          }
-          resolve(false);
-        };
-
-        window.speechSynthesis.speak(testUtterance);
-        
-        // Fallback timeout
-        setTimeout(() => resolve(false), 2000);
-      });
+      window.speechSynthesis.speak(testUtterance);
+      setIsAudioEnabled(true);
+      setAudioError(null);
+      console.log('✅ Audio force enabled');
     } catch (error) {
-      console.error('Enable audio error:', error);
-      setAudioError('Failed to enable audio');
-      return false;
+      console.warn('Audio force enable failed, will work on first interaction');
     }
-  }, [userInteracted]);
+  };
 
   // Add item to queue with priority management
   const queueAudio = useCallback((item: AudioItem) => {
+    console.log(`Queueing audio: ${item.type} - ${item.text.substring(0, 30)}...`);
+    
     // Remove duplicates of same type
     audioQueue.current = audioQueue.current.filter(existing => 
       !(existing.type === item.type && existing.text === item.text)
@@ -291,17 +251,14 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
     // Insert based on priority
     if (item.priority === 'HIGH') {
-      // High priority goes to front, but after current HIGH priority items
       const highPriorityCount = audioQueue.current.findIndex(i => i.priority !== 'HIGH');
       const insertIndex = highPriorityCount === -1 ? audioQueue.current.length : highPriorityCount;
       audioQueue.current.splice(insertIndex, 0, item);
     } else if (item.priority === 'MEDIUM') {
-      // Medium priority goes after HIGH but before LOW
       const mediumInsertIndex = audioQueue.current.findIndex(i => i.priority === 'LOW');
       const insertIndex = mediumInsertIndex === -1 ? audioQueue.current.length : mediumInsertIndex;
       audioQueue.current.splice(insertIndex, 0, item);
     } else {
-      // Low priority goes to end
       audioQueue.current.push(item);
     }
 
@@ -321,31 +278,28 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     currentAudio.current = nextItem;
     audioState.current = AudioState.SPEAKING;
 
+    console.log(`Processing audio: ${nextItem.type}`);
     speakItem(nextItem);
   }, []);
 
-  // Speak individual item with reliable completion detection
+  // Speak individual item
   const speakItem = useCallback((item: AudioItem) => {
     if (!('speechSynthesis' in window)) {
       console.warn('Speech synthesis not supported');
-      handleAudioComplete(false);
+      handleAudioComplete(true);
       return;
     }
 
-    if (!isAudioEnabled) {
-      console.warn('Audio not enabled, skipping speech');
-      handleAudioComplete(true); // Don't fail the game, just skip
+    // If audio not enabled and not force enabled, skip but don't fail
+    if (!isAudioEnabled && !forceEnable) {
+      console.log('Audio not enabled, skipping speech');
+      handleAudioComplete(true);
       return;
     }
 
     try {
-      // Only cancel if we're interrupting lower priority speech
-      if (currentUtterance.current) {
-        const currentPriority = currentAudio.current?.priority || 'LOW';
-        if (item.priority === 'HIGH' && currentPriority !== 'HIGH') {
-          window.speechSynthesis.cancel();
-        }
-      }
+      // Cancel any ongoing speech
+      window.speechSynthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(item.text);
       
@@ -359,75 +313,60 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
       currentUtterance.current = utterance;
 
-      // Setup completion detection with multiple methods
       let completed = false;
       
       const markComplete = (success: boolean) => {
         if (completed) return;
         completed = true;
         
-        // Clear detection mechanisms
-        if (completionCheckInterval.current) {
-          clearInterval(completionCheckInterval.current);
-          completionCheckInterval.current = null;
-        }
         if (completionTimeout.current) {
           clearTimeout(completionTimeout.current);
           completionTimeout.current = null;
         }
         
-        isCheckingCompletion.current = false;
         currentUtterance.current = null;
-        
         handleAudioComplete(success);
       };
 
-      // Method 1: onend event
-      utterance.onend = () => markComplete(true);
+      // Set event handlers
+      utterance.onend = () => {
+        console.log('Speech ended');
+        markComplete(true);
+      };
       
-      // Method 2: onerror event with better error handling
       utterance.onerror = (event) => {
-        console.warn('Speech synthesis error:', event.error);
+        console.warn('Speech error:', event.error);
         
-        if (event.error === 'not-allowed') {
-          setIsAudioEnabled(false);
-          setAudioError('Audio was blocked. Click "Enable Audio" to restore.');
+        if (event.error === 'not-allowed' && forceEnable) {
+          // For force enable mode, just continue without audio
+          console.log('Audio blocked but force enabled, continuing...');
         }
         
-        markComplete(false);
+        markComplete(true); // Don't fail the game due to audio errors
       };
 
-      // Method 3: Polling method (more reliable)
-      isCheckingCompletion.current = true;
-      completionCheckInterval.current = setInterval(() => {
-        if (!isCheckingCompletion.current) return;
-        
-        if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-          markComplete(true);
-        }
-      }, 100);
-
-      // Method 4: Fallback timeout
-      const estimatedDuration = (item.text.length * 80) + 2000; // ~80ms per character + 2s buffer
+      // Fallback timeout
+      const estimatedDuration = Math.min((item.text.length * 80) + 2000, 10000);
       completionTimeout.current = setTimeout(() => {
-        if (isCheckingCompletion.current) {
-          console.warn('Speech timeout for:', item.text.substring(0, 50));
-          markComplete(false);
-        }
-      }, Math.min(estimatedDuration, 15000)); // Max 15 seconds
+        console.log('Speech timeout, continuing...');
+        markComplete(true);
+      }, estimatedDuration);
 
       // Start speaking
       window.speechSynthesis.speak(utterance);
+      console.log(`Speaking: ${item.text.substring(0, 50)}...`);
       
     } catch (error) {
       console.error('Speech synthesis error:', error);
-      handleAudioComplete(false);
+      handleAudioComplete(true);
     }
-  }, [isAudioEnabled]);
+  }, [isAudioEnabled, forceEnable]);
 
   // Handle audio completion
   const handleAudioComplete = useCallback((success: boolean) => {
     const completedItem = currentAudio.current;
+    
+    console.log(`Audio completed: ${completedItem?.type} (success: ${success})`);
     
     // Reset state
     audioState.current = AudioState.IDLE;
@@ -438,33 +377,22 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       completedItem.onComplete();
     }
 
-    // Retry on failure (up to 2 times)
-    if (!success && completedItem && completedItem.retryCount < 2) {
-      const retryItem: AudioItem = {
-        ...completedItem,
-        retryCount: completedItem.retryCount + 1
-      };
-      
-      setTimeout(() => {
-        queueAudio(retryItem);
-      }, 500);
-      return;
-    }
-
-    // Notify parent component
-    if (onAudioComplete) {
-      onAudioComplete();
-    }
-
     // Process next item in queue after short delay
     setTimeout(() => {
       processQueue();
     }, 200);
-  }, [onAudioComplete, queueAudio, processQueue]);
+
+    // If this was the last item in queue, notify parent
+    if (audioQueue.current.length === 0 && onAudioComplete) {
+      console.log('All audio completed, notifying parent');
+      onAudioComplete();
+    }
+  }, [onAudioComplete, processQueue]);
 
   // Handle number calls
   useEffect(() => {
     if (currentNumber && currentNumber !== lastCalledNumber.current) {
+      console.log(`New number to announce: ${currentNumber}`);
       const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
       
       const audioItem: AudioItem = {
@@ -484,6 +412,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   useEffect(() => {
     prizes.forEach(prize => {
       if (prize.won && !announcedPrizes.current.has(prize.id)) {
+        console.log(`New prize to announce: ${prize.name}`);
         let announcement = `Congratulations! ${prize.name} has been won`;
         
         if (prize.winners && prize.winners.length > 0) {
@@ -499,12 +428,12 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         const audioItem: AudioItem = {
           id: `prize-${prize.id}-${Date.now()}`,
           text: announcement,
-          priority: 'HIGH', // Prizes have high priority
+          priority: 'HIGH',
           type: 'prize',
           retryCount: 0
         };
 
-        // Delay prize announcements slightly to let number announcement finish
+        // Delay prize announcements slightly
         setTimeout(() => {
           queueAudio(audioItem);
         }, 800);
@@ -524,52 +453,27 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     }
   }, [prizes]);
 
-  // Auto-enable audio when user first interacts
+  // Enable audio on first user interaction if force enabled
   useEffect(() => {
-    if (userInteracted && !isAudioEnabled && !audioError) {
-      // Automatically try to enable audio after first interaction
-      setTimeout(() => {
-        enableAudio();
-      }, 1000); // Small delay to ensure interaction is registered
-    }
-  }, [userInteracted, isAudioEnabled, audioError, enableAudio]);
+    if (!forceEnable || isAudioEnabled) return;
 
-  // Public method to get current audio state (for debugging)
-  const getAudioStatus = useCallback(() => {
-    return {
-      state: audioState.current,
-      queueLength: audioQueue.current.length,
-      currentItem: currentAudio.current?.text?.substring(0, 50),
-      isCheckingCompletion: isCheckingCompletion.current,
-      isEnabled: isAudioEnabled,
-      userInteracted: userInteracted,
-      error: audioError
+    const handleUserInteraction = () => {
+      if (!isAudioEnabled) {
+        enableAudioSilently();
+      }
     };
-  }, [isAudioEnabled, userInteracted, audioError]);
 
-  // Expose status for debugging (development only)
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      (window as any).audioManagerStatus = getAudioStatus;
-      (window as any).enableAudio = enableAudio;
-    }
-  }, [getAudioStatus, enableAudio]);
+    const events = ['click', 'touch', 'keydown', 'mousedown'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserInteraction, { once: true, passive: true });
+    });
 
-  // Show audio status overlay only if there are critical issues
-  if (!userInteracted && currentNumber) {
-    return (
-      <div className="fixed bottom-4 right-4 z-50 max-w-sm">
-        <div className="bg-blue-100 border border-blue-400 text-blue-800 px-4 py-3 rounded shadow-lg">
-          <div className="flex items-center">
-            <div className="flex-1">
-              <p className="text-sm font-medium">🎵 Game Audio Available</p>
-              <p className="text-xs">Click anywhere to enable audio announcements</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserInteraction);
+      });
+    };
+  }, [forceEnable, isAudioEnabled]);
 
   return null;
 };
