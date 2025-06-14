@@ -1,5 +1,5 @@
-// src/components/TicketManagementGrid.tsx - Cleaned up version
-import React, { useState, useEffect } from 'react';
+// src/components/TicketManagementGrid.tsx - Updated to use GameDataManager
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { GameData, TambolaTicket, firebaseService } from '@/services/firebase';
+import gameDataManager from '@/services/GameDataManager';
 
 interface TicketManagementGridProps {
   gameData: GameData;
@@ -56,19 +57,36 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     playerPhone: ''
   });
 
-  // Subscribe to real-time ticket updates
+  // Subscription management
+  const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Subscribe to real-time ticket updates using centralized manager
   useEffect(() => {
+    // Initialize with existing tickets
     if (gameData.tickets) {
       setTickets(gameData.tickets);
     }
 
-    const unsubscribe = firebaseService.subscribeToTickets(gameData.gameId, (updatedTickets) => {
+    // Clean up previous subscription
+    if (ticketsUnsubscribeRef.current) {
+      ticketsUnsubscribeRef.current();
+      ticketsUnsubscribeRef.current = null;
+    }
+
+    // Setup new subscription
+    const unsubscribe = gameDataManager.subscribeToTickets(gameData.gameId, (updatedTickets) => {
       if (updatedTickets) {
         setTickets(updatedTickets);
       }
     });
 
-    return unsubscribe;
+    ticketsUnsubscribeRef.current = unsubscribe;
+
+    return () => {
+      if (ticketsUnsubscribeRef.current) {
+        ticketsUnsubscribeRef.current();
+      }
+    };
   }, [gameData.gameId, gameData.tickets]);
 
   // Generate ticket info for the grid (up to maxTickets)
