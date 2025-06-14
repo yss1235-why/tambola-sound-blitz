@@ -1,4 +1,4 @@
-// src/components/UserLandingPage.tsx - Simplified UI
+// src/components/UserLandingPage.tsx - With Smart Polling Restored
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,9 @@ import {
   Gamepad2, 
   Phone,
   Ticket,
-  RefreshCw
+  RefreshCw,
+  Activity,
+  WifiOff
 } from 'lucide-react';
 
 export const UserLandingPage: React.FC = () => {
@@ -25,15 +27,19 @@ export const UserLandingPage: React.FC = () => {
   const selectedGameUnsubscribeRef = useRef<(() => void) | null>(null);
   const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Smart polling for game list
+  // Smart polling for game list - RESTORED with proper intervals
   const {
     games: activeGames,
     isLoading,
     error,
-    refresh
+    refresh,
+    isActive: isUserActive,
+    currentInterval,
+    getStatusText,
+    pollCount
   } = useSmartPolling({
-    activeInterval: 10000,   // 10 seconds when active
-    idleInterval: 30000,     // 30 seconds when idle
+    activeInterval: 5000,    // 5 seconds when active
+    idleInterval: 15000,     // 15 seconds when idle
     activityTimeout: 30000,  // 30 seconds to consider idle
     enabled: currentView === 'tickets' // Only poll on landing page
   });
@@ -189,7 +195,7 @@ export const UserLandingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Welcome Section */}
+        {/* Welcome Section with Polling Status */}
         <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
@@ -198,6 +204,16 @@ export const UserLandingPage: React.FC = () => {
             <p className="text-gray-600 text-lg mt-2">
               Join the excitement! Book your tickets and play live Tambola games.
             </p>
+            {/* Smart Polling Status */}
+            <div className="flex justify-center items-center space-x-4 mt-4 text-sm">
+              <Badge variant={isUserActive ? "default" : "secondary"} className="flex items-center">
+                <Activity className="w-3 h-3 mr-1" />
+                {getStatusText()} (every {currentInterval / 1000}s)
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                Updates: {pollCount}
+              </Badge>
+            </div>
           </CardHeader>
         </Card>
 
@@ -324,6 +340,9 @@ export const UserLandingPage: React.FC = () => {
               <h2 className="text-2xl font-bold text-gray-800 mb-2">No Active Games</h2>
               <p className="text-gray-600 mb-4">
                 There are currently no active Tambola games. New games will appear automatically when hosts create them.
+              </p>
+              <p className="text-sm text-gray-500 mb-4">
+                {isUserActive ? 'Checking for new games every 5 seconds...' : 'You seem idle. Checking every 15 seconds...'}
               </p>
               <Button 
                 onClick={refresh}
