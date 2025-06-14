@@ -1,4 +1,4 @@
-// src/components/TicketBookingGrid.tsx - Updated version (removed pricing references)
+// src/components/TicketBookingGrid.tsx - Optimized booking speed & removed note
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -199,16 +199,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
               </div>
             ))}
           </div>
-
-          {/* Show message if max tickets reached */}
-          {totalCount < Object.keys(tickets).length && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
-              <p className="text-blue-800">
-                <strong>Note:</strong> This game is limited to {gameData.maxTickets} tickets. 
-                {Object.keys(tickets).length - totalCount} additional tickets are available but not shown.
-              </p>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>
