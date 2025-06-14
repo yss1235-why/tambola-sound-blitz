@@ -114,9 +114,16 @@ export const UserLandingPage: React.FC = () => {
       if (updatedGame) {
         setSelectedGame(updatedGame);
         
-        // Auto-switch to game view if game becomes active
-        if (updatedGame.gameState.isActive && currentView === 'tickets') {
-          setCurrentView('game');
+        // Auto-switch to game view only when game first becomes active or has started
+        // Don't switch back to tickets when game is paused
+        if (currentView === 'tickets') {
+          const hasGameStarted = (updatedGame.gameState.calledNumbers && updatedGame.gameState.calledNumbers.length > 0) || 
+                                updatedGame.gameState.isActive || 
+                                updatedGame.gameState.isCountdown;
+          
+          if (hasGameStarted) {
+            setCurrentView('game');
+          }
         }
       } else {
         // Game was deleted
@@ -215,9 +222,19 @@ export const UserLandingPage: React.FC = () => {
   };
 
   // Switch to game view
-  const handleGameStart = () => {
-    setCurrentView('game');
-  };
+  // Check if game should start (when game first becomes active)
+  const shouldShowGameView = selectedGame && (
+    selectedGame.gameState.isActive || 
+    selectedGame.gameState.isCountdown ||
+    (selectedGame.gameState.calledNumbers && selectedGame.gameState.calledNumbers.length > 0)
+  );
+
+  // Auto-switch to game view when game starts
+  useEffect(() => {
+    if (shouldShowGameView && currentView === 'tickets') {
+      setCurrentView('game');
+    }
+  }, [shouldShowGameView, currentView]);
 
   const handleBackToTickets = () => {
     setCurrentView('tickets');
