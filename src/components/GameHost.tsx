@@ -141,10 +141,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isWaitingForAudio, setIsWaitingForAudio] = useState(false);
   
-  // Timer references
+  // Timer references - simplified
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const audioEnabledRef = useRef<boolean>(false);
+  
+  // Track game state for reliable automation
+  const gameActiveRef = useRef(false);
+  const lastCalledNumberRef = useRef<number | null>(null);
   
   // Track if game has started
   const [gameStarted, setGameStarted] = useState(false);
@@ -196,25 +199,22 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, []);
 
-  // Call next number - fixed to avoid stale closures
+  // Fixed call next number function
   const callNextNumber = useCallback(async () => {
-    if (!hostGame || hostGame.gameState.gameOver || !hostGame.gameState.isActive) {
-      console.log('Cannot call number: game not active');
+    // Safety checks
+    if (!hostGame || !gameActiveRef.current) {
       return;
     }
 
     if (isCallingNumber || isWaitingForAudio) {
-      console.log('Already processing a number');
       return;
     }
 
-    // Get current available numbers from game state
     const calledNumbers = hostGame.gameState.calledNumbers || [];
     const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
       .filter(num => !calledNumbers.includes(num));
 
     if (availableNumbers.length === 0) {
-      console.log('No more numbers available');
       endGame();
       return;
     }
@@ -226,71 +226,64 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const number = availableNumbers[randomIndex];
 
-      console.log(`🎲 Calling number: ${number} (${availableNumbers.length - 1} numbers left after this)`);
+      // Store last called number
+      lastCalledNumberRef.current = number;
 
       // Call number and check for prizes
       const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
       
       setIsCallingNumber(false);
-      setIsWaitingForAudio(true);
 
       // Check if game ended
       if (result.gameEnded || availableNumbers.length === 1) {
-        console.log('Game ended');
+        gameActiveRef.current = false;
         endGame();
         return;
       }
 
-      // Wait for audio to complete, then schedule next number
-      // Audio manager will call onAudioComplete which triggers scheduleNextNumber
+      // Only wait for audio if game is still active
+      if (gameActiveRef.current) {
+        setIsWaitingForAudio(true);
+      }
 
     } catch (error) {
       console.error('Failed to call number:', error);
       setIsCallingNumber(false);
       setIsWaitingForAudio(false);
       
-      // Retry after a delay
-      setTimeout(() => {
-        if (hostGame?.gameState.isActive) {
+      // Retry after a delay if game is still active
+      if (gameActiveRef.current) {
+        gameTimerRef.current = setTimeout(() => {
           callNextNumber();
-        }
-      }, 2000);
+        }, 2000);
+      }
     }
   }, [hostGame, isCallingNumber, isWaitingForAudio]);
 
-  // Schedule next number call
-  const scheduleNextNumber = useCallback(() => {
-    console.log(`Scheduling next number in ${callInterval} seconds`);
-    
-    // Clear any existing timer
-    if (gameTimerRef.current) {
-      clearTimeout(gameTimerRef.current);
-      gameTimerRef.current = null;
-    }
-
-    // Schedule next call
-    gameTimerRef.current = setTimeout(() => {
-      if (hostGame?.gameState.isActive && !hostGame.gameState.gameOver) {
-        callNextNumber();
-      }
-    }, callInterval * 1000);
-  }, [callInterval, hostGame, callNextNumber]);
-
   // Handle audio completion
   const handleAudioComplete = useCallback(() => {
-    console.log('Audio completed');
     setIsWaitingForAudio(false);
     
     // Only schedule next if game is still active
-    if (hostGame?.gameState.isActive && !hostGame.gameState.gameOver) {
-      scheduleNextNumber();
+    if (gameActiveRef.current && hostGame?.gameState.isActive && !hostGame.gameState.gameOver) {
+      // Clear any existing timer
+      if (gameTimerRef.current) {
+        clearTimeout(gameTimerRef.current);
+        gameTimerRef.current = null;
+      }
+
+      // Schedule next call
+      gameTimerRef.current = setTimeout(() => {
+        if (gameActiveRef.current) {
+          callNextNumber();
+        }
+      }, callInterval * 1000);
     }
-  }, [hostGame, scheduleNextNumber]);
+  }, [hostGame, callInterval, callNextNumber]);
 
   // Load host's current game
   const loadHostCurrentGame = useCallback(async () => {
     try {
-      console.log('🎮 Loading host current game...');
       const game = await firebaseService.getHostCurrentGame(user.uid);
       if (game) {
         setHostGame(game);
@@ -318,8 +311,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               setGameStarted(true);
             }
             
-            // Handle game end
+            // Handle game state changes
             if (updatedGame.gameState.gameOver) {
+              gameActiveRef.current = false;
               clearAllTimers();
               setIsCallingNumber(false);
               setIsWaitingForAudio(false);
@@ -331,12 +325,21 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               setCurrentCountdown(updatedGame.gameState.countdownTime);
             }
 
-            // Resume number calling if game becomes active and we're not already calling
+            // Track active state
+            gameActiveRef.current = updatedGame.gameState.isActive && !updatedGame.gameState.gameOver;
+
+            // Resume number calling if game becomes active
             if (updatedGame.gameState.isActive && !updatedGame.gameState.gameOver) {
-              const isCurrentlyProcessing = isCallingNumber || isWaitingForAudio || gameTimerRef.current !== null;
-              if (!isCurrentlyProcessing) {
-                console.log('Game became active, starting number calling');
-                setTimeout(() => callNextNumber(), 1000);
+              const hasActiveTimer = gameTimerRef.current !== null;
+              const isProcessing = isCallingNumber || isWaitingForAudio;
+              
+              if (!hasActiveTimer && !isProcessing) {
+                // Start number calling after a short delay
+                setTimeout(() => {
+                  if (gameActiveRef.current) {
+                    callNextNumber();
+                  }
+                }, 1000);
               }
             }
           }
@@ -350,7 +353,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setIsLoading(false);
       setIsInitialLoad(false);
     }
-  }, [user.uid, clearAllTimers, isCallingNumber, isWaitingForAudio, callNextNumber]);
+  }, [user.uid, clearAllTimers, callNextNumber]);
 
   // Load on mount
   useEffect(() => {
@@ -389,6 +392,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
+      gameActiveRef.current = false;
       clearAllTimers();
     };
   }, [clearAllTimers]);
@@ -470,6 +474,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     if (!hostGame || !isSubscriptionValid()) return;
 
     clearAllTimers();
+    gameActiveRef.current = false;
 
     try {
       const countdownDuration = 10;
@@ -506,6 +511,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     if (!hostGame || !isSubscriptionValid()) return;
 
     clearAllTimers();
+    gameActiveRef.current = true;
 
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
@@ -517,17 +523,21 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       // Start calling numbers after a short delay
       setTimeout(() => {
-        callNextNumber();
+        if (gameActiveRef.current) {
+          callNextNumber();
+        }
       }, 1000);
 
     } catch (error) {
       console.error('Failed to start game:', error);
+      gameActiveRef.current = false;
     }
   };
 
   const pauseGame = async () => {
     if (!hostGame) return;
 
+    gameActiveRef.current = false;
     clearAllTimers();
     setIsCallingNumber(false);
     setIsWaitingForAudio(false);
@@ -546,6 +556,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     if (!hostGame || !isSubscriptionValid()) return;
 
     clearAllTimers();
+    gameActiveRef.current = true;
 
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
@@ -555,17 +566,21 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
       // Resume calling numbers after a short delay
       setTimeout(() => {
-        callNextNumber();
+        if (gameActiveRef.current) {
+          callNextNumber();
+        }
       }, 1000);
       
     } catch (error) {
       console.error('Failed to resume game:', error);
+      gameActiveRef.current = false;
     }
   };
 
   const endGame = async () => {
     if (!hostGame) return;
 
+    gameActiveRef.current = false;
     clearAllTimers();
     setIsCallingNumber(false);
     setIsWaitingForAudio(false);
@@ -589,6 +604,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     const confirmed = window.confirm('Are you sure you want to delete this game? This action cannot be undone.');
     if (!confirmed) return;
 
+    gameActiveRef.current = false;
     clearAllTimers();
     setIsLoading(true);
     
@@ -605,6 +621,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const createNewGameFromFinished = () => {
+    gameActiveRef.current = false;
     clearAllTimers();
     setHostGame(null);
     setEditMode(false);
