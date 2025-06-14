@@ -144,6 +144,25 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   const [userInteracted, setUserInteracted] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
 
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    if (completionCheckInterval.current) {
+      clearInterval(completionCheckInterval.current);
+      completionCheckInterval.current = null;
+    }
+    if (completionTimeout.current) {
+      clearTimeout(completionTimeout.current);
+      completionTimeout.current = null;
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    audioState.current = AudioState.IDLE;
+    currentAudio.current = null;
+    currentUtterance.current = null;
+    isCheckingCompletion.current = false;
+  }, []);
+
   // Initialize speech synthesis
   useEffect(() => {
     const initSpeech = () => {
@@ -213,26 +232,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         document.removeEventListener(event, handleUserInteraction);
       });
     };
-  }, [userInteracted]);
-
-  // Cleanup function
-  const cleanup = useCallback(() => {
-    if (completionCheckInterval.current) {
-      clearInterval(completionCheckInterval.current);
-      completionCheckInterval.current = null;
-    }
-    if (completionTimeout.current) {
-      clearTimeout(completionTimeout.current);
-      completionTimeout.current = null;
-    }
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    audioState.current = AudioState.IDLE;
-    currentAudio.current = null;
-    currentUtterance.current = null;
-    isCheckingCompletion.current = false;
-  }, []);
+  }, [userInteracted, cleanup]);
 
   // Manual audio enable function
   const enableAudio = useCallback(async () => {
@@ -281,23 +281,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       return false;
     }
   }, [userInteracted]);
-  const cleanup = useCallback(() => {
-    if (completionCheckInterval.current) {
-      clearInterval(completionCheckInterval.current);
-      completionCheckInterval.current = null;
-    }
-    if (completionTimeout.current) {
-      clearTimeout(completionTimeout.current);
-      completionTimeout.current = null;
-    }
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    audioState.current = AudioState.IDLE;
-    currentAudio.current = null;
-    currentUtterance.current = null;
-    isCheckingCompletion.current = false;
-  }, []);
 
   // Add item to queue with priority management
   const queueAudio = useCallback((item: AudioItem) => {
@@ -541,23 +524,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     }
   }, [prizes]);
 
-  // Public method to get current audio state (for debugging)
-  const getAudioStatus = useCallback(() => {
-    return {
-      state: audioState.current,
-      queueLength: audioQueue.current.length,
-      currentItem: currentAudio.current?.text?.substring(0, 50),
-      isCheckingCompletion: isCheckingCompletion.current
-    };
-  }, []);
-
-  // Expose status for debugging (development only)
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      (window as any).audioManagerStatus = getAudioStatus;
-    }
-  }, [getAudioStatus]);
-
   // Auto-enable audio when user first interacts
   useEffect(() => {
     if (userInteracted && !isAudioEnabled && !audioError) {
@@ -568,8 +534,20 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     }
   }, [userInteracted, isAudioEnabled, audioError, enableAudio]);
 
-  // No visual component - this is a service component
-  // But expose enable function and status for debugging
+  // Public method to get current audio state (for debugging)
+  const getAudioStatus = useCallback(() => {
+    return {
+      state: audioState.current,
+      queueLength: audioQueue.current.length,
+      currentItem: currentAudio.current?.text?.substring(0, 50),
+      isCheckingCompletion: isCheckingCompletion.current,
+      isEnabled: isAudioEnabled,
+      userInteracted: userInteracted,
+      error: audioError
+    };
+  }, [isAudioEnabled, userInteracted, audioError]);
+
+  // Expose status for debugging (development only)
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
       (window as any).audioManagerStatus = getAudioStatus;
