@@ -11,6 +11,7 @@ import { NumberGrid } from './NumberGrid';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { PrizeManagementPanel } from './PrizeManagementPanel';
 import { AudioManager } from './AudioManager';
+import { AudioStatusComponent } from './AudioStatusComponent';
 import gameDataManager from '@/services/GameDataManager';
 import { 
   Play, 
@@ -987,6 +988,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         {/* PLAYING PHASE */}
         {gamePhase === GamePhase.PLAYING && hostGame && (
           <div className="space-y-6">
+            {/* Audio Status - Show at top of playing phase */}
+            <AudioStatusComponent showInGameHost={true} />
+
             {/* Game Controls */}
             <Card>
               <CardHeader>
