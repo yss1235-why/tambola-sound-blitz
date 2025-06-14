@@ -1,11 +1,11 @@
-// src/components/UserLandingPage.tsx - With Smart Polling Restored
+// src/components/UserLandingPage.tsx - Using centralized GameDataManager
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TicketBookingGrid } from './TicketBookingGrid';
 import { TambolaGame } from './TambolaGame';
-import { useSmartPolling } from '@/hooks/useSmartPolling';
+import gameDataManager from '@/services/GameDataManager';
 import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
 import { 
   Loader2, 
@@ -22,27 +22,15 @@ export const UserLandingPage: React.FC = () => {
   const [currentView, setCurrentView] = useState<'tickets' | 'game'>('tickets');
   const [selectedGame, setSelectedGame] = useState<GameData | null>(null);
   const [tickets, setTickets] = useState<{ [key: string]: TambolaTicket }>({});
+  const [activeGames, setActiveGames] = useState<GameData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   
-  // Subscription management for selected game (real-time)
-  const selectedGameUnsubscribeRef = useRef<(() => void) | null>(null);
-  const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
-
-  // Smart polling for game list - RESTORED with proper intervals
-  const {
-    games: activeGames,
-    isLoading,
-    error,
-    refresh,
-    isActive: isUserActive,
-    currentInterval,
-    getStatusText,
-    pollCount
-  } = useSmartPolling({
-    activeInterval: 5000,    // 5 seconds when active
-    idleInterval: 15000,     // 15 seconds when idle
-    activityTimeout: 30000,  // 30 seconds to consider idle
-    enabled: currentView === 'tickets' // Only poll on landing page
-  });
+  // Subscription management
+  const gamesListUnsubscribe = useRef<(() => void) | null>(null);
+  const selectedGameUnsubscribe = useRef<(() => void) | null>(null);
+  const ticketsUnsubscribe = useRef<(() => void) | null>(null);
 
   // Helper functions
   const getEffectiveMaxTickets = useCallback((game: GameData): number => {
@@ -65,68 +53,139 @@ export const UserLandingPage: React.FC = () => {
     return Object.values(game.tickets).filter(t => t.isBooked).length;
   }, []);
 
-  // Real-time subscription for selected game
-  const setupSelectedGameSubscription = useCallback((game: GameData) => {
-    // Clean up previous subscription
-    if (selectedGameUnsubscribeRef.current) {
-      selectedGameUnsubscribeRef.current();
-      selectedGameUnsubscribeRef.current = null;
-    }
-
-    const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
-      if (updatedGame) {
-        setSelectedGame(updatedGame);
-      }
-    });
-
-    selectedGameUnsubscribeRef.current = unsubscribe;
-  }, []);
-
-  // Real-time subscription for tickets
-  const setupTicketsSubscription = useCallback((gameId: string) => {
-    // Clean up previous subscription
-    if (ticketsUnsubscribeRef.current) {
-      ticketsUnsubscribeRef.current();
-      ticketsUnsubscribeRef.current = null;
-    }
-
-    const unsubscribe = firebaseService.subscribeToTickets(gameId, (updatedTickets) => {
-      if (updatedTickets) {
-        setTickets(updatedTickets);
-      }
-    });
-
-    ticketsUnsubscribeRef.current = unsubscribe;
-  }, []);
-
-  // Auto-select first game when games list updates
+  // Initialize games list subscription
   useEffect(() => {
-    if (activeGames.length > 0 && !selectedGame) {
-      const firstGame = activeGames[0];
-      setSelectedGame(firstGame);
-      setupSelectedGameSubscription(firstGame);
+    console.log('🎮 Setting up games list subscription...');
+    
+    const unsubscribe = gameDataManager.subscribeToGamesList((games) => {
+      console.log(`📡 Received ${games.length} active games`);
+      setActiveGames(games);
+      setLastUpdate(new Date());
+      setError(null);
       
-      if (firstGame.tickets) {
-        setTickets(firstGame.tickets);
-        setupTicketsSubscription(firstGame.gameId);
+      // If this is the first load
+      if (isLoading) {
+        setIsLoading(false);
+        
+        // Auto-select first game if available
+        if (games.length > 0 && !selectedGame) {
+          const firstGame = games[0];
+          setSelectedGame(firstGame);
+          setupSelectedGameSubscriptions(firstGame);
+        }
       }
-    } else if (activeGames.length === 0 && selectedGame) {
-      // No games available, clean up
-      setSelectedGame(null);
-      setTickets({});
-    }
-  }, [activeGames, selectedGame, setupSelectedGameSubscription, setupTicketsSubscription]);
+      
+      // Check if selected game is still active
+      if (selectedGame) {
+        const gameStillActive = games.find(g => g.gameId === selectedGame.gameId);
+        if (!gameStillActive) {
+          // Selected game is no longer active, select first available or clear
+          if (games.length > 0) {
+            const newGame = games[0];
+            setSelectedGame(newGame);
+            setupSelectedGameSubscriptions(newGame);
+          } else {
+            setSelectedGame(null);
+            setTickets({});
+            cleanupSelectedGameSubscriptions();
+          }
+        }
+      }
+    });
 
-  // Cleanup subscriptions on unmount
-  useEffect(() => {
+    gamesListUnsubscribe.current = unsubscribe;
+
     return () => {
-      if (selectedGameUnsubscribeRef.current) {
-        selectedGameUnsubscribeRef.current();
-      }
-      if (ticketsUnsubscribeRef.current) {
-        ticketsUnsubscribeRef.current();
+      if (gamesListUnsubscribe.current) {
+        gamesListUnsubscribe.current();
       }
     };
+  }, [isLoading, selectedGame]);
+
+  // Setup subscriptions for selected game
+  const setupSelectedGameSubscriptions = useCallback((game: GameData) => {
+    console.log(`🎮 Setting up subscriptions for game: ${game.gameId}`);
+    
+    // Clean up previous subscriptions
+    cleanupSelectedGameSubscriptions();
+
+    // Subscribe to game updates
+    const gameUnsubscribe = gameDataManager.subscribeToGame(game.gameId, (updatedGame) => {
+      if (updatedGame) {
+        setSelectedGame(updatedGame);
+        
+        // Auto-switch to game view if game becomes active
+        if (updatedGame.gameState.isActive && currentView === 'tickets') {
+          setCurrentView('game');
+        }
+      } else {
+        // Game was deleted
+        setSelectedGame(null);
+        setTickets({});
+        setCurrentView('tickets');
+      }
+    });
+
+    // Subscribe to tickets updates
+    const ticketsUnsubscribe = gameDataManager.subscribeToTickets(game.gameId, (updatedTickets) => {
+      if (updatedTickets) {
+        setTickets(updatedTickets);
+      } else {
+        setTickets({});
+      }
+    });
+
+    selectedGameUnsubscribe.current = gameUnsubscribe;
+    ticketsUnsubscribe.current = ticketsUnsubscribe;
+  }, [currentView]);
+
+  // Cleanup selected game subscriptions
+  const cleanupSelectedGameSubscriptions = useCallback(() => {
+    if (selectedGameUnsubscribe.current) {
+      selectedGameUnsubscribe.current();
+      selectedGameUnsubscribe.current = null;
+    }
+    if (ticketsUnsubscribe.current) {
+      ticketsUnsubscribe.current();
+      ticketsUnsubscribe.current = null;
+    }
+  }, []);
+
+  // Cleanup all subscriptions on unmount
+  useEffect(() => {
+    return () => {
+      if (gamesListUnsubscribe.current) {
+        gamesListUnsubscribe.current();
+      }
+      cleanupSelectedGameSubscriptions();
+    };
+  }, [cleanupSelectedGameSubscriptions]);
+
+  // Manual refresh function
+  const handleRefresh = useCallback(async () => {
+    setError(null);
+    setIsLoading(true);
+    
+    try {
+      // Force refresh by re-subscribing
+      if (gamesListUnsubscribe.current) {
+        gamesListUnsubscribe.current();
+      }
+      
+      const unsubscribe = gameDataManager.subscribeToGamesList((games) => {
+        setActiveGames(games);
+        setLastUpdate(new Date());
+        setIsLoading(false);
+        setError(null);
+      });
+      
+      gamesListUnsubscribe.current = unsubscribe;
+      
+    } catch (err: any) {
+      console.error('Manual refresh error:', err);
+      setError(err.message || 'Failed to refresh games');
+      setIsLoading(false);
+    }
   }, []);
 
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
@@ -152,14 +211,7 @@ export const UserLandingPage: React.FC = () => {
 
   const handleGameSelect = (game: GameData) => {
     setSelectedGame(game);
-    
-    // Setup real-time subscriptions for the selected game
-    setupSelectedGameSubscription(game);
-    
-    if (game.tickets) {
-      setTickets(game.tickets);
-      setupTicketsSubscription(game.gameId);
-    }
+    setupSelectedGameSubscriptions(game);
   };
 
   // Switch to game view
@@ -185,6 +237,7 @@ export const UserLandingPage: React.FC = () => {
             <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
             <div>
               <p className="text-lg text-gray-700">Loading active games...</p>
+              <p className="text-sm text-gray-500">Please wait...</p>
             </div>
           </CardContent>
         </Card>
@@ -195,7 +248,7 @@ export const UserLandingPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Welcome Section with Polling Status */}
+        {/* Welcome Section with Status */}
         <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
@@ -204,15 +257,17 @@ export const UserLandingPage: React.FC = () => {
             <p className="text-gray-600 text-lg mt-2">
               Join the excitement! Book your tickets and play live Tambola games.
             </p>
-            {/* Smart Polling Status */}
+            {/* Connection Status */}
             <div className="flex justify-center items-center space-x-4 mt-4 text-sm">
-              <Badge variant={isUserActive ? "default" : "secondary"} className="flex items-center">
+              <Badge variant="default" className="flex items-center">
                 <Activity className="w-3 h-3 mr-1" />
-                {getStatusText()} (every {currentInterval / 1000}s)
+                Live Updates Active
               </Badge>
-              <Badge variant="outline" className="text-xs">
-                Updates: {pollCount}
-              </Badge>
+              {lastUpdate && (
+                <Badge variant="outline" className="text-xs">
+                  Updated: {lastUpdate.toLocaleTimeString()}
+                </Badge>
+              )}
             </div>
           </CardHeader>
         </Card>
@@ -222,8 +277,11 @@ export const UserLandingPage: React.FC = () => {
           <Card className="border-red-500 bg-red-50">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
-                <span className="text-red-700">{error}</span>
-                <Button onClick={refresh} size="sm" variant="outline">
+                <div className="flex items-center space-x-2">
+                  <WifiOff className="w-5 h-5 text-red-600" />
+                  <span className="text-red-700">{error}</span>
+                </div>
+                <Button onClick={handleRefresh} size="sm" variant="outline">
                   <RefreshCw className="w-4 h-4 mr-2" />
                   Retry
                 </Button>
@@ -238,7 +296,12 @@ export const UserLandingPage: React.FC = () => {
             <CardHeader>
               <CardTitle className="text-2xl text-gray-800 text-center flex items-center justify-between">
                 <span>Available Games</span>
-                <Badge variant="outline">{activeGames.length} Available</Badge>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline">{activeGames.length} Available</Badge>
+                  <Button onClick={handleRefresh} size="sm" variant="outline">
+                    <RefreshCw className="w-4 h-4" />
+                  </Button>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -292,7 +355,7 @@ export const UserLandingPage: React.FC = () => {
           </Card>
         )}
 
-        {/* No Games Available */}
+        {/* Selected Game Display */}
         {selectedGame ? (
           <>
             {/* Game Info */}
@@ -334,6 +397,7 @@ export const UserLandingPage: React.FC = () => {
             )}
           </>
         ) : (
+          /* No Games Available */
           <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
             <CardContent className="p-8 text-center">
               <div className="text-6xl mb-4">🎯</div>
@@ -342,10 +406,10 @@ export const UserLandingPage: React.FC = () => {
                 There are currently no active Tambola games. New games will appear automatically when hosts create them.
               </p>
               <p className="text-sm text-gray-500 mb-4">
-                {isUserActive ? 'Checking for new games every 5 seconds...' : 'You seem idle. Checking every 15 seconds...'}
+                Live updates are active - new games will appear instantly.
               </p>
               <Button 
-                onClick={refresh}
+                onClick={handleRefresh}
                 className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
                 disabled={isLoading}
               >
