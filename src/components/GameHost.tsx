@@ -11,7 +11,6 @@ import { NumberGrid } from './NumberGrid';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { PrizeManagementPanel } from './PrizeManagementPanel';
 import { AudioManager } from './AudioManager';
-import { AudioStatusComponent } from './AudioStatusComponent';
 import gameDataManager from '@/services/GameDataManager';
 import { 
   Play, 
@@ -386,23 +385,34 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // FIXED: Simplified number calling with event-driven approach
+  // FIXED: Simplified number calling with proper random generation
   const callNextNumber = useCallback(async () => {
-    if (!hostGame || availableNumbers.length === 0 || timingState !== TimingState.IDLE) {
+    if (!hostGame || timingState !== TimingState.IDLE) {
+      return;
+    }
+
+    // Get current available numbers from game state
+    const calledNumbers = hostGame.gameState.calledNumbers || [];
+    const currentAvailableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+      .filter(num => !calledNumbers.includes(num));
+
+    if (currentAvailableNumbers.length === 0) {
+      console.log('No more numbers available');
+      endGame();
       return;
     }
 
     setTimingState(TimingState.CALLING_NUMBER);
 
     try {
-      // Select random number
-      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-      const number = availableNumbers[randomIndex];
+      // Select random number from available numbers
+      const randomIndex = Math.floor(Math.random() * currentAvailableNumbers.length);
+      const number = currentAvailableNumbers[randomIndex];
 
-      console.log(`🎲 Calling number: ${number}`);
+      console.log(`🎲 Calling number: ${number} (${currentAvailableNumbers.length} numbers left)`);
 
-      // Update local state immediately for UI responsiveness
-      setAvailableNumbers(prev => prev.filter(n => n !== number));
+      // Update local available numbers state for UI
+      setAvailableNumbers(currentAvailableNumbers.filter(n => n !== number));
 
       // Call number and check for prizes
       const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
@@ -414,7 +424,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setNextCallTime(new Date(Date.now() + (callInterval * 1000)));
 
       // Check if game ended
-      if (result.gameEnded || availableNumbers.length === 1) {
+      if (result.gameEnded || currentAvailableNumbers.length === 1) {
         endGame();
         return;
       }
@@ -423,7 +433,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       console.error('Failed to call number:', error);
       setTimingState(TimingState.IDLE);
     }
-  }, [hostGame, availableNumbers, callInterval, timingState]);
+  }, [hostGame, callInterval, timingState]);
 
   // Audio completion handler - triggers next number call
   const handleAudioComplete = useCallback(() => {
@@ -988,9 +998,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         {/* PLAYING PHASE */}
         {gamePhase === GamePhase.PLAYING && hostGame && (
           <div className="space-y-6">
-            {/* Audio Status - Show at top of playing phase */}
-            <AudioStatusComponent showInGameHost={true} />
-
             {/* Game Controls */}
             <Card>
               <CardHeader>
