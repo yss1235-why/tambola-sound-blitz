@@ -57,7 +57,7 @@ interface GamePrize {
 
 interface CreateGameForm {
   hostPhone: string;
-  maxTickets: string; // Changed to string to handle empty input
+  maxTickets: string;
   selectedTicketSet: string;
   selectedPrizes: string[];
 }
@@ -70,16 +70,7 @@ enum GamePhase {
   FINISHED = 'finished'
 }
 
-// Game timing state
-enum TimingState {
-  IDLE = 'idle',
-  COUNTDOWN = 'countdown',
-  CALLING_NUMBER = 'calling_number',
-  WAITING_FOR_AUDIO = 'waiting_for_audio',
-  PAUSED = 'paused'
-}
-
-// Available ticket sets - kept the same
+// Available ticket sets
 const TICKET_SETS = [
   {
     id: "1",
@@ -97,7 +88,7 @@ const TICKET_SETS = [
   }
 ];
 
-// Available game prizes - kept the same
+// Available game prizes
 const AVAILABLE_PRIZES: GamePrize[] = [
   {
     id: 'quickFive',
@@ -132,33 +123,33 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 ];
 
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
-  // State management - simplified
+  // State management
   const [hostGame, setHostGame] = useState<GameData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
     hostPhone: '',
-    maxTickets: '100', // String to allow empty input
+    maxTickets: '100',
     selectedTicketSet: '1',
     selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fullHouse']
   });
 
-  // Game timing - simplified state management
-  const [timingState, setTimingState] = useState<TimingState>(TimingState.IDLE);
-  const [callInterval, setCallInterval] = useState(5); // Host-configurable interval
+  // Game timing state
+  const [callInterval, setCallInterval] = useState(5);
   const [currentCountdown, setCurrentCountdown] = useState(0);
-  const [availableNumbers, setAvailableNumbers] = useState<number[]>([]);
-  const [nextCallTime, setNextCallTime] = useState<Date | null>(null);
-
-  // Single game timer reference
-  const gameTimer = useRef<NodeJS.Timeout | null>(null);
-  const countdownTimer = useRef<NodeJS.Timeout | null>(null);
+  const [isCallingNumber, setIsCallingNumber] = useState(false);
+  const [isWaitingForAudio, setIsWaitingForAudio] = useState(false);
   
-  // Track if game has started (for phase determination)
+  // Timer references
+  const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioEnabledRef = useRef<boolean>(false);
+  
+  // Track if game has started
   const [gameStarted, setGameStarted] = useState(false);
 
-  // Determine game phase - simplified logic
+  // Determine game phase
   const gamePhase: GamePhase = (() => {
     if (!hostGame) return GamePhase.CREATION;
     if (hostGame.gameState.gameOver) return GamePhase.FINISHED;
@@ -166,7 +157,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return GamePhase.BOOKING;
   })();
 
-  // Subscription validity check - kept the same
+  // Subscription validity check
   const isSubscriptionValid = useCallback(() => {
     const now = new Date();
     const endDate = new Date(user.subscriptionEndDate);
@@ -193,7 +184,110 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return { message: `Active until ${endDate.toLocaleDateString()}`, variant: 'default' as const };
   }, [user.subscriptionEndDate, user.isActive]);
 
-  // Load host's current game using centralized manager
+  // Clear all timers
+  const clearAllTimers = useCallback(() => {
+    if (gameTimerRef.current) {
+      clearTimeout(gameTimerRef.current);
+      gameTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+  }, []);
+
+  // Call next number - fixed to avoid stale closures
+  const callNextNumber = useCallback(async () => {
+    if (!hostGame || hostGame.gameState.gameOver || !hostGame.gameState.isActive) {
+      console.log('Cannot call number: game not active');
+      return;
+    }
+
+    if (isCallingNumber || isWaitingForAudio) {
+      console.log('Already processing a number');
+      return;
+    }
+
+    // Get current available numbers from game state
+    const calledNumbers = hostGame.gameState.calledNumbers || [];
+    const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+      .filter(num => !calledNumbers.includes(num));
+
+    if (availableNumbers.length === 0) {
+      console.log('No more numbers available');
+      endGame();
+      return;
+    }
+
+    setIsCallingNumber(true);
+
+    try {
+      // Select random number
+      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      const number = availableNumbers[randomIndex];
+
+      console.log(`🎲 Calling number: ${number} (${availableNumbers.length - 1} numbers left after this)`);
+
+      // Call number and check for prizes
+      const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
+      
+      setIsCallingNumber(false);
+      setIsWaitingForAudio(true);
+
+      // Check if game ended
+      if (result.gameEnded || availableNumbers.length === 1) {
+        console.log('Game ended');
+        endGame();
+        return;
+      }
+
+      // Wait for audio to complete, then schedule next number
+      // Audio manager will call onAudioComplete which triggers scheduleNextNumber
+
+    } catch (error) {
+      console.error('Failed to call number:', error);
+      setIsCallingNumber(false);
+      setIsWaitingForAudio(false);
+      
+      // Retry after a delay
+      setTimeout(() => {
+        if (hostGame?.gameState.isActive) {
+          callNextNumber();
+        }
+      }, 2000);
+    }
+  }, [hostGame, isCallingNumber, isWaitingForAudio]);
+
+  // Schedule next number call
+  const scheduleNextNumber = useCallback(() => {
+    console.log(`Scheduling next number in ${callInterval} seconds`);
+    
+    // Clear any existing timer
+    if (gameTimerRef.current) {
+      clearTimeout(gameTimerRef.current);
+      gameTimerRef.current = null;
+    }
+
+    // Schedule next call
+    gameTimerRef.current = setTimeout(() => {
+      if (hostGame?.gameState.isActive && !hostGame.gameState.gameOver) {
+        callNextNumber();
+      }
+    }, callInterval * 1000);
+  }, [callInterval, hostGame, callNextNumber]);
+
+  // Handle audio completion
+  const handleAudioComplete = useCallback(() => {
+    console.log('Audio completed');
+    setIsWaitingForAudio(false);
+    
+    // Only schedule next if game is still active
+    if (hostGame?.gameState.isActive && !hostGame.gameState.gameOver) {
+      scheduleNextNumber();
+    }
+  }, [hostGame, scheduleNextNumber]);
+
+  // Load host's current game
   const loadHostCurrentGame = useCallback(async () => {
     try {
       console.log('🎮 Loading host current game...');
@@ -201,14 +295,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       if (game) {
         setHostGame(game);
         
-        // Initialize available numbers
-        const calledNums = game.gameState.calledNumbers || [];
-        const availableNums = Array.from({ length: 90 }, (_, i) => i + 1)
-          .filter(num => !calledNums.includes(num));
-        setAvailableNumbers(availableNums);
-        
         // Check if game has started
-        if (calledNums.length > 0) {
+        if ((game.gameState.calledNumbers?.length || 0) > 0) {
           setGameStarted(true);
         }
         
@@ -216,45 +304,45 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         setCreateGameForm(prev => ({
           ...prev,
           hostPhone: game.hostPhone || prev.hostPhone,
-          maxTickets: game.maxTickets.toString(), // Convert to string
+          maxTickets: game.maxTickets.toString(),
           selectedPrizes: Object.keys(game.prizes)
         }));
         
-        // Subscribe to real-time updates using centralized manager
+        // Subscribe to real-time updates
         const unsubscribe = gameDataManager.subscribeToGame(game.gameId, (updatedGame) => {
           if (updatedGame) {
             setHostGame(updatedGame);
             
-            // Update available numbers
-            const calledNums = updatedGame.gameState.calledNumbers || [];
-            const availableNums = Array.from({ length: 90 }, (_, i) => i + 1)
-              .filter(num => !calledNums.includes(num));
-            setAvailableNumbers(availableNums);
-            
             // Track game start
-            if (calledNums.length > 0) {
+            if ((updatedGame.gameState.calledNumbers?.length || 0) > 0) {
               setGameStarted(true);
             }
             
             // Handle game end
-            if (updatedGame.gameState.gameOver && gameTimer.current) {
-              clearTimeout(gameTimer.current);
-              gameTimer.current = null;
-              setTimingState(TimingState.IDLE);
+            if (updatedGame.gameState.gameOver) {
+              clearAllTimers();
+              setIsCallingNumber(false);
+              setIsWaitingForAudio(false);
               setGameStarted(false);
             }
 
             // Handle countdown
             if (updatedGame.gameState.isCountdown) {
               setCurrentCountdown(updatedGame.gameState.countdownTime);
-              setTimingState(TimingState.COUNTDOWN);
+            }
+
+            // Resume number calling if game becomes active and we're not already calling
+            if (updatedGame.gameState.isActive && !updatedGame.gameState.gameOver) {
+              const isCurrentlyProcessing = isCallingNumber || isWaitingForAudio || gameTimerRef.current !== null;
+              if (!isCurrentlyProcessing) {
+                console.log('Game became active, starting number calling');
+                setTimeout(() => callNextNumber(), 1000);
+              }
             }
           }
         });
         
-        // Store unsubscribe function for cleanup
-        const cleanup = () => unsubscribe();
-        return cleanup;
+        return () => unsubscribe();
       }
     } catch (error) {
       console.error('Failed to load host game:', error);
@@ -262,7 +350,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setIsLoading(false);
       setIsInitialLoad(false);
     }
-  }, [user.uid]);
+  }, [user.uid, clearAllTimers, isCallingNumber, isWaitingForAudio, callNextNumber]);
 
   // Load on mount
   useEffect(() => {
@@ -274,7 +362,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, [isSubscriptionValid, loadHostCurrentGame]);
 
-  // Load previous settings - kept the same but optimized
+  // Load previous settings
   useEffect(() => {
     const loadPreviousSettings = async () => {
       if (isInitialLoad) return;
@@ -285,7 +373,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           setCreateGameForm(prev => ({
             ...prev,
             hostPhone: settings.hostPhone || prev.hostPhone,
-            maxTickets: settings.maxTickets?.toString() || prev.maxTickets, // Convert to string
+            maxTickets: settings.maxTickets?.toString() || prev.maxTickets,
             selectedTicketSet: settings.selectedTicketSet || prev.selectedTicketSet,
             selectedPrizes: settings.selectedPrizes || prev.selectedPrizes
           }));
@@ -301,16 +389,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // Cleanup timers on unmount
   useEffect(() => {
     return () => {
-      if (gameTimer.current) {
-        clearTimeout(gameTimer.current);
-      }
-      if (countdownTimer.current) {
-        clearTimeout(countdownTimer.current);
-      }
+      clearAllTimers();
     };
-  }, []);
+  }, [clearAllTimers]);
 
-  // Create new game - kept the same
+  // Create new game
   const createNewGame = async () => {
     if (!isSubscriptionValid()) {
       alert('Your subscription has expired. Please contact the administrator.');
@@ -346,9 +429,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       
       setHostGame(newGame);
       setGameStarted(false);
-      
-      // Initialize available numbers
-      setAvailableNumbers(Array.from({ length: 90 }, (_, i) => i + 1));
 
     } catch (error: any) {
       console.error('Create game error:', error);
@@ -358,7 +438,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // Update game settings - fixed input handling
+  // Update game settings
   const updateGameSettings = async () => {
     if (!hostGame) return;
 
@@ -385,79 +465,16 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // FIXED: Simplified number calling with proper random generation
-  const callNextNumber = useCallback(async () => {
-    if (!hostGame || timingState !== TimingState.IDLE) {
-      return;
-    }
-
-    // Get current available numbers from game state
-    const calledNumbers = hostGame.gameState.calledNumbers || [];
-    const currentAvailableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
-      .filter(num => !calledNumbers.includes(num));
-
-    if (currentAvailableNumbers.length === 0) {
-      console.log('No more numbers available');
-      endGame();
-      return;
-    }
-
-    setTimingState(TimingState.CALLING_NUMBER);
-
-    try {
-      // Select random number from available numbers
-      const randomIndex = Math.floor(Math.random() * currentAvailableNumbers.length);
-      const number = currentAvailableNumbers[randomIndex];
-
-      console.log(`🎲 Calling number: ${number} (${currentAvailableNumbers.length} numbers left)`);
-
-      // Update local available numbers state for UI
-      setAvailableNumbers(currentAvailableNumbers.filter(n => n !== number));
-
-      // Call number and check for prizes
-      const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
-      
-      // Set waiting state for audio
-      setTimingState(TimingState.WAITING_FOR_AUDIO);
-      
-      // Calculate next call time
-      setNextCallTime(new Date(Date.now() + (callInterval * 1000)));
-
-      // Check if game ended
-      if (result.gameEnded || currentAvailableNumbers.length === 1) {
-        endGame();
-        return;
-      }
-
-    } catch (error) {
-      console.error('Failed to call number:', error);
-      setTimingState(TimingState.IDLE);
-    }
-  }, [hostGame, callInterval, timingState]);
-
-  // Audio completion handler - triggers next number call
-  const handleAudioComplete = useCallback(() => {
-    if (timingState === TimingState.WAITING_FOR_AUDIO) {
-      setTimingState(TimingState.IDLE);
-      
-      // Schedule next number call after interval
-      if (hostGame?.gameState.isActive && availableNumbers.length > 0) {
-        gameTimer.current = setTimeout(() => {
-          callNextNumber();
-        }, callInterval * 1000);
-      }
-    }
-  }, [timingState, hostGame, availableNumbers, callInterval, callNextNumber]);
-
-  // Game control methods - simplified
+  // Game control methods
   const startCountdown = async () => {
     if (!hostGame || !isSubscriptionValid()) return;
+
+    clearAllTimers();
 
     try {
       const countdownDuration = 10;
       setCurrentCountdown(countdownDuration);
       setGameStarted(true);
-      setTimingState(TimingState.COUNTDOWN);
       
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
@@ -467,14 +484,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       });
 
       let timeLeft = countdownDuration;
-      countdownTimer.current = setInterval(async () => {
+      countdownTimerRef.current = setInterval(async () => {
         timeLeft--;
         setCurrentCountdown(timeLeft);
         
         if (timeLeft <= 0) {
-          if (countdownTimer.current) {
-            clearInterval(countdownTimer.current);
-            countdownTimer.current = null;
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
           }
           startGame();
         }
@@ -488,6 +505,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const startGame = async () => {
     if (!hostGame || !isSubscriptionValid()) return;
 
+    clearAllTimers();
+
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
@@ -496,10 +515,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         countdownTime: 0
       });
 
-      setTimingState(TimingState.IDLE);
-      
-      // Start calling numbers immediately
-      callNextNumber();
+      // Start calling numbers after a short delay
+      setTimeout(() => {
+        callNextNumber();
+      }, 1000);
 
     } catch (error) {
       console.error('Failed to start game:', error);
@@ -509,14 +528,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const pauseGame = async () => {
     if (!hostGame) return;
 
-    // Clear any pending timer
-    if (gameTimer.current) {
-      clearTimeout(gameTimer.current);
-      gameTimer.current = null;
-    }
-
-    setTimingState(TimingState.PAUSED);
-    setNextCallTime(null);
+    clearAllTimers();
+    setIsCallingNumber(false);
+    setIsWaitingForAudio(false);
 
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
@@ -531,47 +545,30 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const resumeGame = async () => {
     if (!hostGame || !isSubscriptionValid()) return;
 
+    clearAllTimers();
+
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
         isActive: true
       });
 
-      setTimingState(TimingState.IDLE);
-      
-      // Resume calling numbers immediately
-      callNextNumber();
+      // Resume calling numbers after a short delay
+      setTimeout(() => {
+        callNextNumber();
+      }, 1000);
       
     } catch (error) {
       console.error('Failed to resume game:', error);
     }
   };
 
-  // Handle interval change - FIXED: Works during active game
-  const handleIntervalChange = (newInterval: number) => {
-    setCallInterval(newInterval);
-    
-    // Update next call time if waiting
-    if (nextCallTime && timingState === TimingState.IDLE) {
-      setNextCallTime(new Date(Date.now() + (newInterval * 1000)));
-    }
-  };
-
   const endGame = async () => {
     if (!hostGame) return;
 
-    // Clear all timers
-    if (gameTimer.current) {
-      clearTimeout(gameTimer.current);
-      gameTimer.current = null;
-    }
-    if (countdownTimer.current) {
-      clearInterval(countdownTimer.current);
-      countdownTimer.current = null;
-    }
-
-    setTimingState(TimingState.IDLE);
-    setNextCallTime(null);
+    clearAllTimers();
+    setIsCallingNumber(false);
+    setIsWaitingForAudio(false);
 
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
@@ -592,7 +589,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     const confirmed = window.confirm('Are you sure you want to delete this game? This action cannot be undone.');
     if (!confirmed) return;
 
+    clearAllTimers();
     setIsLoading(true);
+    
     try {
       await firebaseService.deleteGame(hostGame.gameId);
       setHostGame(null);
@@ -606,30 +605,36 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   };
 
   const createNewGameFromFinished = () => {
+    clearAllTimers();
     setHostGame(null);
     setEditMode(false);
     setGameStarted(false);
-    setTimingState(TimingState.IDLE);
+    setIsCallingNumber(false);
+    setIsWaitingForAudio(false);
   };
 
-  // Helper functions - kept the same
-  const getBookedTicketsCount = () => {
-    if (!hostGame || !hostGame.tickets) return 0;
-    return Object.values(hostGame.tickets).filter(ticket => ticket.isBooked).length;
+  // Handle interval change
+  const handleIntervalChange = (newInterval: number) => {
+    setCallInterval(newInterval);
   };
 
-  // FIXED: Handle max tickets input properly
+  // Handle max tickets input
   const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    // Allow empty string or valid numbers
     if (value === '' || /^\d+$/.test(value)) {
       setCreateGameForm(prev => ({ ...prev, maxTickets: value }));
     }
   };
 
+  // Helper functions
+  const getBookedTicketsCount = () => {
+    if (!hostGame || !hostGame.tickets) return 0;
+    return Object.values(hostGame.tickets).filter(ticket => ticket.isBooked).length;
+  };
+
   const subscriptionStatus = getSubscriptionStatus();
 
-  // Show subscription error - kept the same
+  // Show subscription error
   if (!isSubscriptionValid()) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
@@ -660,7 +665,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     );
   }
 
-  // Show loading - only on initial load
+  // Show loading
   if (isInitialLoad && isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
@@ -697,7 +702,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               {gamePhase === GamePhase.PLAYING && '🔴 Live Game'}
               {gamePhase === GamePhase.FINISHED && '🏆 Game Complete'}
             </Badge>
-            {timingState === TimingState.WAITING_FOR_AUDIO && (
+            {isWaitingForAudio && (
               <Badge variant="secondary" className="ml-2">
                 <Volume2 className="w-3 h-3 mr-1 animate-pulse" />
                 Announcing...
@@ -730,7 +735,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <p className="text-sm text-gray-500 mt-1">Players will contact you on this number</p>
               </div>
 
-              {/* Max Tickets - FIXED input handling */}
+              {/* Max Tickets */}
               <div>
                 <Label htmlFor="max-tickets">Maximum Tickets</Label>
                 <Input
@@ -746,7 +751,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <p className="text-sm text-gray-500 mt-1">How many tickets can be sold for this game</p>
               </div>
 
-              {/* Ticket Set Selection - kept the same */}
+              {/* Ticket Set Selection */}
               <div>
                 <Label>Select Ticket Set</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -775,7 +780,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 </div>
               </div>
 
-              {/* Prize Selection - kept the same */}
+              {/* Prize Selection */}
               <div>
                 <Label>Select Prizes</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
@@ -938,7 +943,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 />
               </div>
 
-              {/* Max Tickets - FIXED */}
+              {/* Max Tickets */}
               <div>
                 <Label htmlFor="edit-max-tickets">Maximum Tickets</Label>
                 <Input
@@ -1086,7 +1091,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 </div>
 
                 {/* Timing Status */}
-                {timingState === TimingState.WAITING_FOR_AUDIO && (
+                {isWaitingForAudio && (
                   <Alert className="mb-4">
                     <Volume2 className="h-4 w-4 animate-pulse" />
                     <AlertDescription>
@@ -1095,16 +1100,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   </Alert>
                 )}
 
-                {nextCallTime && hostGame.gameState.isActive && timingState === TimingState.IDLE && (
-                  <Alert className="mb-4">
-                    <Timer className="h-4 w-4" />
-                    <AlertDescription>
-                      Next number in: {Math.max(0, Math.ceil((nextCallTime.getTime() - Date.now()) / 1000))} seconds
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Call Interval Control - MAINTAINED: Host can change during game */}
+                {/* Call Interval Control */}
                 {!hostGame.gameState.gameOver && (
                   <div className="mb-6">
                     <Label htmlFor="call-interval">Auto Call Interval: {callInterval} seconds</Label>
@@ -1276,12 +1272,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </div>
         )}
 
-        {/* Audio Manager - FIXED: Event-driven audio */}
+        {/* Audio Manager */}
         {hostGame && (
           <AudioManager
             currentNumber={hostGame.gameState.currentNumber}
             prizes={Object.values(hostGame.prizes)}
             onAudioComplete={handleAudioComplete}
+            forceEnable={true}
           />
         )}
       </div>
