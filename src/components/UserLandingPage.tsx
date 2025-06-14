@@ -1,4 +1,4 @@
-// src/components/UserLandingPage.tsx - Using centralized GameDataManager
+// src/components/UserLandingPage.tsx - Fixed version with handleGameStart
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,10 +55,7 @@ export const UserLandingPage: React.FC = () => {
 
   // Initialize games list subscription
   useEffect(() => {
-    console.log('🎮 Setting up games list subscription...');
-    
     const unsubscribe = gameDataManager.subscribeToGamesList((games) => {
-      console.log(`📡 Received ${games.length} active games`);
       setActiveGames(games);
       setLastUpdate(new Date());
       setError(null);
@@ -104,8 +101,6 @@ export const UserLandingPage: React.FC = () => {
 
   // Setup subscriptions for selected game
   const setupSelectedGameSubscriptions = useCallback((game: GameData) => {
-    console.log(`🎮 Setting up subscriptions for game: ${game.gameId}`);
-    
     // Clean up previous subscriptions
     cleanupSelectedGameSubscriptions();
 
@@ -189,7 +184,6 @@ export const UserLandingPage: React.FC = () => {
       gamesListUnsubscribe.current = unsubscribe;
       
     } catch (err: any) {
-      console.error('Manual refresh error:', err);
       setError(err.message || 'Failed to refresh games');
       setIsLoading(false);
     }
@@ -201,7 +195,6 @@ export const UserLandingPage: React.FC = () => {
     try {
       await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGame.gameId);
     } catch (error: any) {
-      console.error('Booking failed:', error.message);
       alert(error.message || 'Failed to book ticket');
     }
   };
@@ -221,6 +214,15 @@ export const UserLandingPage: React.FC = () => {
     setupSelectedGameSubscriptions(game);
   };
 
+  // FIX: Add the missing handleGameStart function
+  const handleGameStart = () => {
+    setCurrentView('game');
+  };
+
+  const handleBackToTickets = () => {
+    setCurrentView('tickets');
+  };
+
   // Switch to game view
   // Check if game should start (when game first becomes active)
   const shouldShowGameView = selectedGame && (
@@ -235,10 +237,6 @@ export const UserLandingPage: React.FC = () => {
       setCurrentView('game');
     }
   }, [shouldShowGameView, currentView]);
-
-  const handleBackToTickets = () => {
-    setCurrentView('tickets');
-  };
 
   // Show game view with full real-time
   if (currentView === 'game' && selectedGame) {
