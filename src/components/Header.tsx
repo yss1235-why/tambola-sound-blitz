@@ -1,4 +1,4 @@
-// src/components/Header.tsx - Updated for your existing admin structure
+// src/components/Header.tsx - Fixed contrast issues in login forms
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -91,8 +91,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     return () => unsubscribe();
   }, []);
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAdminLogin = async () => {
     setIsLoading(true);
     
     try {
@@ -111,8 +110,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     }
   };
 
-  const handleHostLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleHostLogin = async () => {
     setIsLoading(true);
     
     try {
@@ -228,9 +226,9 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                 <DialogHeader>
                   <DialogTitle className="text-gray-800">Host Login</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleHostLogin} className="space-y-4">
+                <div className="space-y-4">
                   <div>
-                    <Label htmlFor="host-email" className="text-gray-700">Email</Label>
+                    <Label htmlFor="host-email" className="text-gray-700 font-medium">Email</Label>
                     <Input 
                       id="host-email" 
                       type="email" 
@@ -238,12 +236,13 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={hostForm.email}
                       onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="border-2 border-orange-200 focus:border-orange-400"
+                      onKeyPress={(e) => e.key === 'Enter' && !hostForm.password && document.getElementById('host-password')?.focus()}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                       disabled={isLoading}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="host-password" className="text-gray-700">Password</Label>
+                    <Label htmlFor="host-password" className="text-gray-700 font-medium">Password</Label>
                     <Input 
                       id="host-password" 
                       type="password" 
@@ -251,18 +250,19 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={hostForm.password}
                       onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
-                      className="border-2 border-orange-200 focus:border-orange-400"
+                      onKeyPress={(e) => e.key === 'Enter' && hostForm.email && hostForm.password && handleHostLogin()}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                       disabled={isLoading}
                     />
                   </div>
                   <Button 
-                    type="submit" 
+                    onClick={handleHostLogin}
                     className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
-                    disabled={isLoading}
+                    disabled={isLoading || !hostForm.email || !hostForm.password}
                   >
                     {isLoading ? 'Logging in...' : 'Login as Host'}
                   </Button>
-                </form>
+                </div>
               </DialogContent>
             </Dialog>
 
@@ -272,13 +272,13 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                 <DialogHeader>
                   <DialogTitle className="text-gray-800">Admin Login</DialogTitle>
                 </DialogHeader>
-                <form onSubmit={handleAdminLogin} className="space-y-4">
+                <div className="space-y-4">
                   <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <p className="text-sm text-blue-800 font-medium">Admin Login</p>
                     <p className="text-xs text-blue-600">Enter your admin credentials</p>
                   </div>
                   <div>
-                    <Label htmlFor="admin-email" className="text-gray-700">Email</Label>
+                    <Label htmlFor="admin-email" className="text-gray-700 font-medium">Email</Label>
                     <Input 
                       id="admin-email" 
                       type="email" 
@@ -286,12 +286,13 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={adminForm.email}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
-                      className="border-2 border-orange-200 focus:border-orange-400"
+                      onKeyPress={(e) => e.key === 'Enter' && !adminForm.password && document.getElementById('admin-password')?.focus()}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                       disabled={isLoading}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="admin-password" className="text-gray-700">Password</Label>
+                    <Label htmlFor="admin-password" className="text-gray-700 font-medium">Password</Label>
                     <Input 
                       id="admin-password" 
                       type="password" 
@@ -299,18 +300,19 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       required 
                       value={adminForm.password}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
-                      className="border-2 border-orange-200 focus:border-orange-400"
+                      onKeyPress={(e) => e.key === 'Enter' && adminForm.email && adminForm.password && handleAdminLogin()}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                       disabled={isLoading}
                     />
                   </div>
                   <Button 
-                    type="submit" 
+                    onClick={handleAdminLogin}
                     className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
-                    disabled={isLoading}
+                    disabled={isLoading || !adminForm.email || !adminForm.password}
                   >
                     {isLoading ? 'Logging in...' : 'Login as Admin'}
                   </Button>
-                </form>
+                </div>
               </DialogContent>
             </Dialog>
           </div>
