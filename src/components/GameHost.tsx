@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Optimized with audio-aware number generation
+// src/components/GameHost.tsx - Fixed timing and removed manual number selection
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -138,13 +138,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // Track if game has started (to maintain playing phase)
   const [gameStarted, setGameStarted] = useState(false);
   
-  // Track audio status
-  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  // Track audio and timing status
+  const [isWaitingForAudio, setIsWaitingForAudio] = useState(false);
+  const [nextCallTime, setNextCallTime] = useState<Date | null>(null);
 
   // Refs
   const gameUnsubscribeRef = useRef<(() => void) | null>(null);
-  const audioStatusRef = useRef(false);
-  const pendingNumberRef = useRef<number | null>(null);
+  const isProcessingRef = useRef(false);
+  const audioCompleteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // FIXED: Determine game phase - once in playing, stay in playing until game over
   const gamePhase = (() => {
@@ -312,29 +313,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       if (countdownInterval) {
         clearInterval(countdownInterval);
       }
-    };
-  }, [gameInterval, countdownInterval]);
-
-  // Audio status listener - listen for audio completion events
-  useEffect(() => {
-    const handleAudioStatusChange = (event: CustomEvent) => {
-      const { isPlaying } = event.detail;
-      audioStatusRef.current = isPlaying;
-      setIsAudioPlaying(isPlaying);
-      
-      // If audio finished and we have a pending number call
-      if (!isPlaying && pendingNumberRef.current !== null && gameInterval) {
-        console.log('🔊 Audio finished, can call next number');
-        pendingNumberRef.current = null;
+      if (audioCompleteTimeoutRef.current) {
+        clearTimeout(audioCompleteTimeoutRef.current);
       }
     };
-
-    window.addEventListener('audioStatusChange' as any, handleAudioStatusChange);
-    
-    return () => {
-      window.removeEventListener('audioStatusChange' as any, handleAudioStatusChange);
-    };
-  }, [gameInterval]);
+  }, [gameInterval, countdownInterval]);
 
   // Create new game
   const createNewGame = async () => {
@@ -403,52 +386,72 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // FIXED: Auto-calling function with audio awareness
+  // FIXED: Auto-calling function with proper timing sequence
   const callNextNumber = useCallback(async () => {
-    if (!hostGame || availableNumbers.length === 0) return;
+    if (!hostGame || availableNumbers.length === 0 || isProcessingRef.current) return;
 
-    // Check if audio is currently playing
-    if (audioStatusRef.current) {
-      console.log('🔊 Audio is playing, skipping this interval');
-      pendingNumberRef.current = 1; // Mark that we want to call a number
-      return;
-    }
-
-    // Select number immediately to avoid delays
-    const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-    const number = availableNumbers[randomIndex];
-
-    // Update local state immediately for responsiveness
-    setAvailableNumbers(prev => prev.filter(n => n !== number));
+    isProcessingRef.current = true;
+    setIsWaitingForAudio(true);
 
     try {
-      // Make the async Firebase call without blocking
+      // Select random number
+      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      const number = availableNumbers[randomIndex];
+
+      console.log(`🎲 Calling number: ${number}`);
+
+      // Update local state immediately
+      setAvailableNumbers(prev => prev.filter(n => n !== number));
+
+      // Call number and check for prizes
       const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
       
-      // Check if game ended due to all prizes won
-      if (result.gameEnded) {
-        if (gameInterval) {
-          clearInterval(gameInterval);
-          setGameInterval(null);
-        }
-        setGameStarted(false);
-      }
+      // Calculate total audio duration
+      let audioWaitTime = 3000; // Base time for number announcement
       
-      // Handle prize announcements if any
       if (result.announcements && result.announcements.length > 0) {
-        console.log('🎉 Prize Winners:', result.announcements);
+        // Add extra time for each prize announcement
+        audioWaitTime += result.announcements.length * 3000;
+        console.log(`🎉 Prize announcements: ${result.announcements.length}, extra wait: ${result.announcements.length * 3000}ms`);
       }
-      
-      // If no numbers left, end the game
-      if (availableNumbers.length === 1) { // 1 because we haven't filtered yet
-        endGame();
-      }
+
+      // Set next call time
+      const totalWaitTime = audioWaitTime + (callInterval * 1000);
+      setNextCallTime(new Date(Date.now() + totalWaitTime));
+
+      console.log(`⏱️ Waiting ${audioWaitTime}ms for audio, then ${callInterval}s delay`);
+
+      // Wait for audio to complete
+      audioCompleteTimeoutRef.current = setTimeout(() => {
+        setIsWaitingForAudio(false);
+        
+        // Check if game ended
+        if (result.gameEnded) {
+          if (gameInterval) {
+            clearInterval(gameInterval);
+            setGameInterval(null);
+          }
+          setGameStarted(false);
+          isProcessingRef.current = false;
+          return;
+        }
+        
+        // If no numbers left, end the game
+        if (availableNumbers.length === 1) {
+          endGame();
+          isProcessingRef.current = false;
+          return;
+        }
+
+        isProcessingRef.current = false;
+      }, audioWaitTime);
+
     } catch (error) {
       console.error('Failed to call number:', error);
-      // Restore the number if the call failed
-      setAvailableNumbers(prev => [...prev, number].sort((a, b) => a - b));
+      isProcessingRef.current = false;
+      setIsWaitingForAudio(false);
     }
-  }, [hostGame, availableNumbers, gameInterval]);
+  }, [hostGame, availableNumbers, callInterval]);
 
   // Game control methods
   const startCountdown = async () => {
@@ -499,12 +502,21 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         clearInterval(gameInterval);
       }
 
-      // Start auto-calling numbers with optimized callback
-      const interval = setInterval(() => {
-        callNextNumber();
-      }, callInterval * 1000);
+      // Call first number immediately
+      callNextNumber();
 
-      setGameInterval(interval);
+      // Setup interval with proper timing
+      const setupNextCall = () => {
+        const interval = setInterval(() => {
+          if (!isProcessingRef.current && !isWaitingForAudio) {
+            callNextNumber();
+          }
+        }, callInterval * 1000);
+        
+        setGameInterval(interval);
+      };
+
+      setupNextCall();
 
     } catch (error) {
       console.error('Failed to start game:', error);
@@ -514,14 +526,23 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const pauseGame = async () => {
     if (!hostGame) return;
 
-    // Clear the interval but don't change game state
+    // Clear the interval
     if (gameInterval) {
       clearInterval(gameInterval);
       setGameInterval(null);
     }
 
+    // Clear audio timeout
+    if (audioCompleteTimeoutRef.current) {
+      clearTimeout(audioCompleteTimeoutRef.current);
+      audioCompleteTimeoutRef.current = null;
+    }
+
+    setIsWaitingForAudio(false);
+    setNextCallTime(null);
+    isProcessingRef.current = false;
+
     try {
-      // FIXED: Only set isActive to false, don't end the game
       await firebaseService.updateGameState(hostGame.gameId, {
         ...hostGame.gameState,
         isActive: false
@@ -545,9 +566,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         clearInterval(gameInterval);
       }
 
-      // Resume auto-calling numbers with optimized callback
+      // Reset processing state
+      isProcessingRef.current = false;
+      setIsWaitingForAudio(false);
+
+      // Call next number immediately on resume
+      callNextNumber();
+
+      // Setup interval
       const interval = setInterval(() => {
-        callNextNumber();
+        if (!isProcessingRef.current && !isWaitingForAudio) {
+          callNextNumber();
+        }
       }, callInterval * 1000);
 
       setGameInterval(interval);
@@ -556,47 +586,23 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // FIXED: Manual number calling with audio awareness
-  const manualCallNumber = useCallback(async (number: number) => {
-    if (!hostGame || !availableNumbers.includes(number)) return;
-
-    // Check if audio is playing
-    if (audioStatusRef.current) {
-      alert('Please wait for the current announcement to finish');
-      return;
-    }
-
-    // Update local state immediately for responsiveness
-    setAvailableNumbers(prev => prev.filter(n => n !== number));
-
-    try {
-      // Make the async Firebase call without blocking
-      const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
+  // Handle interval change during active game
+  const handleIntervalChange = (newInterval: number) => {
+    setCallInterval(newInterval);
+    
+    // If game is active, restart the interval with new timing
+    if (hostGame?.gameState.isActive && gameInterval) {
+      clearInterval(gameInterval);
       
-      // Check if game ended due to all prizes won
-      if (result.gameEnded) {
-        if (gameInterval) {
-          clearInterval(gameInterval);
-          setGameInterval(null);
+      const interval = setInterval(() => {
+        if (!isProcessingRef.current && !isWaitingForAudio) {
+          callNextNumber();
         }
-        setGameStarted(false);
-      }
+      }, newInterval * 1000);
       
-      // Handle prize announcements
-      if (result.announcements && result.announcements.length > 0) {
-        alert('🎉 ' + result.announcements.join('\n'));
-      }
-      
-      // If no numbers left, end the game
-      if (availableNumbers.length === 1) {
-        endGame();
-      }
-    } catch (error) {
-      console.error('Failed to manually call number:', error);
-      // Restore the number if the call failed
-      setAvailableNumbers(prev => [...prev, number].sort((a, b) => a - b));
+      setGameInterval(interval);
     }
-  }, [hostGame, availableNumbers, gameInterval]);
+  };
 
   const endGame = async () => {
     if (!hostGame) return;
@@ -605,6 +611,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       clearInterval(gameInterval);
       setGameInterval(null);
     }
+
+    if (audioCompleteTimeoutRef.current) {
+      clearTimeout(audioCompleteTimeoutRef.current);
+      audioCompleteTimeoutRef.current = null;
+    }
+
+    setIsWaitingForAudio(false);
+    setNextCallTime(null);
+    isProcessingRef.current = false;
 
     try {
       await firebaseService.updateGameState(hostGame.gameId, {
@@ -618,21 +633,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       console.error('Failed to end game:', error);
     }
   };
-
-  // Re-create interval when call interval changes during active game
-  useEffect(() => {
-    if (hostGame?.gameState.isActive && gameInterval) {
-      // Clear existing interval
-      clearInterval(gameInterval);
-      
-      // Create new interval with updated timing
-      const interval = setInterval(() => {
-        callNextNumber();
-      }, callInterval * 1000);
-      
-      setGameInterval(interval);
-    }
-  }, [callInterval, callNextNumber, hostGame?.gameState.isActive]);
 
   const deleteGame = async () => {
     if (!hostGame) return;
@@ -735,7 +735,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               {gamePhase === 'playing' && '🔴 Live Game'}
               {gamePhase === 'finished' && '🏆 Game Complete'}
             </Badge>
-            {isAudioPlaying && (
+            {isWaitingForAudio && (
               <Badge variant="secondary" className="ml-2">
                 <Volume2 className="w-3 h-3 mr-1 animate-pulse" />
                 Announcing...
@@ -1033,7 +1033,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </Card>
         )}
 
-        {/* PLAYING PHASE - SIMPLIFIED UI */}
+        {/* PLAYING PHASE - AUTOMATIC ONLY, NO MANUAL CONTROL */}
         {gamePhase === 'playing' && hostGame && (
           <div className="space-y-6">
             {/* Game Controls */}
@@ -1042,7 +1042,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <CardTitle className="flex items-center justify-between">
                   <span className="flex items-center">
                     <Gamepad2 className="w-6 h-6 mr-2" />
-                    Live Game Control
+                    Live Game Control - Automatic Mode
                   </span>
                   <Badge variant={hostGame.gameState.isActive ? 'default' : 'secondary'} className="text-lg px-4">
                     {hostGame.gameState.isCountdown && `Countdown: ${currentCountdown}s`}
@@ -1081,7 +1081,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   </div>
                 </div>
 
-                {/* Game Control Buttons - FIXED PAUSE/PLAY */}
+                {/* Game Control Buttons */}
                 <div className="flex flex-wrap gap-4 mb-6">
                   {hostGame.gameState.isCountdown ? (
                     <Button disabled className="flex-1">
@@ -1123,17 +1123,26 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   )}
                 </div>
 
-                {/* Audio Status Indicator */}
-                {isAudioPlaying && (
+                {/* Timing Status */}
+                {isWaitingForAudio && (
                   <Alert className="mb-4">
                     <Volume2 className="h-4 w-4 animate-pulse" />
                     <AlertDescription>
-                      Audio announcement in progress. Next number will be called after it completes.
+                      Audio announcement in progress. Next number will be called after announcement completes and delay period.
                     </AlertDescription>
                   </Alert>
                 )}
 
-                {/* Call Interval Control */}
+                {nextCallTime && hostGame.gameState.isActive && !isWaitingForAudio && (
+                  <Alert className="mb-4">
+                    <Timer className="h-4 w-4" />
+                    <AlertDescription>
+                      Next number in: {Math.max(0, Math.ceil((nextCallTime.getTime() - Date.now()) / 1000))} seconds
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Call Interval Control - NOW WORKS DURING ACTIVE GAME */}
                 {!hostGame.gameState.gameOver && (
                   <div className="mb-6">
                     <Label htmlFor="call-interval">Auto Call Interval: {callInterval} seconds</Label>
@@ -1144,16 +1153,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                         min="3"
                         max="15"
                         value={callInterval}
-                        onChange={(e) => setCallInterval(parseInt(e.target.value))}
+                        onChange={(e) => handleIntervalChange(parseInt(e.target.value))}
                         className="flex-1"
-                        disabled={hostGame.gameState.isActive}
                       />
                       <span className="text-sm text-gray-600 w-20 text-center">
                         {callInterval}s
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      Adjust the speed of automatic number calling (only when paused)
+                      Time between number calls (after audio announcements complete)
                     </p>
                   </div>
                 )}
@@ -1184,25 +1192,28 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardContent>
             </Card>
 
-            {/* Number Grid for Manual Calling */}
+            {/* Number Grid - VIEW ONLY, NO MANUAL CLICKING */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Hash className="w-5 h-5 mr-2" />
-                  Number Board - Click to Call Manually
-                  {isAudioPlaying && (
-                    <Badge variant="secondary" className="ml-2 text-xs">
-                      Wait for audio
-                    </Badge>
-                  )}
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center">
+                    <Hash className="w-5 h-5 mr-2" />
+                    Number Board - Automatic Generation Only
+                  </span>
+                  <Badge variant="outline">View Only</Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
+                <Alert className="mb-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    All numbers are generated automatically. Manual selection has been disabled to ensure fair play.
+                  </AlertDescription>
+                </Alert>
                 <NumberGrid
                   calledNumbers={hostGame.gameState.calledNumbers || []}
                   currentNumber={hostGame.gameState.currentNumber}
-                  onNumberClick={manualCallNumber}
-                  isHost={true}
+                  isHost={false} // CHANGED: Disable manual clicking
                 />
               </CardContent>
             </Card>
@@ -1213,7 +1224,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               onRefreshGame={loadHostCurrentGame}
             />
 
-            {/* REMOVED: Full ticket display - only showing count */}
+            {/* Player Statistics */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
