@@ -1,5 +1,5 @@
-// src/components/AudioManager.tsx - Enhanced with reliable audio and queue management
-import React, { useEffect, useRef, useCallback } from 'react';
+// src/components/AudioManager.tsx - Enhanced with reliable audio and user interaction handling
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Prize } from '@/services/firebase';
 
 interface AudioManagerProps {
@@ -140,12 +140,16 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
   // Speech synthesis setup
   const selectedVoice = useRef<SpeechSynthesisVoice | null>(null);
+  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(false);
+  const [userInteracted, setUserInteracted] = useState<boolean>(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   // Initialize speech synthesis
   useEffect(() => {
     const initSpeech = () => {
       if (!('speechSynthesis' in window)) {
         console.warn('Speech synthesis not supported');
+        setAudioError('Speech synthesis not supported in this browser');
         return;
       }
 
@@ -189,12 +193,94 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
     initSpeech();
 
+    // Add user interaction detection
+    const handleUserInteraction = () => {
+      if (!userInteracted) {
+        setUserInteracted(true);
+        console.log('✅ User interaction detected - audio can now be enabled');
+      }
+    };
+
+    // Listen for any user interaction
+    const events = ['click', 'touch', 'keydown', 'mousedown'];
+    events.forEach(event => {
+      document.addEventListener(event, handleUserInteraction, { once: true, passive: true });
+    });
+
     return () => {
       cleanup();
+      events.forEach(event => {
+        document.removeEventListener(event, handleUserInteraction);
+      });
     };
-  }, []);
+  }, [userInteracted]);
 
   // Cleanup function
+  const cleanup = useCallback(() => {
+    if (completionCheckInterval.current) {
+      clearInterval(completionCheckInterval.current);
+      completionCheckInterval.current = null;
+    }
+    if (completionTimeout.current) {
+      clearTimeout(completionTimeout.current);
+      completionTimeout.current = null;
+    }
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    audioState.current = AudioState.IDLE;
+    currentAudio.current = null;
+    currentUtterance.current = null;
+    isCheckingCompletion.current = false;
+  }, []);
+
+  // Manual audio enable function
+  const enableAudio = useCallback(async () => {
+    if (!('speechSynthesis' in window)) {
+      setAudioError('Speech synthesis not supported in this browser');
+      return false;
+    }
+
+    if (!userInteracted) {
+      setAudioError('Please interact with the page first (click anywhere)');
+      return false;
+    }
+
+    try {
+      // Test speech synthesis with a short, silent utterance
+      const testUtterance = new SpeechSynthesisUtterance(' ');
+      testUtterance.volume = 0.01; // Very quiet
+      testUtterance.rate = 10; // Very fast
+      
+      return new Promise<boolean>((resolve) => {
+        testUtterance.onend = () => {
+          setIsAudioEnabled(true);
+          setAudioError(null);
+          console.log('✅ Audio enabled successfully');
+          resolve(true);
+        };
+        
+        testUtterance.onerror = (event) => {
+          console.error('Audio test failed:', event.error);
+          if (event.error === 'not-allowed') {
+            setAudioError('Audio blocked by browser. Please check browser settings and allow audio.');
+          } else {
+            setAudioError(`Audio error: ${event.error}`);
+          }
+          resolve(false);
+        };
+
+        window.speechSynthesis.speak(testUtterance);
+        
+        // Fallback timeout
+        setTimeout(() => resolve(false), 2000);
+      });
+    } catch (error) {
+      console.error('Enable audio error:', error);
+      setAudioError('Failed to enable audio');
+      return false;
+    }
+  }, [userInteracted]);
   const cleanup = useCallback(() => {
     if (completionCheckInterval.current) {
       clearInterval(completionCheckInterval.current);
@@ -258,7 +344,14 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   // Speak individual item with reliable completion detection
   const speakItem = useCallback((item: AudioItem) => {
     if (!('speechSynthesis' in window)) {
+      console.warn('Speech synthesis not supported');
       handleAudioComplete(false);
+      return;
+    }
+
+    if (!isAudioEnabled) {
+      console.warn('Audio not enabled, skipping speech');
+      handleAudioComplete(true); // Don't fail the game, just skip
       return;
     }
 
@@ -309,9 +402,15 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       // Method 1: onend event
       utterance.onend = () => markComplete(true);
       
-      // Method 2: onerror event
+      // Method 2: onerror event with better error handling
       utterance.onerror = (event) => {
         console.warn('Speech synthesis error:', event.error);
+        
+        if (event.error === 'not-allowed') {
+          setIsAudioEnabled(false);
+          setAudioError('Audio was blocked. Click "Enable Audio" to restore.');
+        }
+        
         markComplete(false);
       };
 
@@ -341,7 +440,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       console.error('Speech synthesis error:', error);
       handleAudioComplete(false);
     }
-  }, []);
+  }, [isAudioEnabled]);
 
   // Handle audio completion
   const handleAudioComplete = useCallback((success: boolean) => {
@@ -459,6 +558,40 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     }
   }, [getAudioStatus]);
 
+  // Auto-enable audio when user first interacts
+  useEffect(() => {
+    if (userInteracted && !isAudioEnabled && !audioError) {
+      // Automatically try to enable audio after first interaction
+      setTimeout(() => {
+        enableAudio();
+      }, 1000); // Small delay to ensure interaction is registered
+    }
+  }, [userInteracted, isAudioEnabled, audioError, enableAudio]);
+
   // No visual component - this is a service component
+  // But expose enable function and status for debugging
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      (window as any).audioManagerStatus = getAudioStatus;
+      (window as any).enableAudio = enableAudio;
+    }
+  }, [getAudioStatus, enableAudio]);
+
+  // Show audio status overlay only if there are critical issues
+  if (!userInteracted && currentNumber) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50 max-w-sm">
+        <div className="bg-blue-100 border border-blue-400 text-blue-800 px-4 py-3 rounded shadow-lg">
+          <div className="flex items-center">
+            <div className="flex-1">
+              <p className="text-sm font-medium">🎵 Game Audio Available</p>
+              <p className="text-xs">Click anywhere to enable audio announcements</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return null;
 };
