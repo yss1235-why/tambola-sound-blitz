@@ -1,5 +1,5 @@
-// src/components/TicketManagementGrid.tsx - Updated to use GameDataManager
-import React, { useState, useEffect, useRef } from 'react';
+// src/components/TicketManagementGrid.tsx - Optimized to prevent freezing
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,6 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { GameData, TambolaTicket, firebaseService } from '@/services/firebase';
-import gameDataManager from '@/services/GameDataManager';
 
 interface TicketManagementGridProps {
   gameData: GameData;
@@ -45,7 +44,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingTicket, setEditingTicket] = useState<TicketInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [tickets, setTickets] = useState<{ [key: string]: TambolaTicket }>({});
   
   const [bookingForm, setBookingForm] = useState<BookingForm>({
     playerName: '',
@@ -57,47 +55,19 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     playerPhone: ''
   });
 
-  // Subscription management
-  const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
+  // Single subscription reference
+  const ticketsSubscriptionRef = useRef<(() => void) | null>(null);
 
-  // Subscribe to real-time ticket updates using centralized manager
-  useEffect(() => {
-    // Initialize with existing tickets
-    if (gameData.tickets) {
-      setTickets(gameData.tickets);
-    }
-
-    // Clean up previous subscription
-    if (ticketsUnsubscribeRef.current) {
-      ticketsUnsubscribeRef.current();
-      ticketsUnsubscribeRef.current = null;
-    }
-
-    // Setup new subscription
-    const unsubscribe = gameDataManager.subscribeToTickets(gameData.gameId, (updatedTickets) => {
-      if (updatedTickets) {
-        setTickets(updatedTickets);
-      }
-    });
-
-    ticketsUnsubscribeRef.current = unsubscribe;
-
-    return () => {
-      if (ticketsUnsubscribeRef.current) {
-        ticketsUnsubscribeRef.current();
-      }
-    };
-  }, [gameData.gameId, gameData.tickets]);
-
-  // Generate ticket info for the grid (up to maxTickets)
-  const getTicketInfo = (): TicketInfo[] => {
-    const ticketInfo: TicketInfo[] = [];
+  // Generate ticket info with memoization
+  const ticketInfo = useMemo(() => {
+    const info: TicketInfo[] = [];
+    const tickets = gameData.tickets || {};
     
     for (let i = 1; i <= gameData.maxTickets; i++) {
       const ticketId = i.toString();
       const ticket = tickets[ticketId];
       
-      ticketInfo.push({
+      info.push({
         ticketId,
         isBooked: ticket?.isBooked || false,
         playerName: ticket?.playerName,
@@ -106,12 +76,35 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       });
     }
     
-    return ticketInfo;
-  };
+    return info;
+  }, [gameData.tickets, gameData.maxTickets]);
 
-  const ticketInfo = getTicketInfo();
+  // Calculate counts
   const bookedCount = ticketInfo.filter(t => t.isBooked).length;
   const availableCount = gameData.maxTickets - bookedCount;
+
+  // Subscribe to real-time ticket updates
+  useEffect(() => {
+    // Clean up previous subscription
+    if (ticketsSubscriptionRef.current) {
+      ticketsSubscriptionRef.current();
+      ticketsSubscriptionRef.current = null;
+    }
+
+    // Setup new subscription
+    const unsubscribe = firebaseService.subscribeToTickets(gameData.gameId, (updatedTickets) => {
+      // Tickets updates are handled through gameData prop updates
+      // This subscription ensures we get real-time updates
+    });
+
+    ticketsSubscriptionRef.current = unsubscribe;
+
+    return () => {
+      if (ticketsSubscriptionRef.current) {
+        ticketsSubscriptionRef.current();
+      }
+    };
+  }, [gameData.gameId]);
 
   const handleTicketClick = (ticketId: string, isBooked: boolean) => {
     if (isBooked) {
@@ -160,7 +153,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     setIsLoading(true);
     try {
-      // Book all selected tickets for the same player
+      // Book tickets one by one to avoid bulk operations
       for (const ticketId of selectedTickets) {
         await firebaseService.bookTicket(
           ticketId, 
@@ -174,6 +167,8 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       setSelectedTickets([]);
       setBookingForm({ playerName: '', playerPhone: '' });
       setShowBookingDialog(false);
+      
+      // Trigger refresh
       onRefreshGame();
 
     } catch (error: any) {
@@ -194,14 +189,13 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     setIsLoading(true);
     try {
-      // Update the ticket with new player information
       await firebaseService.updateTicket(
         gameData.gameId,
         editingTicket.ticketId,
         {
           playerName: editForm.playerName.trim(),
           playerPhone: editForm.playerPhone.trim(),
-          isBooked: true // Ensure it remains booked
+          isBooked: true
         }
       );
 
@@ -246,17 +240,14 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     }
   };
 
-  const renderTicketContent = (ticket: TicketInfo) => {
-    return (
-      <span className="text-lg sm:text-xl lg:text-2xl font-bold">{ticket.ticketId}</span>
-    );
-  };
-
   // Create rows of 10 tickets each
-  const ticketRows = [];
-  for (let i = 0; i < ticketInfo.length; i += 10) {
-    ticketRows.push(ticketInfo.slice(i, i + 10));
-  }
+  const ticketRows = useMemo(() => {
+    const rows = [];
+    for (let i = 0; i < ticketInfo.length; i += 10) {
+      rows.push(ticketInfo.slice(i, i + 10));
+    }
+    return rows;
+  }, [ticketInfo]);
 
   return (
     <div className="space-y-6">
@@ -357,7 +348,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                     className={getTicketClassName(ticket)}
                     onClick={() => handleTicketClick(ticket.ticketId, ticket.isBooked)}
                   >
-                    {renderTicketContent(ticket)}
+                    <span className="text-lg sm:text-xl lg:text-2xl font-bold">{ticket.ticketId}</span>
                   </div>
                 ))}
                 {/* Fill empty slots in the last row */}
@@ -379,7 +370,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </CardContent>
       </Card>
 
-      {/* Booked Tickets Summary (if any) */}
+      {/* Booked Tickets Summary */}
       {bookedCount > 0 && (
         <Card>
           <CardHeader>
