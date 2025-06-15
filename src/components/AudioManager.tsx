@@ -1,4 +1,4 @@
-// src/components/AudioManager.tsx - Enhanced with reliable audio and force enable
+// src/components/AudioManager.tsx - Fixed with reliable completion callback
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Prize } from '@/services/firebase';
 
@@ -6,25 +6,7 @@ interface AudioManagerProps {
   currentNumber: number | null;
   prizes: Prize[];
   onAudioComplete?: () => void;
-  forceEnable?: boolean; // New prop to force enable audio
-}
-
-// Audio item types
-interface AudioItem {
-  id: string;
-  text: string;
-  priority: 'HIGH' | 'MEDIUM' | 'LOW';
-  type: 'number' | 'prize' | 'general';
-  retryCount: number;
-  onComplete?: () => void;
-}
-
-// Audio state
-enum AudioState {
-  IDLE = 'IDLE',
-  SPEAKING = 'SPEAKING',
-  PAUSED = 'PAUSED',
-  ERROR = 'ERROR'
+  forceEnable?: boolean;
 }
 
 // Traditional Tambola number calls
@@ -36,7 +18,7 @@ const numberCalls: { [key: number]: string } = {
   5: "Man alive, number five",
   6: "Half a dozen, number six",
   7: "Lucky seven",
-  8: "One fat lady, number eight",
+  8: "Garden gate, number eight",
   9: "Doctor's orders, number nine",
   10: "Uncle Ben, number ten",
   11: "Legs eleven",
@@ -51,7 +33,7 @@ const numberCalls: { [key: number]: string } = {
   20: "One score, twenty",
   21: "Key of the door, twenty-one",
   22: "Two little ducks, twenty-two",
-  23: "Thee and me, twenty-three",
+  23: "Three and me, twenty-three",
   24: "Two dozen, twenty-four",
   25: "Quarter century, twenty-five",
   26: "Pick and mix, twenty-six",
@@ -127,45 +109,27 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   onAudioComplete,
   forceEnable = false 
 }) => {
-  // State management
-  const audioState = useRef<AudioState>(AudioState.IDLE);
-  const audioQueue = useRef<AudioItem[]>([]);
-  const currentAudio = useRef<AudioItem | null>(null);
+  // State
+  const [isAudioSupported, setIsAudioSupported] = useState(false);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+  
+  // Refs
   const lastCalledNumber = useRef<number | null>(null);
   const announcedPrizes = useRef<Set<string>>(new Set());
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
-  
-  // Completion detection
-  const completionTimeout = useRef<NodeJS.Timeout | null>(null);
-  
-  // Speech synthesis setup
+  const completionTimer = useRef<NodeJS.Timeout | null>(null);
   const selectedVoice = useRef<SpeechSynthesisVoice | null>(null);
-  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(forceEnable);
-  const [audioError, setAudioError] = useState<string | null>(null);
-  const initAttempted = useRef<boolean>(false);
-
-  // Cleanup function
-  const cleanup = useCallback(() => {
-    if (completionTimeout.current) {
-      clearTimeout(completionTimeout.current);
-      completionTimeout.current = null;
-    }
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    audioState.current = AudioState.IDLE;
-    currentAudio.current = null;
-    currentUtterance.current = null;
-  }, []);
+  const isSpeaking = useRef<boolean>(false);
 
   // Initialize speech synthesis
   useEffect(() => {
     const initSpeech = () => {
       if (!('speechSynthesis' in window)) {
-        console.warn('Speech synthesis not supported');
-        setAudioError('Speech synthesis not supported in this browser');
+        setIsAudioSupported(false);
         return;
       }
+
+      setIsAudioSupported(true);
 
       // Load voices
       const loadVoices = () => {
@@ -176,10 +140,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
           'Google UK English Female',
           'Google UK English Male', 
           'Microsoft Zira',
-          'Microsoft David',
-          'Samantha',
-          'Alex',
-          'Victoria'
+          'Microsoft David'
         ];
 
         for (const prefName of voicePreferences) {
@@ -194,225 +155,141 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         if (!selectedVoice.current) {
           selectedVoice.current = voices.find(v => v.lang.startsWith('en')) || null;
         }
-
-        console.log('Selected voice:', selectedVoice.current?.name || 'Default');
       };
 
-      // Handle voice loading
       if (window.speechSynthesis.onvoiceschanged !== undefined) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
       }
       loadVoices();
 
-      // If force enable, try to enable immediately
-      if (forceEnable && !initAttempted.current) {
-        initAttempted.current = true;
-        setTimeout(() => {
-          enableAudioSilently();
-        }, 500);
+      // Enable audio if forced
+      if (forceEnable) {
+        setIsAudioEnabled(true);
       }
     };
 
     initSpeech();
 
+    // Cleanup
     return () => {
-      cleanup();
+      if (completionTimer.current) {
+        clearTimeout(completionTimer.current);
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
     };
-  }, [forceEnable, cleanup]);
+  }, [forceEnable]);
 
-  // Silent audio enable for force enable mode
-  const enableAudioSilently = async () => {
-    if (!('speechSynthesis' in window)) {
-      return;
-    }
+  // Enable audio on first interaction
+  useEffect(() => {
+    if (!isAudioSupported || isAudioEnabled) return;
 
-    try {
-      // Test with empty speech
-      const testUtterance = new SpeechSynthesisUtterance('');
-      testUtterance.volume = 0;
-      
-      window.speechSynthesis.speak(testUtterance);
+    const enableAudio = () => {
       setIsAudioEnabled(true);
-      setAudioError(null);
-      console.log('✅ Audio force enabled');
-    } catch (error) {
-      console.warn('Audio force enable failed, will work on first interaction');
-    }
-  };
+      document.removeEventListener('click', enableAudio);
+    };
 
-  // Add item to queue with priority management
-  const queueAudio = useCallback((item: AudioItem) => {
-    console.log(`Queueing audio: ${item.type} - ${item.text.substring(0, 30)}...`);
-    
-    // Remove duplicates of same type
-    audioQueue.current = audioQueue.current.filter(existing => 
-      !(existing.type === item.type && existing.text === item.text)
-    );
+    document.addEventListener('click', enableAudio);
 
-    // Insert based on priority
-    if (item.priority === 'HIGH') {
-      const highPriorityCount = audioQueue.current.findIndex(i => i.priority !== 'HIGH');
-      const insertIndex = highPriorityCount === -1 ? audioQueue.current.length : highPriorityCount;
-      audioQueue.current.splice(insertIndex, 0, item);
-    } else if (item.priority === 'MEDIUM') {
-      const mediumInsertIndex = audioQueue.current.findIndex(i => i.priority === 'LOW');
-      const insertIndex = mediumInsertIndex === -1 ? audioQueue.current.length : mediumInsertIndex;
-      audioQueue.current.splice(insertIndex, 0, item);
-    } else {
-      audioQueue.current.push(item);
-    }
+    return () => {
+      document.removeEventListener('click', enableAudio);
+    };
+  }, [isAudioSupported, isAudioEnabled]);
 
-    // Start processing if idle
-    if (audioState.current === AudioState.IDLE) {
-      processQueue();
-    }
-  }, []);
-
-  // Process audio queue
-  const processQueue = useCallback(() => {
-    if (audioState.current !== AudioState.IDLE || audioQueue.current.length === 0) {
+  // Speak text with completion callback
+  const speak = useCallback((text: string, callback?: () => void) => {
+    if (!isAudioSupported || !isAudioEnabled) {
+      callback?.();
       return;
     }
 
-    const nextItem = audioQueue.current.shift()!;
-    currentAudio.current = nextItem;
-    audioState.current = AudioState.SPEAKING;
-
-    console.log(`Processing audio: ${nextItem.type}`);
-    speakItem(nextItem);
-  }, []);
-
-  // Speak individual item
-  const speakItem = useCallback((item: AudioItem) => {
-    if (!('speechSynthesis' in window)) {
-      console.warn('Speech synthesis not supported');
-      handleAudioComplete(true);
-      return;
+    // Cancel any ongoing speech
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
     }
 
-    // If audio not enabled and not force enabled, skip but don't fail
-    if (!isAudioEnabled && !forceEnable) {
-      console.log('Audio not enabled, skipping speech');
-      handleAudioComplete(true);
-      return;
+    // Clear any existing timer
+    if (completionTimer.current) {
+      clearTimeout(completionTimer.current);
+      completionTimer.current = null;
     }
 
     try {
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(item.text);
+      const utterance = new SpeechSynthesisUtterance(text);
       
-      // Configure utterance
       if (selectedVoice.current) {
         utterance.voice = selectedVoice.current;
       }
+      
       utterance.rate = 0.9;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
       currentUtterance.current = utterance;
+      isSpeaking.current = true;
 
-      let completed = false;
-      
-      const markComplete = (success: boolean) => {
-        if (completed) return;
-        completed = true;
+      // Handle completion
+      const handleComplete = () => {
+        isSpeaking.current = false;
+        currentUtterance.current = null;
         
-        if (completionTimeout.current) {
-          clearTimeout(completionTimeout.current);
-          completionTimeout.current = null;
+        if (completionTimer.current) {
+          clearTimeout(completionTimer.current);
+          completionTimer.current = null;
         }
         
-        currentUtterance.current = null;
-        handleAudioComplete(success);
+        callback?.();
       };
 
-      // Set event handlers
-      utterance.onend = () => {
-        console.log('Speech ended');
-        markComplete(true);
-      };
+      utterance.onend = handleComplete;
       
       utterance.onerror = (event) => {
         console.warn('Speech error:', event.error);
-        
-        if (event.error === 'not-allowed' && forceEnable) {
-          // For force enable mode, just continue without audio
-          console.log('Audio blocked but force enabled, continuing...');
-        }
-        
-        markComplete(true); // Don't fail the game due to audio errors
+        handleComplete();
       };
 
-      // Fallback timeout
-      const estimatedDuration = Math.min((item.text.length * 80) + 2000, 10000);
-      completionTimeout.current = setTimeout(() => {
-        console.log('Speech timeout, continuing...');
-        markComplete(true);
+      // Fallback timer (estimate based on text length)
+      const estimatedDuration = Math.min(text.length * 60 + 1000, 5000);
+      completionTimer.current = setTimeout(() => {
+        if (isSpeaking.current) {
+          handleComplete();
+        }
       }, estimatedDuration);
 
-      // Start speaking
       window.speechSynthesis.speak(utterance);
-      console.log(`Speaking: ${item.text.substring(0, 50)}...`);
       
     } catch (error) {
       console.error('Speech synthesis error:', error);
-      handleAudioComplete(true);
+      isSpeaking.current = false;
+      callback?.();
     }
-  }, [isAudioEnabled, forceEnable]);
+  }, [isAudioSupported, isAudioEnabled]);
 
-  // Handle audio completion
-  const handleAudioComplete = useCallback((success: boolean) => {
-    const completedItem = currentAudio.current;
-    
-    console.log(`Audio completed: ${completedItem?.type} (success: ${success})`);
-    
-    // Reset state
-    audioState.current = AudioState.IDLE;
-    currentAudio.current = null;
-
-    // Call completion callback if provided
-    if (completedItem?.onComplete) {
-      completedItem.onComplete();
-    }
-
-    // Process next item in queue after short delay
-    setTimeout(() => {
-      processQueue();
-    }, 200);
-
-    // If this was the last item in queue, notify parent
-    if (audioQueue.current.length === 0 && onAudioComplete) {
-      console.log('All audio completed, notifying parent');
-      onAudioComplete();
-    }
-  }, [onAudioComplete, processQueue]);
-
-  // Handle number calls
+  // Handle number announcements
   useEffect(() => {
     if (currentNumber && currentNumber !== lastCalledNumber.current) {
-      console.log(`New number to announce: ${currentNumber}`);
+      lastCalledNumber.current = currentNumber;
+      
       const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
       
-      const audioItem: AudioItem = {
-        id: `number-${currentNumber}-${Date.now()}`,
-        text: callText,
-        priority: 'MEDIUM',
-        type: 'number',
-        retryCount: 0
-      };
-
-      queueAudio(audioItem);
-      lastCalledNumber.current = currentNumber;
+      // Announce number and call completion callback
+      speak(callText, () => {
+        // Only call onAudioComplete for number announcements
+        // Don't call it for prize announcements
+        if (onAudioComplete && !isSpeaking.current) {
+          onAudioComplete();
+        }
+      });
     }
-  }, [currentNumber, queueAudio]);
+  }, [currentNumber, speak, onAudioComplete]);
 
   // Handle prize announcements
   useEffect(() => {
     prizes.forEach(prize => {
       if (prize.won && !announcedPrizes.current.has(prize.id)) {
-        console.log(`New prize to announce: ${prize.name}`);
+        announcedPrizes.current.add(prize.id);
+        
         let announcement = `Congratulations! ${prize.name} has been won`;
         
         if (prize.winners && prize.winners.length > 0) {
@@ -425,23 +302,13 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         
         announcement += '. Well done!';
         
-        const audioItem: AudioItem = {
-          id: `prize-${prize.id}-${Date.now()}`,
-          text: announcement,
-          priority: 'HIGH',
-          type: 'prize',
-          retryCount: 0
-        };
-
-        // Delay prize announcements slightly
+        // Delay prize announcement slightly to not interrupt number call
         setTimeout(() => {
-          queueAudio(audioItem);
-        }, 800);
-        
-        announcedPrizes.current.add(prize.id);
+          speak(announcement);
+        }, 500);
       }
     });
-  }, [prizes, queueAudio]);
+  }, [prizes, speak]);
 
   // Reset announced prizes when game resets
   useEffect(() => {
@@ -452,28 +319,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       lastCalledNumber.current = null;
     }
   }, [prizes]);
-
-  // Enable audio on first user interaction if force enabled
-  useEffect(() => {
-    if (!forceEnable || isAudioEnabled) return;
-
-    const handleUserInteraction = () => {
-      if (!isAudioEnabled) {
-        enableAudioSilently();
-      }
-    };
-
-    const events = ['click', 'touch', 'keydown', 'mousedown'];
-    events.forEach(event => {
-      document.addEventListener(event, handleUserInteraction, { once: true, passive: true });
-    });
-
-    return () => {
-      events.forEach(event => {
-        document.removeEventListener(event, handleUserInteraction);
-      });
-    };
-  }, [forceEnable, isAudioEnabled]);
 
   return null;
 };
