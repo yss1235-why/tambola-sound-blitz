@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Fixed timing, performance, and input issues
+// src/components/GameHost.tsx - Fixed freezing and color contrast issues
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,6 @@ import { NumberGrid } from './NumberGrid';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { PrizeManagementPanel } from './PrizeManagementPanel';
 import { AudioManager } from './AudioManager';
-import gameDataManager from '@/services/GameDataManager';
 import { 
   Play, 
   Pause, 
@@ -36,7 +35,6 @@ import {
 import { 
   firebaseService, 
   GameData, 
-  TambolaTicket, 
   HostUser,
   GameState,
   Prize,
@@ -62,7 +60,7 @@ interface CreateGameForm {
   selectedPrizes: string[];
 }
 
-// Game state enum for cleaner state management
+// Game state enum
 enum GamePhase {
   CREATION = 'creation',
   BOOKING = 'booking', 
@@ -141,16 +139,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const [isCallingNumber, setIsCallingNumber] = useState(false);
   const [isWaitingForAudio, setIsWaitingForAudio] = useState(false);
   
-  // Timer references - simplified
+  // Timer references
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   
-  // Track game state for reliable automation
+  // Track game state
   const gameActiveRef = useRef(false);
   const lastCalledNumberRef = useRef<number | null>(null);
   
   // Track if game has started
   const [gameStarted, setGameStarted] = useState(false);
+
+  // Subscription references - prevent multiple subscriptions
+  const gameSubscriptionRef = useRef<(() => void) | null>(null);
 
   // Determine game phase
   const gamePhase: GamePhase = (() => {
@@ -199,9 +200,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, []);
 
-  // Fixed call next number function
+  // Call next number function
   const callNextNumber = useCallback(async () => {
-    // Safety checks
     if (!hostGame || !gameActiveRef.current) {
       return;
     }
@@ -222,26 +222,21 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     setIsCallingNumber(true);
 
     try {
-      // Select random number
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
       const number = availableNumbers[randomIndex];
 
-      // Store last called number
       lastCalledNumberRef.current = number;
 
-      // Call number and check for prizes
       const result = await firebaseService.callNumberWithPrizeValidation(hostGame.gameId, number);
       
       setIsCallingNumber(false);
 
-      // Check if game ended
       if (result.gameEnded || availableNumbers.length === 1) {
         gameActiveRef.current = false;
         endGame();
         return;
       }
 
-      // Only wait for audio if game is still active
       if (gameActiveRef.current) {
         setIsWaitingForAudio(true);
       }
@@ -251,7 +246,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setIsCallingNumber(false);
       setIsWaitingForAudio(false);
       
-      // Retry after a delay if game is still active
       if (gameActiveRef.current) {
         gameTimerRef.current = setTimeout(() => {
           callNextNumber();
@@ -264,15 +258,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   const handleAudioComplete = useCallback(() => {
     setIsWaitingForAudio(false);
     
-    // Only schedule next if game is still active
     if (gameActiveRef.current && hostGame?.gameState.isActive && !hostGame.gameState.gameOver) {
-      // Clear any existing timer
       if (gameTimerRef.current) {
         clearTimeout(gameTimerRef.current);
         gameTimerRef.current = null;
       }
 
-      // Schedule next call
       gameTimerRef.current = setTimeout(() => {
         if (gameActiveRef.current) {
           callNextNumber();
@@ -281,19 +272,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, [hostGame, callInterval, callNextNumber]);
 
-  // Load host's current game
+  // Load host's current game with subscription management
   const loadHostCurrentGame = useCallback(async () => {
     try {
       const game = await firebaseService.getHostCurrentGame(user.uid);
       if (game) {
         setHostGame(game);
         
-        // Check if game has started
         if ((game.gameState.calledNumbers?.length || 0) > 0) {
           setGameStarted(true);
         }
         
-        // Setup form with existing game data
         setCreateGameForm(prev => ({
           ...prev,
           hostPhone: game.hostPhone || prev.hostPhone,
@@ -301,17 +290,21 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           selectedPrizes: Object.keys(game.prizes)
         }));
         
-        // Subscribe to real-time updates
-        const unsubscribe = gameDataManager.subscribeToGame(game.gameId, (updatedGame) => {
+        // Clean up existing subscription
+        if (gameSubscriptionRef.current) {
+          gameSubscriptionRef.current();
+          gameSubscriptionRef.current = null;
+        }
+        
+        // Setup single subscription
+        const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
           if (updatedGame) {
             setHostGame(updatedGame);
             
-            // Track game start
             if ((updatedGame.gameState.calledNumbers?.length || 0) > 0) {
               setGameStarted(true);
             }
             
-            // Handle game state changes
             if (updatedGame.gameState.gameOver) {
               gameActiveRef.current = false;
               clearAllTimers();
@@ -320,21 +313,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               setGameStarted(false);
             }
 
-            // Handle countdown
             if (updatedGame.gameState.isCountdown) {
               setCurrentCountdown(updatedGame.gameState.countdownTime);
             }
 
-            // Track active state
             gameActiveRef.current = updatedGame.gameState.isActive && !updatedGame.gameState.gameOver;
 
-            // Resume number calling if game becomes active
+            // Resume number calling if needed
             if (updatedGame.gameState.isActive && !updatedGame.gameState.gameOver) {
               const hasActiveTimer = gameTimerRef.current !== null;
               const isProcessing = isCallingNumber || isWaitingForAudio;
               
               if (!hasActiveTimer && !isProcessing) {
-                // Start number calling after a short delay
                 setTimeout(() => {
                   if (gameActiveRef.current) {
                     callNextNumber();
@@ -342,10 +332,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 }, 1000);
               }
             }
+          } else {
+            // Game was deleted
+            setHostGame(null);
+            gameActiveRef.current = false;
+            clearAllTimers();
           }
         });
         
-        return () => unsubscribe();
+        gameSubscriptionRef.current = unsubscribe;
       }
     } catch (error) {
       console.error('Failed to load host game:', error);
@@ -353,7 +348,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setIsLoading(false);
       setIsInitialLoad(false);
     }
-  }, [user.uid, clearAllTimers, callNextNumber]);
+  }, [user.uid, clearAllTimers, callNextNumber, isCallingNumber, isWaitingForAudio]);
 
   // Load on mount
   useEffect(() => {
@@ -363,7 +358,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setIsLoading(false);
       setIsInitialLoad(false);
     }
-  }, [isSubscriptionValid, loadHostCurrentGame]);
+
+    // Cleanup on unmount
+    return () => {
+      gameActiveRef.current = false;
+      clearAllTimers();
+      if (gameSubscriptionRef.current) {
+        gameSubscriptionRef.current();
+        gameSubscriptionRef.current = null;
+      }
+    };
+  }, [isSubscriptionValid, loadHostCurrentGame, clearAllTimers]);
 
   // Load previous settings
   useEffect(() => {
@@ -389,14 +394,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid, isInitialLoad]);
 
-  // Cleanup timers on unmount
-  useEffect(() => {
-    return () => {
-      gameActiveRef.current = false;
-      clearAllTimers();
-    };
-  }, [clearAllTimers]);
-
   // Create new game
   const createNewGame = async () => {
     if (!isSubscriptionValid()) {
@@ -408,7 +405,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsLoading(true);
     try {
-      // Save host settings
       await firebaseService.saveHostSettings(user.uid, {
         hostPhone: createGameForm.hostPhone,
         maxTickets: maxTicketsNum,
@@ -416,7 +412,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         selectedPrizes: createGameForm.selectedPrizes
       });
 
-      // Create game
       const gameConfig = {
         name: `Tambola Game ${new Date().toLocaleDateString()}`,
         maxTickets: maxTicketsNum,
@@ -521,7 +516,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         countdownTime: 0
       });
 
-      // Start calling numbers after a short delay
       setTimeout(() => {
         if (gameActiveRef.current) {
           callNextNumber();
@@ -564,7 +558,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         isActive: true
       });
 
-      // Resume calling numbers after a short delay
       setTimeout(() => {
         if (gameActiveRef.current) {
           callNextNumber();
@@ -630,12 +623,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     setIsWaitingForAudio(false);
   };
 
-  // Handle interval change
   const handleIntervalChange = (newInterval: number) => {
     setCallInterval(newInterval);
   };
 
-  // Handle max tickets input
   const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === '' || /^\d+$/.test(value)) {
@@ -643,7 +634,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // Helper functions
   const getBookedTicketsCount = () => {
     if (!hostGame || !hostGame.tickets) return 0;
     return Object.values(hostGame.tickets).filter(ticket => ticket.isBooked).length;
@@ -710,7 +700,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             </Badge>
           </div>
           
-          {/* Phase indicator */}
           <div className="text-right">
             <Badge variant="outline" className="text-lg px-4 py-2">
               {gamePhase === GamePhase.CREATION && '🎮 Create Game'}
@@ -738,7 +727,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Host Phone */}
               <div>
                 <Label htmlFor="host-phone">WhatsApp Phone Number (with country code)</Label>
                 <Input
@@ -752,7 +740,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <p className="text-sm text-gray-500 mt-1">Players will contact you on this number</p>
               </div>
 
-              {/* Max Tickets */}
               <div>
                 <Label htmlFor="max-tickets">Maximum Tickets</Label>
                 <Input
@@ -768,7 +755,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <p className="text-sm text-gray-500 mt-1">How many tickets can be sold for this game</p>
               </div>
 
-              {/* Ticket Set Selection */}
+              {/* FIXED: Ticket Set Selection with better contrast */}
               <div>
                 <Label>Select Ticket Set</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -777,27 +764,35 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                       key={ticketSet.id}
                       className={`cursor-pointer transition-all ${
                         createGameForm.selectedTicketSet === ticketSet.id
-                          ? 'ring-2 ring-blue-500 bg-blue-50'
-                          : 'hover:shadow-md'
+                          ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300'
+                          : 'hover:shadow-md border-gray-200'
                       } ${!ticketSet.available ? 'opacity-50 cursor-not-allowed' : ''}`}
                       onClick={() => ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
                     >
                       <CardContent className="p-4">
                         <div className="flex items-center justify-between mb-2">
-                          <h3 className="font-bold">{ticketSet.name}</h3>
-                          <Badge variant={ticketSet.available ? "default" : "secondary"}>
+                          <h3 className={`font-bold ${
+                            createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-900' : 'text-gray-800'
+                          }`}>{ticketSet.name}</h3>
+                          <Badge 
+                            variant={ticketSet.available ? "default" : "secondary"}
+                            className={createGameForm.selectedTicketSet === ticketSet.id ? 'bg-blue-600 text-white' : ''}
+                          >
                             {ticketSet.available ? 'Available' : 'Coming Soon'}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{ticketSet.description}</p>
-                        <p className="text-xs text-gray-500">{ticketSet.ticketCount} tickets</p>
+                        <p className={`text-sm mb-2 ${
+                          createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-800' : 'text-gray-600'
+                        }`}>{ticketSet.description}</p>
+                        <p className={`text-xs ${
+                          createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-700' : 'text-gray-500'
+                        }`}>{ticketSet.ticketCount} tickets</p>
                       </CardContent>
                     </Card>
                   ))}
                 </div>
               </div>
 
-              {/* Prize Selection */}
               <div>
                 <Label>Select Prizes</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
@@ -832,7 +827,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 </div>
               </div>
 
-              {/* Create Game Button */}
               <Button
                 onClick={createNewGame}
                 disabled={isLoading || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
@@ -855,7 +849,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         {/* BOOKING PHASE */}
         {gamePhase === GamePhase.BOOKING && !editMode && hostGame && (
           <div className="space-y-6">
-            {/* Game Status */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -923,7 +916,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardContent>
             </Card>
 
-            {/* Ticket Management Grid */}
             <TicketManagementGrid
               gameData={hostGame}
               onRefreshGame={loadHostCurrentGame}
@@ -948,7 +940,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 </AlertDescription>
               </Alert>
 
-              {/* Host Phone */}
               <div>
                 <Label htmlFor="edit-host-phone">WhatsApp Phone Number</Label>
                 <Input
@@ -960,7 +951,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 />
               </div>
 
-              {/* Max Tickets */}
               <div>
                 <Label htmlFor="edit-max-tickets">Maximum Tickets</Label>
                 <Input
@@ -1020,7 +1010,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         {/* PLAYING PHASE */}
         {gamePhase === GamePhase.PLAYING && hostGame && (
           <div className="space-y-6">
-            {/* Game Controls */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -1037,7 +1026,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {/* Game Statistics */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="text-center p-4 bg-blue-50 rounded-lg">
                     <p className="text-4xl font-bold text-blue-800">
@@ -1065,7 +1053,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   </div>
                 </div>
 
-                {/* Game Control Buttons */}
                 <div className="flex flex-wrap gap-4 mb-6">
                   {hostGame.gameState.isCountdown ? (
                     <Button disabled className="flex-1">
@@ -1107,7 +1094,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   )}
                 </div>
 
-                {/* Timing Status */}
                 {isWaitingForAudio && (
                   <Alert className="mb-4">
                     <Volume2 className="h-4 w-4 animate-pulse" />
@@ -1117,7 +1103,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   </Alert>
                 )}
 
-                {/* Call Interval Control */}
                 {!hostGame.gameState.gameOver && (
                   <div className="mb-6">
                     <Label htmlFor="call-interval">Auto Call Interval: {callInterval} seconds</Label>
@@ -1141,7 +1126,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   </div>
                 )}
 
-                {/* Recent Numbers */}
                 {hostGame.gameState.calledNumbers && hostGame.gameState.calledNumbers.length > 0 && (
                   <div className="mt-6">
                     <h4 className="font-semibold mb-3">Recent Numbers Called:</h4>
@@ -1167,7 +1151,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardContent>
             </Card>
 
-            {/* Number Grid - VIEW ONLY */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
@@ -1193,13 +1176,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardContent>
             </Card>
 
-            {/* Prize Management */}
             <PrizeManagementPanel
               gameData={hostGame}
               onRefreshGame={loadHostCurrentGame}
             />
 
-            {/* Player Statistics */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
@@ -1257,7 +1238,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   </AlertDescription>
                 </Alert>
 
-                {/* Game Summary */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="text-center p-4 bg-blue-50 rounded-lg">
                     <p className="text-2xl font-bold text-blue-800">
@@ -1281,7 +1261,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </CardContent>
             </Card>
 
-            {/* Prize Winners */}
             <PrizeManagementPanel
               gameData={hostGame}
               onRefreshGame={loadHostCurrentGame}
