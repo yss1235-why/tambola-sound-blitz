@@ -1,4 +1,4 @@
-// src/services/GameDataManager.ts - Centralized Firebase Subscription Management
+// src/services/GameDataManager.ts - Optimized Centralized Firebase Subscription Management
 import { firebaseService, GameData, TambolaTicket } from './firebase';
 
 type GameUpdateCallback = (game: GameData | null) => void;
@@ -17,12 +17,10 @@ class GameDataManager {
   private activeFirebaseSubscriptions: Map<string, () => void> = new Map();
   private gameCache: Map<string, GameData> = new Map();
   private ticketsCache: Map<string, { [key: string]: TambolaTicket }> = new Map();
-  private gamesListCache: GameData[] = [];
   
   // Subscription counters for cleanup
   private gameSubscriptionCount: Map<string, number> = new Map();
   private ticketsSubscriptionCount: Map<string, number> = new Map();
-  private gamesListSubscriptionCount: number = 0;
 
   /**
    * Subscribe to a specific game's updates
@@ -103,19 +101,6 @@ class GameDataManager {
       type: 'gamesList'
     });
 
-    // Increment counter
-    this.gamesListSubscriptionCount++;
-
-    // Setup Firebase subscription if first subscriber
-    if (this.gamesListSubscriptionCount === 1) {
-      this.setupGamesListSubscription();
-    }
-
-    // Return cached data immediately if available
-    if (this.gamesListCache.length > 0) {
-      setTimeout(() => callback([...this.gamesListCache]), 0);
-    }
-
     // Return unsubscribe function
     return () => this.unsubscribeFromGamesList(subscriptionId);
   }
@@ -135,26 +120,6 @@ class GameDataManager {
   }
 
   /**
-   * Get cached games list synchronously
-   */
-  getCachedGamesList(): GameData[] {
-    return [...this.gamesListCache];
-  }
-
-  /**
-   * Force refresh a specific game
-   */
-  async refreshGame(gameId: string): Promise<GameData | null> {
-    try {
-      // This will trigger the subscription callback
-      return await firebaseService.subscribeToGame(gameId, () => {});
-    } catch (error) {
-      console.error('Failed to refresh game:', error);
-      return null;
-    }
-  }
-
-  /**
    * Clear all caches and subscriptions (for cleanup)
    */
   cleanup(): void {
@@ -166,10 +131,8 @@ class GameDataManager {
     this.activeFirebaseSubscriptions.clear();
     this.gameCache.clear();
     this.ticketsCache.clear();
-    this.gamesListCache = [];
     this.gameSubscriptionCount.clear();
     this.ticketsSubscriptionCount.clear();
-    this.gamesListSubscriptionCount = 0;
   }
 
   // Private methods
@@ -230,27 +193,6 @@ class GameDataManager {
     this.activeFirebaseSubscriptions.set(`tickets-${gameId}`, unsubscribe);
   }
 
-  private setupGamesListSubscription(): void {
-    const unsubscribe = firebaseService.subscribeToAllActiveGames((updatedGames) => {
-      // Update cache
-      this.gamesListCache = [...updatedGames];
-      
-      // Update individual game caches
-      updatedGames.forEach(game => {
-        this.gameCache.set(game.gameId, game);
-      });
-      
-      // Notify all subscribers
-      this.subscriptions.forEach(sub => {
-        if (sub.type === 'gamesList') {
-          (sub.callback as GamesListUpdateCallback)([...updatedGames]);
-        }
-      });
-    });
-
-    this.activeFirebaseSubscriptions.set('gamesList', unsubscribe);
-  }
-
   private unsubscribeFromGame(subscriptionId: string, gameId: string): void {
     // Remove subscription
     this.subscriptions.delete(subscriptionId);
@@ -268,12 +210,9 @@ class GameDataManager {
         this.activeFirebaseSubscriptions.delete(`game-${gameId}`);
       }
       
-      // Remove from cache after a delay (in case someone re-subscribes quickly)
-      setTimeout(() => {
-        if ((this.gameSubscriptionCount.get(gameId) || 0) === 0) {
-          this.gameCache.delete(gameId);
-        }
-      }, 5000);
+      // Remove from cache
+      this.gameCache.delete(gameId);
+      this.gameSubscriptionCount.delete(gameId);
     }
   }
 
@@ -294,37 +233,15 @@ class GameDataManager {
         this.activeFirebaseSubscriptions.delete(`tickets-${gameId}`);
       }
       
-      // Remove from cache after a delay
-      setTimeout(() => {
-        if ((this.ticketsSubscriptionCount.get(gameId) || 0) === 0) {
-          this.ticketsCache.delete(gameId);
-        }
-      }, 5000);
+      // Remove from cache
+      this.ticketsCache.delete(gameId);
+      this.ticketsSubscriptionCount.delete(gameId);
     }
   }
 
   private unsubscribeFromGamesList(subscriptionId: string): void {
     // Remove subscription
     this.subscriptions.delete(subscriptionId);
-    
-    // Decrement counter
-    this.gamesListSubscriptionCount = Math.max(0, this.gamesListSubscriptionCount - 1);
-    
-    // If no more subscribers, cleanup Firebase subscription
-    if (this.gamesListSubscriptionCount === 0) {
-      const firebaseUnsubscribe = this.activeFirebaseSubscriptions.get('gamesList');
-      if (firebaseUnsubscribe) {
-        firebaseUnsubscribe();
-        this.activeFirebaseSubscriptions.delete('gamesList');
-      }
-      
-      // Clear cache after a delay
-      setTimeout(() => {
-        if (this.gamesListSubscriptionCount === 0) {
-          this.gamesListCache = [];
-        }
-      }, 5000);
-    }
   }
 }
 
