@@ -1,4 +1,4 @@
-// src/components/TambolaGame.tsx - Updated to use GameDataManager
+// src/components/TambolaGame.tsx - Cleaned version without redundant code
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { NumberGrid } from './NumberGrid';
 import { AudioManager } from './AudioManager';
-import gameDataManager from '@/services/GameDataManager';
 import { GameData, TambolaTicket, Prize } from '@/services/firebase';
 import { 
   Search,
@@ -31,91 +30,27 @@ interface SearchedTicket {
   uniqueId: string;
 }
 
-export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameData }) => {
-  const [gameData, setGameData] = useState<GameData>(initialGameData);
-  const [tickets, setTickets] = useState<{ [key: string]: TambolaTicket }>({});
-  const [calledNumbers, setCalledNumbers] = useState<number[]>([]);
-  const [currentNumber, setCurrentNumber] = useState<number | null>(null);
-  
-  // Prize details expansion state - persist won prizes as expanded
+export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData }) => {
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
-  
-  // Ticket search state - Track individual tickets
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedTickets, setSearchedTickets] = useState<SearchedTicket[]>([]);
-  
-  // Subscription management using centralized manager
-  const gameUnsubscribeRef = useRef<(() => void) | null>(null);
-  const ticketsUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Initialize expanded prizes for won prizes (for persistence)
+  // Extract data from gameData
+  const tickets = gameData.tickets || {};
+  const calledNumbers = gameData.gameState.calledNumbers || [];
+  const currentNumber = gameData.gameState.currentNumber;
+  const prizes = Object.values(gameData.prizes);
+
+  // Initialize expanded prizes for won prizes
   useEffect(() => {
-    const wonPrizeIds = Object.values(gameData.prizes)
+    const wonPrizeIds = prizes
       .filter(prize => prize.won)
       .map(prize => prize.id);
     
     if (wonPrizeIds.length > 0 && gameData.gameState.gameOver) {
       setExpandedPrizes(new Set(wonPrizeIds));
     }
-  }, [gameData.prizes, gameData.gameState.gameOver]);
-
-  // Setup subscriptions using centralized manager
-  const setupSubscriptions = useCallback(() => {
-    console.log('🎮 Setting up TambolaGame subscriptions...');
-    
-    // Clean up previous subscriptions
-    if (gameUnsubscribeRef.current) {
-      gameUnsubscribeRef.current();
-      gameUnsubscribeRef.current = null;
-    }
-    if (ticketsUnsubscribeRef.current) {
-      ticketsUnsubscribeRef.current();
-      ticketsUnsubscribeRef.current = null;
-    }
-
-    // Subscribe to game updates
-    const gameUnsubscribe = gameDataManager.subscribeToGame(gameData.gameId, (updatedGame) => {
-      if (updatedGame) {
-        setGameData(updatedGame);
-        setCalledNumbers(updatedGame.gameState.calledNumbers || []);
-        setCurrentNumber(updatedGame.gameState.currentNumber || null);
-      }
-    });
-
-    // Subscribe to tickets updates
-    const ticketsUnsubscribe = gameDataManager.subscribeToTickets(gameData.gameId, (updatedTickets) => {
-      if (updatedTickets) {
-        setTickets(updatedTickets);
-      }
-    });
-
-    gameUnsubscribeRef.current = gameUnsubscribe;
-    ticketsUnsubscribeRef.current = ticketsUnsubscribe;
-  }, [gameData.gameId]);
-
-  // Setup subscriptions on mount and when gameId changes
-  useEffect(() => {
-    // Initialize state from props
-    setCalledNumbers(gameData.gameState.calledNumbers || []);
-    setCurrentNumber(gameData.gameState.currentNumber || null);
-    
-    if (gameData.tickets) {
-      setTickets(gameData.tickets);
-    }
-
-    // Setup real-time subscriptions
-    setupSubscriptions();
-
-    // Cleanup on unmount
-    return () => {
-      if (gameUnsubscribeRef.current) {
-        gameUnsubscribeRef.current();
-      }
-      if (ticketsUnsubscribeRef.current) {
-        ticketsUnsubscribeRef.current();
-      }
-    };
-  }, [gameData.gameId, setupSubscriptions]);
+  }, [prizes, gameData.gameState.gameOver]);
 
   // Toggle prize details
   const togglePrizeDetails = (prizeId: string) => {
@@ -130,7 +65,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
     });
   };
 
-  // Handle ticket search - Add all tickets by player
+  // Handle ticket search
   const handleSearch = () => {
     if (!searchQuery.trim()) return;
 
@@ -161,18 +96,8 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
     setSearchedTickets(prev => prev.filter(item => item.uniqueId !== uniqueId));
   };
 
-  // Convert prizes for display
-  const prizes = Object.values(gameData.prizes);
-
-  // Game phases - FIXED: Don't redirect on pause, only on game over
-  const isGameActive = gameData.gameState.isActive || gameData.gameState.isCountdown;
-  const isGameOver = gameData.gameState.gameOver;
-  const hasGameStarted = (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0) || 
-                        gameData.gameState.isActive || 
-                        gameData.gameState.isCountdown;
-
-  // Helper function to render a ticket with proper visibility
-  const renderTicketWithVisibility = (ticket: TambolaTicket, showPlayerInfo: boolean = true) => {
+  // Helper function to render a ticket
+  const renderTicket = (ticket: TambolaTicket, showPlayerInfo: boolean = true) => {
     return (
       <div className="bg-white p-4 rounded-lg border-2 border-blue-200">
         {showPlayerInfo && ticket.playerName && (
@@ -230,7 +155,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                     </Badge>
                   )}
                 </div>
-                {renderTicketWithVisibility(winnerTicket, false)}
+                {renderTicket(winnerTicket, false)}
               </div>
             ) : (
               <div key={idx} className="text-center py-4 text-gray-500">
@@ -243,7 +168,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
     );
   };
 
-  // Group searched tickets by player for display
+  // Group searched tickets by player
   const groupedSearchResults = searchedTickets.reduce((acc, item) => {
     if (!acc[item.playerName]) {
       acc[item.playerName] = [];
@@ -252,10 +177,15 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
     return acc;
   }, {} as { [playerName: string]: SearchedTicket[] });
 
+  // Game phases
+  const isGameActive = gameData.gameState.isActive || gameData.gameState.isCountdown;
+  const isGameOver = gameData.gameState.gameOver;
+  const hasGameStarted = calledNumbers.length > 0 || isGameActive;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Simplified Header */}
+        {/* Header */}
         <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold">🎲 {gameData.name} 🎲</CardTitle>
@@ -291,10 +221,10 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           </Card>
         )}
 
-        {/* Main Game Content - FIXED: Show if game has started (even when paused) */}
+        {/* Main Game Content */}
         {!isGameOver && hasGameStarted && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Number Grid - Simplified */}
+            {/* Number Grid */}
             <div className="lg:col-span-2">
               <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
                 <CardHeader>
@@ -311,7 +241,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
               </Card>
             </div>
 
-            {/* Prizes with Expandable Winner Details */}
+            {/* Prizes */}
             <div>
               <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
                 <CardHeader>
@@ -362,7 +292,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                         </div>
                       </div>
 
-                      {/* Winner Tickets Display During Game */}
+                      {/* Winner Tickets Display */}
                       {prize.won && expandedPrizes.has(prize.id) && renderPrizeWinnerTickets(prize)}
                     </div>
                   ))}
@@ -372,7 +302,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           </div>
         )}
 
-        {/* Player Tickets with Search - Show if game has started (even when paused) */}
+        {/* Player Tickets Search */}
         {hasGameStarted && !isGameOver && Object.keys(tickets).length > 0 && (
           <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
             <CardHeader>
@@ -416,7 +346,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                 </div>
               )}
 
-              {/* Search Results - Grouped by player but with individual ticket removal */}
+              {/* Search Results */}
               {Object.entries(groupedSearchResults).map(([playerName, playerTickets]) => (
                 <div key={playerName} className="border rounded-lg p-4 bg-gray-50">
                   <h4 className="font-bold text-gray-800 flex items-center mb-3">
@@ -435,7 +365,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                         >
                           <X className="w-4 h-4" />
                         </Button>
-                        {renderTicketWithVisibility(item.ticket, true)}
+                        {renderTicket(item.ticket, true)}
                       </div>
                     ))}
                   </div>
@@ -445,10 +375,9 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           </Card>
         )}
 
-        {/* Game Over Display - Winners persist */}
+        {/* Game Over Display */}
         {isGameOver && (
           <div className="space-y-6">
-            {/* Game Over Header */}
             <Card className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
               <CardContent className="text-center py-12">
                 <Trophy className="w-16 h-16 mx-auto mb-4" />
@@ -457,7 +386,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
               </CardContent>
             </Card>
 
-            {/* Prize Winners - Persistent display */}
+            {/* Prize Winners */}
             <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
               <CardHeader>
                 <CardTitle className="text-gray-800">Prize Winners</CardTitle>
@@ -484,7 +413,6 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
                           }
                         </div>
                       </div>
-                      {/* Show "Won by" text */}
                       {prize.winners && prize.winners.length > 0 && (
                         <div className="mt-2">
                           <p className="text-sm font-medium text-green-700">
@@ -509,7 +437,7 @@ export const TambolaGame: React.FC<TambolaGameProps> = ({ gameData: initialGameD
           </div>
         )}
 
-        {/* Audio Manager - Enhanced with completion callback */}
+        {/* Audio Manager */}
         <AudioManager
           currentNumber={currentNumber}
           prizes={prizes}
