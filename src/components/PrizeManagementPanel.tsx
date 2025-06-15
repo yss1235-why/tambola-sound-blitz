@@ -1,4 +1,4 @@
-// src/components/PrizeManagementPanel.tsx - Cleaned up version
+// src/components/PrizeManagementPanel.tsx - Fixed without refresh dependency
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,7 +13,7 @@ import { GameData, Prize } from '@/services/firebase';
 
 interface PrizeManagementPanelProps {
   gameData: GameData;
-  onRefreshGame: () => void;
+  onRefreshGame: () => void; // Keep for compatibility but don't use
 }
 
 export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({ 
