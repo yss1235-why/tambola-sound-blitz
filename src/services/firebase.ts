@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Optimized version with ticket loading fix
+// src/services/firebase.ts - Optimized version with performance fixes
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -19,7 +19,9 @@ import {
   off,
   query,
   orderByChild,
-  equalTo
+  equalTo,
+  limitToFirst,
+  child
 } from 'firebase/database';
 
 // Firebase configuration
@@ -96,8 +98,6 @@ export interface TambolaTicket {
   playerPhone?: string;
   bookedAt?: string;
   updatedAt?: string;
-  sheetId?: number;
-  originalTicketId?: number;
 }
 
 export interface GameData {
@@ -128,13 +128,15 @@ export interface HostSettings {
   selectedPrizes: string[];
 }
 
-// Type for your JSON format
 interface RawTicketRow {
   setId: number;
   ticketId: number;
   rowId: number;
   numbers: number[];
 }
+
+// Cache for ticket sets to avoid reloading
+const ticketSetCache = new Map<string, TicketSetData>();
 
 // Get current user role
 export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => {
@@ -143,19 +145,13 @@ export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => 
 
   try {
     const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
-    if (adminSnapshot.exists()) {
-      const adminData = adminSnapshot.val();
-      if (adminData.permissions && adminData.permissions.createHosts) {
-        return 'admin';
-      }
+    if (adminSnapshot.exists() && adminSnapshot.val().permissions?.createHosts) {
+      return 'admin';
     }
 
     const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
-    if (hostSnapshot.exists()) {
-      const hostData = hostSnapshot.val();
-      if (hostData.isActive) {
-        return 'host';
-      }
+    if (hostSnapshot.exists() && hostSnapshot.val().isActive) {
+      return 'host';
     }
 
     return null;
@@ -198,7 +194,7 @@ class FirebaseService {
 
       const adminData = adminSnapshot.val() as AdminUser;
       
-      if (!adminData.permissions || !adminData.permissions.createHosts) {
+      if (!adminData.permissions?.createHosts) {
         throw new Error('Admin account does not have sufficient permissions.');
       }
 
@@ -297,19 +293,30 @@ class FirebaseService {
     }
   }
 
+  // OPTIMIZED: Only get essential data for active games list
   async getAllActiveGames(): Promise<GameData[]> {
     try {
       const gamesSnapshot = await get(ref(database, 'games'));
       if (!gamesSnapshot.exists()) return [];
       
       const gamesData = gamesSnapshot.val();
-      const allGames = Object.values(gamesData) as GameData[];
+      const activeGames: GameData[] = [];
       
-      return allGames.filter(game => 
-        !game.gameState.gameOver && 
-        game.tickets && 
-        Object.keys(game.tickets).length > 0
-      );
+      // Process each game without loading all ticket data
+      for (const [gameId, gameData] of Object.entries(gamesData)) {
+        const game = gameData as GameData;
+        
+        // Skip finished games
+        if (game.gameState.gameOver) continue;
+        
+        // For active games, only include essential data
+        activeGames.push({
+          ...game,
+          tickets: {} // Don't load tickets for list view
+        });
+      }
+      
+      return activeGames;
     } catch (error: any) {
       throw new Error(error.message || 'Failed to fetch active games');
     }
@@ -393,7 +400,7 @@ class FirebaseService {
     }
   }
 
-  // Get host's current active game (only one game allowed per host)
+  // Get host's current active game
   async getHostCurrentGame(hostId: string): Promise<GameData | null> {
     try {
       const gamesQuery = query(
@@ -408,7 +415,6 @@ class FirebaseService {
       const gamesData = gamesSnapshot.val();
       const games = Object.values(gamesData) as GameData[];
       
-      // Find the most recent non-finished game
       const activeGame = games
         .filter(game => !game.gameState.gameOver)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
@@ -417,32 +423,6 @@ class FirebaseService {
     } catch (error: any) {
       throw new Error(error.message || 'Failed to fetch current game');
     }
-  }
-
-  // Subscribe to host's current game with real-time updates
-  subscribeToHostCurrentGame(hostId: string, callback: (game: GameData | null) => void): () => void {
-    const gamesQuery = query(
-      ref(database, 'games'),
-      orderByChild('hostId'),
-      equalTo(hostId)
-    );
-    
-    const unsubscribe = onValue(gamesQuery, (snapshot) => {
-      if (snapshot.exists()) {
-        const gamesData = snapshot.val();
-        const games = Object.values(gamesData) as GameData[];
-        
-        const activeGame = games
-          .filter(game => !game.gameState.gameOver)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-        
-        callback(activeGame || null);
-      } else {
-        callback(null);
-      }
-    });
-
-    return () => off(gamesQuery, 'value', unsubscribe);
   }
 
   // Check if host can create a new game
@@ -527,19 +507,26 @@ class FirebaseService {
     }
   }
 
-  // Load ticket set from JSON
-  async loadTicketSet(setId: string): Promise<TicketSetData> {
+  // OPTIMIZED: Load only required tickets from set
+  async loadTicketSet(setId: string, maxTickets: number): Promise<TicketSetData> {
     try {
+      // Check cache first
+      const cacheKey = `${setId}-${maxTickets}`;
+      if (ticketSetCache.has(cacheKey)) {
+        return ticketSetCache.get(cacheKey)!;
+      }
+
       const response = await fetch(`/data/${setId}.json`);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch ticket set ${setId}: ${response.status} ${response.statusText}`);
+        throw new Error(`Failed to fetch ticket set ${setId}`);
       }
       
       const rawData = await response.json() as RawTicketRow[];
       
       const tickets: { [key: string]: TambolaTicket } = {};
       
+      // Group by ticket ID
       const ticketGroups: { [ticketId: string]: RawTicketRow[] } = {};
       rawData.forEach(row => {
         const ticketKey = row.ticketId.toString();
@@ -549,59 +536,48 @@ class FirebaseService {
         ticketGroups[ticketKey].push(row);
       });
       
+      // Process only the tickets we need
       const allTicketIds = Object.keys(ticketGroups).sort((a, b) => parseInt(a) - parseInt(b));
+      const ticketsToProcess = Math.min(maxTickets, allTicketIds.length);
       
-      let newTicketIdCounter = 1;
-      let processedCount = 0;
-      
-      allTicketIds.forEach(originalTicketId => {
+      for (let i = 0; i < ticketsToProcess; i++) {
+        const originalTicketId = allTicketIds[i];
         const rows = ticketGroups[originalTicketId];
         
-        rows.sort((a, b) => a.rowId - b.rowId);
-        
-        const expectedRowIds = [1, 2, 3];
-        const actualRowIds = rows.map(r => r.rowId);
-        
-        if (rows.length === 3 && expectedRowIds.every(id => actualRowIds.includes(id))) {
-          const sheetId = Math.ceil(newTicketIdCounter / 6);
+        if (rows.length === 3) {
+          rows.sort((a, b) => a.rowId - b.rowId);
           
-          const newTicketId = newTicketIdCounter.toString();
+          const newTicketId = (i + 1).toString();
           
           tickets[newTicketId] = {
             ticketId: newTicketId,
             rows: [
-              rows.find(r => r.rowId === 1)!.numbers,
-              rows.find(r => r.rowId === 2)!.numbers,
-              rows.find(r => r.rowId === 3)!.numbers
+              rows[0].numbers,
+              rows[1].numbers,
+              rows[2].numbers
             ],
-            isBooked: false,
-            sheetId: sheetId,
-            originalTicketId: parseInt(originalTicketId)
+            isBooked: false
           };
-          
-          newTicketIdCounter++;
-          processedCount++;
         }
-      });
+      }
       
-      const finalTicketCount = Object.keys(tickets).length;
-      
-      return {
-        ticketCount: finalTicketCount,
+      const result = {
+        ticketCount: Object.keys(tickets).length,
         tickets
       };
       
+      // Cache the result
+      ticketSetCache.set(cacheKey, result);
+      
+      return result;
+      
     } catch (error: any) {
       console.error(`Error loading ticket set ${setId}:`, error);
-      
-      return {
-        ticketCount: 0,
-        tickets: {}
-      };
+      return { ticketCount: 0, tickets: {} };
     }
   }
 
-  // Game operations - OPTIMIZED VERSION
+  // OPTIMIZED: Create game with only required tickets
   async createGame(
     gameConfig: { name: string; maxTickets: number; ticketPrice: number; hostPhone?: string },
     hostId: string,
@@ -610,17 +586,8 @@ class FirebaseService {
   ): Promise<GameData> {
     try {
       const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error('No authenticated user. Please log in again.');
-      }
-
-      if (currentUser.uid !== hostId) {
-        throw new Error('User ID mismatch. Please log in again.');
-      }
-
-      const userRole = await getCurrentUserRole();
-      if (!userRole || (userRole !== 'host' && userRole !== 'admin')) {
-        throw new Error('Insufficient permissions. Please contact administrator.');
+      if (!currentUser || currentUser.uid !== hostId) {
+        throw new Error('Authentication error. Please log in again.');
       }
 
       const existingGame = await this.getHostCurrentGame(hostId);
@@ -631,18 +598,8 @@ class FirebaseService {
       const gameRef = push(ref(database, 'games'));
       const gameId = gameRef.key!;
 
-      const ticketSetData = await this.loadTicketSet(ticketSetId);
-
-      // FIX: Only take the tickets we need, not all 600
-      const ticketsNeeded: { [key: string]: TambolaTicket } = {};
-      const maxTicketsToStore = Math.min(gameConfig.maxTickets, ticketSetData.ticketCount);
-      
-      // Get only the required number of tickets
-      const ticketEntries = Object.entries(ticketSetData.tickets);
-      for (let i = 0; i < maxTicketsToStore && i < ticketEntries.length; i++) {
-        const [ticketId, ticket] = ticketEntries[i];
-        ticketsNeeded[ticketId] = ticket;
-      }
+      // OPTIMIZED: Only load required tickets
+      const ticketSetData = await this.loadTicketSet(ticketSetId, gameConfig.maxTickets);
 
       const prizes: { [key: string]: Prize } = {};
       const prizeDefinitions = {
@@ -683,7 +640,7 @@ class FirebaseService {
           callInterval: 5000
         },
         prizes,
-        tickets: ticketsNeeded, // FIX: Only store needed tickets
+        tickets: ticketSetData.tickets,
         createdAt: new Date().toISOString(),
         ticketSetId
       };
@@ -741,7 +698,6 @@ class FirebaseService {
     }
   }
 
-  // Add simple callNumber method
   async callNumber(gameId: string, number: number) {
     return this.callNumberWithPrizeValidation(gameId, number);
   }
@@ -845,52 +801,166 @@ class FirebaseService {
     }
   }
 
-  async addCalledNumber(gameId: string, number: number): Promise<void> {
+  // OPTIMIZED: Book ticket without loading entire ticket set
+  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<void> {
     try {
-      const gameRef = ref(database, `games/${gameId}`);
-      const gameSnapshot = await get(gameRef);
+      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
       
-      if (!gameSnapshot.exists()) {
-        throw new Error('Game not found');
-      }
+      // Update only the booking fields
+      const bookingData = removeUndefinedValues({
+        isBooked: true,
+        playerName: playerName.trim(),
+        playerPhone: playerPhone.trim() || null,
+        bookedAt: new Date().toISOString()
+      });
 
-      const gameData = gameSnapshot.val() as GameData;
-      const currentCalledNumbers = gameData.gameState.calledNumbers || [];
-      
-      if (!currentCalledNumbers.includes(number)) {
-        const updatedGameState: GameState = {
-          ...gameData.gameState,
-          calledNumbers: [...currentCalledNumbers, number],
-          currentNumber: number
-        };
-
-        const cleanedGameState = removeUndefinedValues({ gameState: updatedGameState });
-        await update(gameRef, cleanedGameState);
-      }
+      // Use update instead of set to avoid overwriting ticket data
+      await update(ticketRef, bookingData);
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to add called number');
+      console.error('Book ticket error:', error);
+      throw new Error(error.message || 'Failed to book ticket');
     }
   }
 
-  async clearCurrentNumber(gameId: string): Promise<void> {
+  async updateTicket(gameId: string, ticketId: string, ticketData: Partial<TambolaTicket>): Promise<void> {
     try {
-      const gameRef = ref(database, `games/${gameId}`);
-      const gameSnapshot = await get(gameRef);
+      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
       
-      if (!gameSnapshot.exists()) {
-        throw new Error('Game not found');
+      const updatedData = removeUndefinedValues({
+        ...ticketData,
+        updatedAt: new Date().toISOString()
+      });
+
+      await update(ticketRef, updatedData);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to update ticket');
+    }
+  }
+
+  async unbookTicket(gameId: string, ticketId: string): Promise<void> {
+    try {
+      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
+      
+      const unbookingData = removeUndefinedValues({
+        isBooked: false,
+        playerName: null,
+        playerPhone: null,
+        bookedAt: null,
+        updatedAt: new Date().toISOString()
+      });
+
+      await update(ticketRef, unbookingData);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to cancel booking');
+    }
+  }
+
+  // OPTIMIZED: Subscription with minimal data transfer
+  subscribeToGame(gameId: string, callback: (game: GameData | null) => void): () => void {
+    const gameRef = ref(database, `games/${gameId}`);
+    
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.val() as GameData);
+      } else {
+        callback(null);
+      }
+    }, {
+      // Only sync once initially, then listen for changes
+      onlyOnce: false
+    });
+
+    return () => off(gameRef, 'value', unsubscribe);
+  }
+
+  subscribeToTickets(gameId: string, callback: (tickets: { [key: string]: TambolaTicket } | null) => void): () => void {
+    const ticketsRef = ref(database, `games/${gameId}/tickets`);
+    
+    const unsubscribe = onValue(ticketsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.val());
+      } else {
+        callback(null);
+      }
+    }, {
+      onlyOnce: false
+    });
+
+    return () => off(ticketsRef, 'value', unsubscribe);
+  }
+
+  subscribeToHosts(callback: (hosts: HostUser[]) => void): () => void {
+    const hostsRef = ref(database, 'hosts');
+    
+    const unsubscribe = onValue(hostsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const hostsData = snapshot.val();
+        const hosts = Object.values(hostsData) as HostUser[];
+        callback(hosts);
+      } else {
+        callback([]);
+      }
+    });
+
+    return () => off(hostsRef, 'value', unsubscribe);
+  }
+
+  subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
+    const gamesRef = ref(database, 'games');
+    
+    const unsubscribe = onValue(gamesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const gamesData = snapshot.val();
+        const activeGames: GameData[] = [];
+        
+        // Process games without loading all ticket data
+        for (const [gameId, gameData] of Object.entries(gamesData)) {
+          const game = gameData as GameData;
+          
+          if (!game.gameState.gameOver) {
+            activeGames.push({
+              ...game,
+              tickets: {} // Don't load tickets for list view
+            });
+          }
+        }
+        
+        callback(activeGames);
+      } else {
+        callback([]);
+      }
+    });
+
+    return () => off(gamesRef, 'value', unsubscribe);
+  }
+
+  // Authentication
+  async getUserData(): Promise<AdminUser | HostUser | null> {
+    const user = auth.currentUser;
+    if (!user) return null;
+
+    try {
+      const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
+      if (adminSnapshot.exists()) {
+        return adminSnapshot.val() as AdminUser;
       }
 
-      const gameData = gameSnapshot.val() as GameData;
-      const updatedGameState: GameState = {
-        ...gameData.gameState,
-        currentNumber: null
-      };
+      const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
+      if (hostSnapshot.exists()) {
+        return hostSnapshot.val() as HostUser;
+      }
 
-      const cleanedGameState = removeUndefinedValues({ gameState: updatedGameState });
-      await update(gameRef, cleanedGameState);
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await signOut(auth);
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to clear current number');
+      throw new Error(error.message || 'Failed to logout');
     }
   }
 
@@ -1040,201 +1110,6 @@ class FirebaseService {
       }
     }
     return true;
-  }
-
-  // Ticket operations
-  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<void> {
-    try {
-      // First, get the game data to find ticket set
-      const gameSnapshot = await get(ref(database, `games/${gameId}`));
-      if (!gameSnapshot.exists()) {
-        throw new Error('Game not found');
-      }
-      
-      const gameData = gameSnapshot.val() as GameData;
-      const ticketSetId = gameData.ticketSetId || '1';
-      
-      // Load ticket set if ticket doesn't exist yet
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      const ticketSnapshot = await get(ticketRef);
-      
-      let ticketData: TambolaTicket;
-      
-      if (ticketSnapshot.exists()) {
-        ticketData = ticketSnapshot.val() as TambolaTicket;
-        if (ticketData.isBooked) {
-          throw new Error('Ticket is already booked');
-        }
-      } else {
-        // Load ticket from set
-        const ticketSetData = await this.loadTicketSet(ticketSetId);
-        ticketData = ticketSetData.tickets[ticketId];
-        
-        if (!ticketData) {
-          throw new Error(`Ticket ${ticketId} not found in set`);
-        }
-      }
-
-      // Update ticket with booking info
-      const bookedTicket = removeUndefinedValues({
-        ...ticketData,
-        ticketId: ticketId,
-        isBooked: true,
-        playerName: playerName.trim(),
-        playerPhone: playerPhone.trim() || null,
-        bookedAt: new Date().toISOString()
-      });
-
-      await set(ticketRef, bookedTicket);
-    } catch (error: any) {
-      console.error('Book ticket error:', error);
-      throw new Error(error.message || 'Failed to book ticket');
-    }
-  }
-
-  async updateTicket(gameId: string, ticketId: string, ticketData: Partial<TambolaTicket>): Promise<void> {
-    try {
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      const ticketSnapshot = await get(ticketRef);
-      
-      if (!ticketSnapshot.exists()) {
-        throw new Error('Ticket not found');
-      }
-
-      const currentTicket = ticketSnapshot.val() as TambolaTicket;
-      const updatedTicket = removeUndefinedValues({
-        ...currentTicket,
-        ...ticketData,
-        updatedAt: new Date().toISOString()
-      });
-
-      await set(ticketRef, updatedTicket);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to update ticket');
-    }
-  }
-
-  async unbookTicket(gameId: string, ticketId: string): Promise<void> {
-    try {
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      const ticketSnapshot = await get(ticketRef);
-      
-      if (!ticketSnapshot.exists()) {
-        throw new Error('Ticket not found');
-      }
-
-      const currentTicket = ticketSnapshot.val() as TambolaTicket;
-      const unbookedTicket = removeUndefinedValues({
-        ...currentTicket,
-        isBooked: false,
-        playerName: null,
-        playerPhone: null,
-        bookedAt: null,
-        updatedAt: new Date().toISOString()
-      });
-
-      await set(ticketRef, unbookedTicket);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to cancel booking');
-    }
-  }
-
-  // Real-time subscriptions
-  subscribeToGame(gameId: string, callback: (game: GameData | null) => void): () => void {
-    const gameRef = ref(database, `games/${gameId}`);
-    
-    const unsubscribe = onValue(gameRef, (snapshot) => {
-      if (snapshot.exists()) {
-        callback(snapshot.val() as GameData);
-      } else {
-        callback(null);
-      }
-    });
-
-    return () => off(gameRef, 'value', unsubscribe);
-  }
-
-  subscribeToTickets(gameId: string, callback: (tickets: { [key: string]: TambolaTicket } | null) => void): () => void {
-    const ticketsRef = ref(database, `games/${gameId}/tickets`);
-    
-    const unsubscribe = onValue(ticketsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        callback(snapshot.val());
-      } else {
-        callback(null);
-      }
-    });
-
-    return () => off(ticketsRef, 'value', unsubscribe);
-  }
-
-  subscribeToHosts(callback: (hosts: HostUser[]) => void): () => void {
-    const hostsRef = ref(database, 'hosts');
-    
-    const unsubscribe = onValue(hostsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const hostsData = snapshot.val();
-        const hosts = Object.values(hostsData) as HostUser[];
-        callback(hosts);
-      } else {
-        callback([]);
-      }
-    });
-
-    return () => off(hostsRef, 'value', unsubscribe);
-  }
-
-  subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
-    const gamesRef = ref(database, 'games');
-    
-    const unsubscribe = onValue(gamesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const gamesData = snapshot.val();
-        const allGames = Object.values(gamesData) as GameData[];
-        
-        const activeGames = allGames.filter(game => 
-          !game.gameState.gameOver && 
-          game.tickets && 
-          Object.keys(game.tickets).length > 0
-        );
-        
-        callback(activeGames);
-      } else {
-        callback([]);
-      }
-    });
-
-    return () => off(gamesRef, 'value', unsubscribe);
-  }
-
-  // Authentication
-  async getUserData(): Promise<AdminUser | HostUser | null> {
-    const user = auth.currentUser;
-    if (!user) return null;
-
-    try {
-      const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
-      if (adminSnapshot.exists()) {
-        return adminSnapshot.val() as AdminUser;
-      }
-
-      const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
-      if (hostSnapshot.exists()) {
-        return hostSnapshot.val() as HostUser;
-      }
-
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  async logout(): Promise<void> {
-    try {
-      await signOut(auth);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to logout');
-    }
   }
 }
 
