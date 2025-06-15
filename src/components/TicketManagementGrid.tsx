@@ -1,5 +1,5 @@
-// src/components/TicketManagementGrid.tsx - Optimized to prevent freezing
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+// src/components/TicketManagementGrid.tsx - Fixed version without ANY Firebase subscriptions
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,14 +36,14 @@ interface TicketInfo {
 }
 
 export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({ 
-  gameData, 
-  onRefreshGame 
+  gameData
 }) => {
   const [selectedTickets, setSelectedTickets] = useState<string[]>([]);
   const [showBookingDialog, setShowBookingDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingTicket, setEditingTicket] = useState<TicketInfo | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isBooking, setIsBooking] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   
   const [bookingForm, setBookingForm] = useState<BookingForm>({
     playerName: '',
@@ -54,9 +54,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     playerName: '',
     playerPhone: ''
   });
-
-  // Single subscription reference
-  const ticketsSubscriptionRef = useRef<(() => void) | null>(null);
 
   // Generate ticket info with memoization
   const ticketInfo = useMemo(() => {
@@ -82,29 +79,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   // Calculate counts
   const bookedCount = ticketInfo.filter(t => t.isBooked).length;
   const availableCount = gameData.maxTickets - bookedCount;
-
-  // Subscribe to real-time ticket updates
-  useEffect(() => {
-    // Clean up previous subscription
-    if (ticketsSubscriptionRef.current) {
-      ticketsSubscriptionRef.current();
-      ticketsSubscriptionRef.current = null;
-    }
-
-    // Setup new subscription
-    const unsubscribe = firebaseService.subscribeToTickets(gameData.gameId, (updatedTickets) => {
-      // Tickets updates are handled through gameData prop updates
-      // This subscription ensures we get real-time updates
-    });
-
-    ticketsSubscriptionRef.current = unsubscribe;
-
-    return () => {
-      if (ticketsSubscriptionRef.current) {
-        ticketsSubscriptionRef.current();
-      }
-    };
-  }, [gameData.gameId]);
 
   const handleTicketClick = (ticketId: string, isBooked: boolean) => {
     if (isBooked) {
@@ -151,31 +125,34 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       return;
     }
 
-    setIsLoading(true);
+    if (isBooking) return; // Prevent double booking
+
+    setIsBooking(true);
     try {
-      // Book tickets one by one to avoid bulk operations
-      for (const ticketId of selectedTickets) {
-        await firebaseService.bookTicket(
+      // Book all tickets in parallel for better performance
+      const bookingPromises = selectedTickets.map(ticketId => 
+        firebaseService.bookTicket(
           ticketId, 
           bookingForm.playerName.trim(), 
           bookingForm.playerPhone.trim(), 
           gameData.gameId
-        );
-      }
+        )
+      );
+
+      await Promise.all(bookingPromises);
 
       // Reset form and selections
       setSelectedTickets([]);
       setBookingForm({ playerName: '', playerPhone: '' });
       setShowBookingDialog(false);
       
-      // Trigger refresh
-      onRefreshGame();
+      // NO onRefreshGame() - let Firebase subscription handle the update
 
     } catch (error: any) {
       console.error('Error booking tickets:', error);
       alert(error.message || 'Failed to book tickets');
     } finally {
-      setIsLoading(false);
+      setIsBooking(false);
     }
   };
 
@@ -187,7 +164,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       return;
     }
 
-    setIsLoading(true);
+    if (isUpdating) return; // Prevent double updates
+
+    setIsUpdating(true);
     try {
       await firebaseService.updateTicket(
         gameData.gameId,
@@ -202,13 +181,14 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       setShowEditDialog(false);
       setEditingTicket(null);
       setEditForm({ playerName: '', playerPhone: '' });
-      onRefreshGame();
+      
+      // NO onRefreshGame() - let Firebase subscription handle the update
 
     } catch (error: any) {
       console.error('Error updating ticket:', error);
       alert(error.message || 'Failed to update ticket');
     } finally {
-      setIsLoading(false);
+      setIsUpdating(false);
     }
   };
 
@@ -216,15 +196,12 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     const confirmed = window.confirm('Are you sure you want to cancel this booking?');
     if (!confirmed) return;
 
-    setIsLoading(true);
     try {
       await firebaseService.unbookTicket(gameData.gameId, ticketId);
-      onRefreshGame();
+      // NO onRefreshGame() - let Firebase subscription handle the update
     } catch (error: any) {
       console.error('Error cancelling booking:', error);
       alert(error.message || 'Failed to cancel booking');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -290,6 +267,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
               <Button 
                 onClick={() => setShowBookingDialog(true)}
                 className="bg-green-600 hover:bg-green-700"
+                disabled={isBooking}
               >
                 <UserPlus className="w-4 h-4 mr-2" />
                 Book {selectedTickets.length} Ticket(s)
@@ -447,6 +425,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 value={bookingForm.playerName}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
                 className="border-2 border-gray-200 focus:border-blue-400"
+                disabled={isBooking}
               />
             </div>
             
@@ -458,21 +437,22 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 value={bookingForm.playerPhone}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
                 className="border-2 border-gray-200 focus:border-blue-400"
+                disabled={isBooking}
               />
             </div>
 
             <div className="flex space-x-2">
               <Button
                 onClick={handleBookTickets}
-                disabled={isLoading || !bookingForm.playerName.trim()}
+                disabled={isBooking || !bookingForm.playerName.trim()}
                 className="flex-1 bg-green-600 hover:bg-green-700"
               >
-                {isLoading ? 'Booking...' : `Book ${selectedTickets.length} Ticket(s)`}
+                {isBooking ? 'Booking...' : `Book ${selectedTickets.length} Ticket(s)`}
               </Button>
               <Button
                 onClick={() => setShowBookingDialog(false)}
                 variant="outline"
-                disabled={isLoading}
+                disabled={isBooking}
               >
                 Cancel
               </Button>
@@ -496,6 +476,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 value={editForm.playerName}
                 onChange={(e) => setEditForm(prev => ({ ...prev, playerName: e.target.value }))}
                 className="border-2 border-gray-200 focus:border-blue-400"
+                disabled={isUpdating}
               />
             </div>
             
@@ -507,21 +488,22 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 value={editForm.playerPhone}
                 onChange={(e) => setEditForm(prev => ({ ...prev, playerPhone: e.target.value }))}
                 className="border-2 border-gray-200 focus:border-blue-400"
+                disabled={isUpdating}
               />
             </div>
 
             <div className="flex space-x-2">
               <Button
                 onClick={handleEditTicket}
-                disabled={isLoading || !editForm.playerName.trim()}
+                disabled={isUpdating || !editForm.playerName.trim()}
                 className="flex-1"
               >
-                {isLoading ? 'Updating...' : 'Update Ticket'}
+                {isUpdating ? 'Updating...' : 'Update Ticket'}
               </Button>
               <Button
                 onClick={() => setShowEditDialog(false)}
                 variant="outline"
-                disabled={isLoading}
+                disabled={isUpdating}
               >
                 Cancel
               </Button>
