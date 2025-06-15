@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - Fixed freezing and color contrast issues
+// src/components/GameHost.tsx - Fixed subscription and performance issues
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -150,7 +150,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // Track if game has started
   const [gameStarted, setGameStarted] = useState(false);
 
-  // Subscription references - prevent multiple subscriptions
+  // Single subscription reference
   const gameSubscriptionRef = useRef<(() => void) | null>(null);
 
   // Determine game phase
@@ -275,6 +275,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // Load host's current game with subscription management
   const loadHostCurrentGame = useCallback(async () => {
     try {
+      // Clean up any existing subscription first
+      if (gameSubscriptionRef.current) {
+        gameSubscriptionRef.current();
+        gameSubscriptionRef.current = null;
+      }
+
       const game = await firebaseService.getHostCurrentGame(user.uid);
       if (game) {
         setHostGame(game);
@@ -289,12 +295,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           maxTickets: game.maxTickets.toString(),
           selectedPrizes: Object.keys(game.prizes)
         }));
-        
-        // Clean up existing subscription
-        if (gameSubscriptionRef.current) {
-          gameSubscriptionRef.current();
-          gameSubscriptionRef.current = null;
-        }
         
         // Setup single subscription
         const unsubscribe = firebaseService.subscribeToGame(game.gameId, (updatedGame) => {
@@ -368,7 +368,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         gameSubscriptionRef.current = null;
       }
     };
-  }, [isSubscriptionValid, loadHostCurrentGame, clearAllTimers]);
+  }, []); // Empty dependency array - only run on mount
 
   // Load previous settings
   useEffect(() => {
@@ -428,6 +428,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       
       setHostGame(newGame);
       setGameStarted(false);
+      
+      // Load the game with subscription
+      await loadHostCurrentGame();
 
     } catch (error: any) {
       console.error('Create game error:', error);
@@ -455,6 +458,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       });
       
       setEditMode(false);
+      // NO need to refresh - subscription will handle update
 
     } catch (error: any) {
       console.error('Update game error:', error);
@@ -918,7 +922,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
             <TicketManagementGrid
               gameData={hostGame}
-              onRefreshGame={loadHostCurrentGame}
+              onRefreshGame={() => {}} // No need to refresh anymore
             />
           </div>
         )}
@@ -1178,7 +1182,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
             <PrizeManagementPanel
               gameData={hostGame}
-              onRefreshGame={loadHostCurrentGame}
+              onRefreshGame={() => {}} // No need to refresh anymore
             />
 
             <Card>
@@ -1263,7 +1267,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
             <PrizeManagementPanel
               gameData={hostGame}
-              onRefreshGame={loadHostCurrentGame}
+              onRefreshGame={() => {}} // No need to refresh anymore
             />
           </div>
         )}
