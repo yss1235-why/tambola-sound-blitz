@@ -239,11 +239,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
    if (gameActiveRef.current) {
   setIsWaitingForAudio(true);  // ← Comment this out
-     setTimeout(() => {
-  if (gameActiveRef.current) {
-    callNextNumber();
-  }
-}, callInterval * 1000);
 }
 
     } catch (error) {
