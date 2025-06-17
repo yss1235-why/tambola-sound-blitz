@@ -1,4 +1,4 @@
-// src/services/GameController.ts - FIXED: Complete redesign without scheduled actions
+// src/services/GameController.ts - CLEANED: Only automatic calling, no manual calling
 import { firebaseService, GameData, GameState } from './firebase';
 
 export interface GameControllerConfig {
@@ -6,19 +6,19 @@ export interface GameControllerConfig {
   countdownDuration: number; // seconds for countdown
 }
 
-// ✅ FIXED: Remove scheduled actions entirely - use simple timer system
+// ✅ CLEANED: Simplified controller - only automatic game management
 class GameController {
   private config: GameControllerConfig = {
     callInterval: 5,
     countdownDuration: 10
   };
 
-  // ✅ FIXED: Track active timers to prevent conflicts
+  // Track active timers to prevent conflicts
   private activeTimers = new Map<string, NodeJS.Timeout>();
   private activeCountdowns = new Map<string, NodeJS.Timeout>();
 
   /**
-   * ✅ FIXED: Simple countdown start - no scheduled actions
+   * Start game countdown
    */
   async startGameCountdown(gameId: string): Promise<void> {
     try {
@@ -31,8 +31,7 @@ class GameController {
       await firebaseService.updateGameState(gameId, {
         isCountdown: true,
         countdownTime: this.config.countdownDuration,
-        isActive: false,
-        isCallingNumber: false
+        isActive: false
       });
 
       // Start countdown timer
@@ -62,7 +61,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: Simple game start - no scheduled actions
+   * Start the game and begin automatic number calling
    */
   async startGame(gameId: string): Promise<void> {
     try {
@@ -75,11 +74,10 @@ class GameController {
       await firebaseService.updateGameState(gameId, {
         isActive: true,
         isCountdown: false,
-        countdownTime: 0,
-        isCallingNumber: false
+        countdownTime: 0
       });
 
-      // Start number calling loop
+      // Start automatic number calling loop
       this.startNumberCallingLoop(gameId);
       
       console.log(`✅ Game started successfully`);
@@ -89,7 +87,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: Simple number calling loop with proper cleanup
+   * ✅ FIXED: Automatic number calling loop using callNextNumber
    */
   private startNumberCallingLoop(gameId: string): void {
     // Clear any existing timer
@@ -108,10 +106,10 @@ class GameController {
             return;
           }
 
-          // Call next number
-          const result = await firebaseService.callNumberWithPrizeValidation(gameId);
+          // ✅ FIXED: Use automatic number calling method
+          const result = await firebaseService.callNextNumber(gameId);
           
-          if (result.success) {
+          if (result.success && result.number) {
             console.log(`🎯 Number ${result.number} called successfully`);
             
             // Check if game ended
@@ -141,7 +139,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: Pause preserves game state
+   * Pause the game
    */
   async pauseGame(gameId: string): Promise<void> {
     try {
@@ -150,12 +148,10 @@ class GameController {
       // Clear timers
       this.clearGameTimers(gameId);
       
-      // ✅ FIXED: Only update isActive, preserve all other state
+      // Only update isActive, preserve all other state
       await firebaseService.updateGameState(gameId, {
         isActive: false,
-        isCountdown: false,
-        isCallingNumber: false
-        // ✅ CRITICAL: Do NOT clear calledNumbers, currentNumber, etc.
+        isCountdown: false
       });
 
       console.log(`✅ Game paused successfully`);
@@ -165,7 +161,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: Resume continues from where it left off
+   * Resume the game
    */
   async resumeGame(gameId: string): Promise<void> {
     try {
@@ -174,8 +170,7 @@ class GameController {
       // Set active state
       await firebaseService.updateGameState(gameId, {
         isActive: true,
-        isCountdown: false,
-        isCallingNumber: false
+        isCountdown: false
       });
 
       // Restart number calling loop
@@ -188,7 +183,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: End game properly
+   * End the game
    */
   async endGame(gameId: string): Promise<void> {
     try {
@@ -201,8 +196,7 @@ class GameController {
       await firebaseService.updateGameState(gameId, {
         isActive: false,
         isCountdown: false,
-        gameOver: true,
-        isCallingNumber: false
+        gameOver: true
       });
 
       console.log(`✅ Game ended successfully`);
@@ -212,31 +206,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: Manual number call (for host)
-   */
-  async callSpecificNumber(gameId: string, number: number): Promise<void> {
-    try {
-      console.log(`🎯 Manually calling number ${number} for game ${gameId}`);
-      
-      const result = await firebaseService.callNumberWithPrizeValidation(gameId, number);
-      
-      if (result.success) {
-        console.log(`✅ Number ${number} called successfully`);
-        
-        if (result.gameEnded) {
-          console.log(`🏁 Game ${gameId} ended after manual call`);
-          this.clearGameTimers(gameId);
-        }
-      } else {
-        throw new Error('Failed to call specific number');
-      }
-    } catch (error: any) {
-      throw new Error(`Failed to call number ${number}: ${error.message}`);
-    }
-  }
-
-  /**
-   * ✅ FIXED: Clear all timers for a game
+   * Clear all timers for a game
    */
   private clearGameTimers(gameId: string): void {
     // Clear number calling timer
@@ -285,7 +255,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: Get game status safely
+   * Get game status
    */
   async getGameStatus(gameId: string): Promise<{
     isActive: boolean;
@@ -314,7 +284,7 @@ class GameController {
   }
 
   /**
-   * ✅ FIXED: Clean up all timers on shutdown
+   * Clean up all timers on shutdown
    */
   cleanup(): void {
     console.log('🧹 Cleaning up GameController timers');
@@ -333,12 +303,15 @@ class GameController {
     }
     this.activeCountdowns.clear();
   }
+
+  // ❌ REMOVED: callSpecificNumber method (manual calling)
+  // ❌ REMOVED: All manual calling related methods
 }
 
 // Export singleton instance
 export const gameController = new GameController();
 
-// ✅ FIXED: Cleanup on page unload
+// Cleanup on page unload
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     gameController.cleanup();
