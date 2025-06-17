@@ -1,0 +1,398 @@
+// src/components/HostDisplay.tsx - Pure Host Display Component
+import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { 
+  Play, 
+  Pause, 
+  Square, 
+  Users, 
+  Clock,
+  Trophy,
+  Ticket,
+  Phone,
+  Gamepad2,
+  Timer,
+  Hash,
+  Volume2,
+  CheckCircle
+} from 'lucide-react';
+import { useGameData, useHostControls } from '@/providers/GameDataProvider';
+import { gameController } from '@/services/GameController';
+
+interface HostDisplayProps {
+  onCreateNewGame?: () => void;
+}
+
+export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => {
+  const { gameData, currentPhase, timeUntilAction, isLoading } = useGameData();
+  const hostControls = useHostControls();
+  const [callInterval, setCallInterval] = React.useState(5);
+
+  // Get booking statistics
+  const getBookedTicketsCount = () => {
+    if (!gameData?.tickets) return 0;
+    return Object.values(gameData.tickets).filter(ticket => ticket.isBooked).length;
+  };
+
+  // Handle interval change
+  const handleIntervalChange = (newInterval: number) => {
+    setCallInterval(newInterval);
+    if (hostControls) {
+      hostControls.updateCallInterval(newInterval);
+    }
+  };
+
+  // Control handlers
+  const handleStartGame = async () => {
+    try {
+      if (hostControls) {
+        await hostControls.startGame();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to start game');
+    }
+  };
+
+  const handlePauseGame = async () => {
+    try {
+      if (hostControls) {
+        await hostControls.pauseGame();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to pause game');
+    }
+  };
+
+  const handleResumeGame = async () => {
+    try {
+      if (hostControls) {
+        await hostControls.resumeGame();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to resume game');
+    }
+  };
+
+  const handleEndGame = async () => {
+    const confirmed = window.confirm('Are you sure you want to end the game?');
+    if (!confirmed) return;
+
+    try {
+      if (hostControls) {
+        await hostControls.endGame();
+      }
+    } catch (error: any) {
+      alert(error.message || 'Failed to end game');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Game...</h2>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!gameData) {
+    return (
+      <Card>
+        <CardContent className="p-8 text-center">
+          <div className="text-6xl mb-4">🎮</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">No Active Game</h2>
+          <p className="text-gray-600 mb-4">Create a new game to start hosting</p>
+          {onCreateNewGame && (
+            <Button onClick={onCreateNewGame} className="bg-blue-600 hover:bg-blue-700">
+              Create New Game
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Game Status Header */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span className="flex items-center">
+              <Gamepad2 className="w-6 h-6 mr-2" />
+              Host Control Panel - {gameData.name}
+            </span>
+            <div className="flex items-center space-x-2">
+              <Badge variant={
+                currentPhase === 'playing' ? 'default' :
+                currentPhase === 'countdown' ? 'secondary' :
+                currentPhase === 'finished' ? 'destructive' : 'outline'
+              } className="text-lg px-4">
+                {currentPhase === 'booking' && '🎫 Booking Open'}
+                {currentPhase === 'countdown' && `⏰ Starting in ${timeUntilAction}s`}
+                {currentPhase === 'playing' && gameData.gameState.isActive && '🔴 Live Game'}
+                {currentPhase === 'playing' && !gameData.gameState.isActive && '⏸️ Game Paused'}
+                {currentPhase === 'finished' && '🏆 Game Complete'}
+              </Badge>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/* Game Statistics */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+            <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="text-2xl font-bold text-blue-600">
+                {gameData.gameState.currentNumber || '-'}
+              </div>
+              <div className="text-sm text-blue-700">Current Number</div>
+            </div>
+            <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="text-2xl font-bold text-green-600">
+                {gameData.gameState.calledNumbers?.length || 0}
+              </div>
+              <div className="text-sm text-green-700">Called</div>
+            </div>
+            <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="text-2xl font-bold text-purple-600">
+                {90 - (gameData.gameState.calledNumbers?.length || 0)}
+              </div>
+              <div className="text-sm text-purple-700">Remaining</div>
+            </div>
+            <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="text-2xl font-bold text-orange-600">
+                {getBookedTicketsCount()}
+              </div>
+              <div className="text-sm text-orange-700">Players</div>
+            </div>
+            <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+              <div className="text-2xl font-bold text-yellow-600">
+                {Object.values(gameData.prizes).filter(p => p.won).length}
+              </div>
+              <div className="text-sm text-yellow-700">Prizes Won</div>
+            </div>
+          </div>
+
+          {/* Host Information */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-gray-50 p-3 rounded-lg border">
+              <div className="flex items-center">
+                <Phone className="w-4 h-4 mr-2 text-gray-600" />
+                <span className="text-sm text-gray-700">Contact: {gameData.hostPhone || 'Not set'}</span>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg border">
+              <div className="flex items-center">
+                <Ticket className="w-4 h-4 mr-2 text-gray-600" />
+                <span className="text-sm text-gray-700">Max Tickets: {gameData.maxTickets}</span>
+              </div>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg border">
+              <div className="flex items-center">
+                <Trophy className="w-4 h-4 mr-2 text-gray-600" />
+                <span className="text-sm text-gray-700">Prizes: {Object.keys(gameData.prizes).length}</span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Game Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Timer className="w-5 h-5 mr-2" />
+            Game Controls
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Control Buttons */}
+          <div className="flex flex-wrap gap-4">
+            {currentPhase === 'booking' && (
+              <Button 
+                onClick={handleStartGame}
+                disabled={getBookedTicketsCount() === 0}
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                size="lg"
+              >
+                <Play className="w-4 h-4 mr-2" />
+                Start Game ({timeUntilAction > 0 ? `${timeUntilAction}s` : 'Ready'})
+              </Button>
+            )}
+
+            {currentPhase === 'countdown' && (
+              <Button disabled className="flex-1" size="lg">
+                <Clock className="w-4 h-4 mr-2 animate-pulse" />
+                Starting in {timeUntilAction}s...
+              </Button>
+            )}
+
+            {currentPhase === 'playing' && (
+              <>
+                {gameData.gameState.isActive ? (
+                  <Button onClick={handlePauseGame} variant="secondary" className="flex-1" size="lg">
+                    <Pause className="w-4 h-4 mr-2" />
+                    Pause Game
+                  </Button>
+                ) : (
+                  <Button onClick={handleResumeGame} className="flex-1 bg-green-600 hover:bg-green-700" size="lg">
+                    <Play className="w-4 h-4 mr-2" />
+                    Resume Game
+                  </Button>
+                )}
+
+                <Button onClick={handleEndGame} variant="destructive" size="lg">
+                  <Square className="w-4 h-4 mr-2" />
+                  End Game
+                </Button>
+              </>
+            )}
+
+            {currentPhase === 'finished' && onCreateNewGame && (
+              <Button onClick={onCreateNewGame} className="flex-1 bg-blue-600 hover:bg-blue-700" size="lg">
+                <Play className="w-4 h-4 mr-2" />
+                Create New Game
+              </Button>
+            )}
+          </div>
+
+          {/* Call Interval Control */}
+          {(currentPhase === 'booking' || (currentPhase === 'playing' && !gameData.gameState.gameOver)) && (
+            <div className="space-y-2">
+              <Label htmlFor="call-interval">Auto Call Interval: {callInterval} seconds</Label>
+              <div className="flex items-center space-x-4">
+                <Input
+                  id="call-interval"
+                  type="range"
+                  min="3"
+                  max="15"
+                  value={callInterval}
+                  onChange={(e) => handleIntervalChange(parseInt(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-sm text-gray-600 w-16 text-center">
+                  {callInterval}s
+                </span>
+              </div>
+              <p className="text-xs text-gray-500">
+                Time between automatic number calls
+              </p>
+            </div>
+          )}
+
+          {/* Status Messages */}
+          {currentPhase === 'booking' && getBookedTicketsCount() === 0 && (
+            <Alert>
+              <Users className="h-4 w-4" />
+              <AlertDescription>
+                Waiting for players to book tickets. Share your contact number: {gameData.hostPhone}
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {currentPhase === 'playing' && timeUntilAction > 0 && (
+            <Alert>
+              <Timer className="h-4 w-4" />
+              <AlertDescription>
+                Next number will be called automatically in {timeUntilAction} seconds
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {currentPhase === 'finished' && (
+            <Alert>
+              <CheckCircle className="h-4 w-4" />
+              <AlertDescription>
+                Game completed successfully! {gameData.gameState.calledNumbers?.length || 0} numbers were called.
+              </AlertDescription>
+            </Alert>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent Numbers Called */}
+      {gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Hash className="w-5 h-5 mr-2" />
+              Recent Numbers Called
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {gameData.gameState.calledNumbers
+                .slice(-20)
+                .reverse()
+                .map((num, index) => (
+                  <div
+                    key={`${num}-${index}`}
+                    className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-white
+                      ${index === 0 
+                        ? 'bg-gradient-to-br from-red-500 to-red-600 ring-2 ring-red-300 text-lg scale-110' 
+                        : 'bg-gradient-to-br from-blue-500 to-blue-600 text-sm'
+                      }`}
+                  >
+                    {num}
+                  </div>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Prize Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Trophy className="w-5 h-5 mr-2" />
+            Prize Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.values(gameData.prizes).map((prize) => (
+              <div
+                key={prize.id}
+                className={`p-3 rounded-lg border-2 transition-all duration-300 ${
+                  prize.won
+                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg'
+                    : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-gray-800'}`}>
+                      {prize.name}
+                    </h3>
+                    <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
+                      {prize.pattern}
+                    </p>
+                    {prize.won && prize.winners && prize.winners.length > 0 && (
+                      <p className="text-sm font-medium text-green-700 mt-1">
+                        Won by: {prize.winners.map(w => w.name).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    prize.won 
+                      ? 'bg-green-500 text-white' 
+                      : 'bg-gray-200 text-gray-500'
+                  }`}>
+                    {prize.won ? '✓' : '?'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
