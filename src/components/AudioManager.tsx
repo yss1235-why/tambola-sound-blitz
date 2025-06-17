@@ -1,4 +1,4 @@
-// src/components/AudioManager.tsx - Fixed with reliable queue system
+// src/components/AudioManager.tsx - FIXED: Better user audio experience
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Prize } from '@/services/firebase';
 
@@ -16,7 +16,7 @@ interface AudioQueueItem {
   callback?: () => void;
 }
 
-// Traditional Tambola number calls (same as before)
+// Traditional Tambola number calls
 const numberCalls: { [key: number]: string } = {
   1: "Kelly's Eyes, number one",
   2: "One little duck, number two",
@@ -137,6 +137,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     const initSpeech = () => {
       if (!('speechSynthesis' in window)) {
         setIsAudioSupported(false);
+        console.warn('🔇 Speech synthesis not supported');
         return;
       }
 
@@ -146,18 +147,21 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       const loadVoices = () => {
         const voices = window.speechSynthesis.getVoices();
         
-        // Find best voice
+        // Find best voice for users (more natural sounding)
         const voicePreferences = [
           'Google UK English Female',
           'Google UK English Male', 
           'Microsoft Zira',
-          'Microsoft David'
+          'Microsoft David',
+          'Google US English',
+          'Microsoft Mark'
         ];
 
         for (const prefName of voicePreferences) {
           const voice = voices.find(v => v.name.includes(prefName));
           if (voice) {
             selectedVoice.current = voice;
+            console.log('🎤 Selected voice:', voice.name);
             break;
           }
         }
@@ -165,6 +169,9 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         // Fallback to any English voice
         if (!selectedVoice.current) {
           selectedVoice.current = voices.find(v => v.lang.startsWith('en')) || null;
+          if (selectedVoice.current) {
+            console.log('🎤 Fallback voice:', selectedVoice.current.name);
+          }
         }
       };
 
@@ -173,35 +180,72 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       }
       loadVoices();
 
-      // Enable audio if forced
+      // ✅ FIXED: Enable audio if forced (for hosts) or try auto-enable for users
       if (forceEnable) {
         setIsAudioEnabled(true);
+        console.log('🔊 Audio force-enabled (host mode)');
       }
     };
 
     initSpeech();
 
-    // Cleanup
     return () => {
       stopAllAudio();
     };
   }, [forceEnable]);
 
-  // Enable audio on first interaction
+  // ✅ FIXED: Better user interaction detection for audio
   useEffect(() => {
-    if (!isAudioSupported || isAudioEnabled) return;
+    if (!isAudioSupported || isAudioEnabled || forceEnable) return;
 
-    const enableAudio = () => {
-      setIsAudioEnabled(true);
-      document.removeEventListener('click', enableAudio);
+    const enableAudioOnInteraction = async () => {
+      try {
+        console.log('👆 User interaction detected, testing audio...');
+        
+        // Test if audio actually works
+        const testUtterance = new SpeechSynthesisUtterance(' ');
+        testUtterance.volume = 0.01;
+        testUtterance.rate = 10;
+        
+        const audioWorks = await new Promise<boolean>((resolve) => {
+          const timeout = setTimeout(() => resolve(false), 1000);
+          
+          testUtterance.onend = () => {
+            clearTimeout(timeout);
+            resolve(true);
+          };
+          testUtterance.onerror = () => {
+            clearTimeout(timeout);
+            resolve(false);
+          };
+          
+          window.speechSynthesis.speak(testUtterance);
+        });
+
+        if (audioWorks) {
+          setIsAudioEnabled(true);
+          document.body.setAttribute('data-user-interacted', 'true');
+          console.log('✅ Audio enabled for user');
+        } else {
+          console.warn('⚠️ Audio test failed');
+        }
+      } catch (error) {
+        console.warn('⚠️ Audio enablement failed:', error);
+      }
+      
+      // Remove listener after first attempt
+      document.removeEventListener('click', enableAudioOnInteraction);
+      document.removeEventListener('keydown', enableAudioOnInteraction);
     };
 
-    document.addEventListener('click', enableAudio);
+    document.addEventListener('click', enableAudioOnInteraction, { once: true });
+    document.addEventListener('keydown', enableAudioOnInteraction, { once: true });
 
     return () => {
-      document.removeEventListener('click', enableAudio);
+      document.removeEventListener('click', enableAudioOnInteraction);
+      document.removeEventListener('keydown', enableAudioOnInteraction);
     };
-  }, [isAudioSupported, isAudioEnabled]);
+  }, [isAudioSupported, isAudioEnabled, forceEnable]);
 
   // Stop all audio
   const stopAllAudio = useCallback(() => {
@@ -222,6 +266,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   // Add to queue
   const addToQueue = useCallback((item: AudioQueueItem) => {
     if (!isAudioSupported || !isAudioEnabled) {
+      console.log('🔇 Audio not available, skipping:', item.text);
       // Call callback immediately if audio not available
       if (item.callback) {
         setTimeout(item.callback, 100);
@@ -236,7 +281,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       audioQueue.current.push(item);
     }
 
-    console.log(`🔊 Added to audio queue: ${item.text} (Priority: ${item.priority})`);
+    console.log(`🔊 Queued: ${item.text} (Priority: ${item.priority})`);
     
     // Start processing if not already processing
     if (!isProcessingQueue.current) {
@@ -276,7 +321,8 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
           utterance.voice = selectedVoice.current;
         }
         
-        utterance.rate = 0.9;
+        // ✅ FIXED: Better audio settings for users
+        utterance.rate = forceEnable ? 0.9 : 0.85; // Slightly slower for users
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
@@ -315,7 +361,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         };
 
         // Fallback timer - estimate based on text length
-        const estimatedDuration = Math.max(item.text.length * 80, 2000); // Minimum 2 seconds
+        const estimatedDuration = Math.max(item.text.length * 80, 2000);
         fallbackTimer.current = setTimeout(() => {
           console.warn(`⏰ Audio timeout for: ${item.text}`);
           handleComplete();
@@ -341,7 +387,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     };
 
     processNext();
-  }, []);
+  }, [forceEnable]);
 
   // Handle number announcements
   useEffect(() => {
@@ -349,6 +395,8 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       lastCalledNumber.current = currentNumber;
       
       const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
+      
+      console.log(`📢 Announcing number: ${currentNumber}`);
       
       addToQueue({
         id: `number-${currentNumber}`,
@@ -365,7 +413,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       if (prize.won && !announcedPrizes.current.has(prize.id)) {
         announcedPrizes.current.add(prize.id);
         
-        let announcement = `Congratulations! ${prize.name} has been won`;
+        let announcement = `🎉 Congratulations! ${prize.name} has been won`;
         
         if (prize.winners && prize.winners.length > 0) {
           if (prize.winners.length === 1) {
@@ -375,12 +423,14 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
           }
         }
         
-        announcement += '. Well done!';
+        announcement += '! Well done!';
+        
+        console.log(`🏆 Announcing prize: ${prize.name}`);
         
         addToQueue({
           id: `prize-${prize.id}`,
           text: announcement,
-          priority: 'normal' // Lower priority than numbers
+          priority: 'normal'
           // No callback for prize announcements
         });
       }
@@ -392,6 +442,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     const wonPrizes = prizes.filter(p => p.won);
     
     if (wonPrizes.length === 0 && announcedPrizes.current.size > 0) {
+      console.log('🔄 Resetting audio state for new game');
       announcedPrizes.current.clear();
       lastCalledNumber.current = null;
       audioQueue.current = [];
@@ -406,13 +457,13 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     };
   }, [stopAllAudio]);
 
-  // Show audio status for debugging (only in development)
-  if (process.env.NODE_ENV === 'development') {
+  // ✅ FIXED: Show audio status for users (only in development or when there are issues)
+  if (process.env.NODE_ENV === 'development' && !forceEnable) {
     return (
-      <div className="fixed bottom-4 right-4 bg-black/80 text-white p-2 rounded text-xs">
-        <div>Audio: {isAudioSupported ? (isAudioEnabled ? 'Enabled' : 'Disabled') : 'Unsupported'}</div>
-        <div>Queue: {audioQueue.current.length}</div>
-        <div>Playing: {isPlaying ? 'Yes' : 'No'}</div>
+      <div className="fixed bottom-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-50">
+        <div>🔊 Audio: {isAudioSupported ? (isAudioEnabled ? '✅ Ready' : '⚠️ Click to enable') : '❌ Unsupported'}</div>
+        <div>📊 Queue: {audioQueue.current.length}</div>
+        <div>🎤 Playing: {isPlaying ? 'Yes' : 'No'}</div>
       </div>
     );
   }
