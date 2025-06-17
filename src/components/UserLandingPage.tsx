@@ -1,11 +1,12 @@
-// src/components/UserLandingPage.tsx - Optimized for fast initial load
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+// src/components/UserLandingPage.tsx - Updated to use new architecture
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TicketBookingGrid } from './TicketBookingGrid';
-import { TambolaGame } from './TambolaGame';
-import { firebaseService, GameData, TambolaTicket } from '@/services/firebase';
+import { UserDisplay } from './UserDisplay';
+import { GameDataProvider } from '@/providers/GameDataProvider';
+import { firebaseService, GameData } from '@/services/firebase';
 import { 
   Loader2, 
   Trophy, 
@@ -16,6 +17,11 @@ import {
   Activity
 } from 'lucide-react';
 
+interface UserLandingPageProps {
+  onGameSelection?: (gameId: string) => void;
+  selectedGameId?: string | null;
+}
+
 // Simplified data structures for initial load
 interface GameSummary {
   gameId: string;
@@ -25,19 +31,18 @@ interface GameSummary {
   isActive: boolean;
   isCountdown: boolean;
   hasStarted: boolean;
+  bookedTickets: number;
 }
 
-export const UserLandingPage: React.FC = () => {
-  const [currentView, setCurrentView] = useState<'tickets' | 'game'>('tickets');
-  const [selectedGame, setSelectedGame] = useState<GameData | null>(null);
-  const [tickets, setTickets] = useState<{ [key: string]: TambolaTicket }>({});
+export const UserLandingPage: React.FC<UserLandingPageProps> = ({ 
+  onGameSelection, 
+  selectedGameId 
+}) => {
+  const [currentView, setCurrentView] = useState<'list' | 'booking' | 'game'>('list');
   const [gameSummaries, setGameSummaries] = useState<GameSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
-  
-  // Single subscription reference
-  const subscriptionRef = useRef<(() => void) | null>(null);
-  const selectedGameSubscriptionRef = useRef<(() => void) | null>(null);
+  const [selectedGameData, setSelectedGameData] = useState<GameData | null>(null);
 
   // Fast initial load - get only game summaries
   const loadGames = useCallback(async () => {
@@ -45,21 +50,27 @@ export const UserLandingPage: React.FC = () => {
       const games = await firebaseService.getAllActiveGames();
       
       // Convert to summaries for faster rendering
-      const summaries: GameSummary[] = games.map(game => ({
-        gameId: game.gameId,
-        name: game.name,
-        hostPhone: game.hostPhone,
-        maxTickets: game.maxTickets,
-        isActive: game.gameState.isActive,
-        isCountdown: game.gameState.isCountdown,
-        hasStarted: (game.gameState.calledNumbers?.length || 0) > 0
-      }));
+      const summaries: GameSummary[] = games.map(game => {
+        const bookedTickets = game.tickets ? 
+          Object.values(game.tickets).filter(t => t.isBooked).length : 0;
+        
+        return {
+          gameId: game.gameId,
+          name: game.name,
+          hostPhone: game.hostPhone,
+          maxTickets: game.maxTickets,
+          isActive: game.gameState.isActive,
+          isCountdown: game.gameState.isCountdown,
+          hasStarted: (game.gameState.calledNumbers?.length || 0) > 0,
+          bookedTickets
+        };
+      });
       
       setGameSummaries(summaries);
       setLastUpdate(new Date());
       
-      // Auto-select first game if none selected
-      if (summaries.length > 0 && !selectedGame) {
+      // Auto-select first game if none selected and games available
+      if (summaries.length > 0 && !selectedGameId) {
         selectGame(summaries[0].gameId);
       }
     } catch (error) {
@@ -67,103 +78,114 @@ export const UserLandingPage: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [selectedGame]);
+  }, [selectedGameId]);
 
-  // Select and load full game data
+  // Select and load game for viewing
   const selectGame = useCallback(async (gameId: string) => {
     try {
-      // Clean up previous subscription
-      if (selectedGameSubscriptionRef.current) {
-        selectedGameSubscriptionRef.current();
-        selectedGameSubscriptionRef.current = null;
+      if (onGameSelection) {
+        onGameSelection(gameId);
       }
-
-      // Subscribe to selected game
-      const unsubscribe = firebaseService.subscribeToGame(gameId, (updatedGame) => {
-        if (updatedGame) {
-          setSelectedGame(updatedGame);
-          
-          // Load tickets only when needed
-          if (updatedGame.tickets) {
-            setTickets(updatedGame.tickets);
-          }
-          
-          // Auto-switch to game view when game starts
-          const hasGameStarted = (updatedGame.gameState.calledNumbers && updatedGame.gameState.calledNumbers.length > 0) || 
-                                updatedGame.gameState.isActive || 
-                                updatedGame.gameState.isCountdown;
-          
-          if (hasGameStarted && currentView === 'tickets') {
-            setCurrentView('game');
-          }
+      
+      // Load full game data for selected game
+      const gameData = await firebaseService.getGameData(gameId);
+      if (gameData) {
+        setSelectedGameData(gameData);
+        
+        // Determine view based on game state
+        const hasGameStarted = (gameData.gameState.calledNumbers?.length || 0) > 0 || 
+                              gameData.gameState.isActive || 
+                              gameData.gameState.isCountdown ||
+                              gameData.gameState.gameOver;
+        
+        if (hasGameStarted) {
+          setCurrentView('game');
         } else {
-          // Game was deleted
-          setSelectedGame(null);
-          setTickets({});
-          setCurrentView('tickets');
-          loadGames(); // Reload games list
+          setCurrentView('booking');
         }
-      });
-
-      selectedGameSubscriptionRef.current = unsubscribe;
+      }
     } catch (error) {
       console.error('Failed to select game:', error);
     }
-  }, [currentView, loadGames]);
+  }, [onGameSelection]);
 
   // Initial load
   useEffect(() => {
     loadGames();
-
-    // Setup subscription for game list updates
-    const unsubscribe = firebaseService.subscribeToAllActiveGames((games) => {
-      const summaries: GameSummary[] = games.map(game => ({
-        gameId: game.gameId,
-        name: game.name,
-        hostPhone: game.hostPhone,
-        maxTickets: game.maxTickets,
-        isActive: game.gameState.isActive,
-        isCountdown: game.gameState.isCountdown,
-        hasStarted: (game.gameState.calledNumbers?.length || 0) > 0
-      }));
-      
-      setGameSummaries(summaries);
-      setLastUpdate(new Date());
-    });
-
-    subscriptionRef.current = unsubscribe;
-
-    return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current();
-      }
-      if (selectedGameSubscriptionRef.current) {
-        selectedGameSubscriptionRef.current();
-      }
-    };
+    
+    // Setup periodic refresh for game list
+    const interval = setInterval(loadGames, 30000); // Refresh every 30 seconds
+    
+    return () => clearInterval(interval);
   }, [loadGames]);
 
+  // Handle booking
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
-    if (!selectedGame) return;
+    if (!selectedGameData) return;
 
     try {
-      await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGame.gameId);
+      await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGameData.gameId);
+      
+      // Refresh game data
+      const updatedGame = await firebaseService.getGameData(selectedGameData.gameId);
+      if (updatedGame) {
+        setSelectedGameData(updatedGame);
+      }
     } catch (error: any) {
       alert(error.message || 'Failed to book ticket');
     }
-  };
-
-  const handleGameStart = () => {
-    setCurrentView('game');
   };
 
   const handleRefresh = () => {
     loadGames();
   };
 
-  // Show game view
-  if (currentView === 'game' && selectedGame) {
-    return <TambolaGame gameData={selectedGame} onBackToTickets={() => setCurrentView('tickets')} />;
+  const handleBackToList = () => {
+    setCurrentView('list');
+    setSelectedGameData(null);
+    if (onGameSelection) {
+      onGameSelection('');
+    }
+  };
+
+  // Show game view with provider
+  if (currentView === 'game' && selectedGameId) {
+    return (
+      <GameDataProvider gameId={selectedGameId} userId={null}>
+        <div className="space-y-4">
+          <div className="p-4 bg-white">
+            <Button onClick={handleBackToList} variant="outline">
+              ← Back to Games
+            </Button>
+          </div>
+          <UserDisplay />
+        </div>
+      </GameDataProvider>
+    );
+  }
+
+  // Show booking view
+  if (currentView === 'booking' && selectedGameData) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Header with back button */}
+          <div className="flex items-center justify-between">
+            <Button onClick={handleBackToList} variant="outline">
+              ← Back to Games
+            </Button>
+            <Badge variant="default">Booking Phase</Badge>
+          </div>
+
+          <TicketBookingGrid 
+            tickets={selectedGameData.tickets || {}}
+            gameData={selectedGameData}
+            onBookTicket={handleBookTicket}
+            onGameStart={() => setCurrentView('game')}
+          />
+        </div>
+      </div>
+    );
   }
 
   // Minimal loading screen
@@ -178,6 +200,7 @@ export const UserLandingPage: React.FC = () => {
     );
   }
 
+  // Show games list
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -226,107 +249,94 @@ export const UserLandingPage: React.FC = () => {
             </CardContent>
           </Card>
         ) : (
-          <>
-            {/* Games Selection - Simple Cards */}
-            {gameSummaries.length > 1 && (
-              <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
-                <CardHeader>
-                  <CardTitle className="text-2xl text-gray-800 text-center">
-                    Available Games ({gameSummaries.length})
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {gameSummaries.map((game) => (
-                      <Card 
-                        key={game.gameId}
-                        className={`cursor-pointer transition-all duration-200 ${
-                          selectedGame?.gameId === game.gameId
-                            ? 'border-orange-500 bg-orange-50 ring-2 ring-orange-200'
-                            : 'border-gray-200 hover:border-orange-300'
-                        }`}
-                        onClick={() => selectGame(game.gameId)}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-bold text-gray-800">{game.name}</h3>
-                            <Badge 
-                              variant={
-                                game.isActive ? "default" :
-                                game.isCountdown ? "secondary" :
-                                "outline"
-                              }
-                            >
-                              {game.isActive ? '🟢 Live' : 
-                               game.isCountdown ? '🟡 Starting' : '⚪ Waiting'}
-                            </Badge>
+          <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+            <CardHeader>
+              <CardTitle className="text-2xl text-gray-800 text-center">
+                Available Games ({gameSummaries.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {gameSummaries.map((game) => (
+                  <Card 
+                    key={game.gameId}
+                    className="cursor-pointer transition-all duration-200 border-gray-200 hover:border-orange-300 hover:shadow-lg"
+                    onClick={() => selectGame(game.gameId)}
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-gray-800 text-lg">{game.name}</h3>
+                        <Badge 
+                          variant={
+                            game.isActive ? "default" :
+                            game.isCountdown ? "secondary" :
+                            game.hasStarted ? "destructive" :
+                            "outline"
+                          }
+                        >
+                          {game.isActive ? '🔴 Live' : 
+                           game.isCountdown ? '🟡 Starting' : 
+                           game.hasStarted ? '🏁 Finished' :
+                           '⚪ Booking'}
+                        </Badge>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <Ticket className="w-4 h-4 mr-2 text-blue-600" />
+                            <span className="text-sm text-gray-600">Tickets</span>
                           </div>
-                          <div className="text-sm text-gray-600">
-                            <div className="flex items-center">
-                              <Ticket className="w-4 h-4 mr-1" />
-                              Max Tickets: {game.maxTickets}
-                            </div>
-                            {game.hostPhone && (
-                              <div className="flex items-center mt-1">
-                                <Phone className="w-3 h-3 mr-1" />
-                                +{game.hostPhone}
-                              </div>
-                            )}
+                          <span className="font-semibold text-blue-600">
+                            {game.bookedTickets}/{game.maxTickets}
+                          </span>
+                        </div>
+                        
+                        {game.hostPhone && (
+                          <div className="flex items-center">
+                            <Phone className="w-4 h-4 mr-2 text-green-600" />
+                            <span className="text-sm text-gray-600">+{game.hostPhone}</span>
                           </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Selected Game Display */}
-            {selectedGame && (
-              <>
-                <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
-                  <CardContent className="p-6">
-                    <div className="text-center">
-                      <h2 className="text-2xl font-bold text-gray-800 mb-4">{selectedGame.name}</h2>
-                      <div className="flex justify-center items-center space-x-8">
-                        <div className="text-center">
-                          <Ticket className="w-8 h-8 mx-auto mb-1 text-blue-600" />
-                          <p className="text-lg font-bold">
-                            {Object.values(tickets).filter(t => t.isBooked).length}
-                          </p>
-                          <p className="text-sm text-gray-600">Booked</p>
-                        </div>
-                        <div className="text-center">
-                          <Trophy className="w-8 h-8 mx-auto mb-1 text-purple-600" />
-                          <p className="text-lg font-bold">
-                            {selectedGame.maxTickets - Object.values(tickets).filter(t => t.isBooked).length}
-                          </p>
-                          <p className="text-sm text-gray-600">Available</p>
-                        </div>
-                        <div className="text-center">
-                          <Gamepad2 className="w-8 h-8 mx-auto mb-1 text-green-600" />
-                          <Badge variant={selectedGame.gameState.isActive ? "default" : "secondary"}>
-                            {selectedGame.gameState.isActive ? 'Live' : 
-                             selectedGame.gameState.isCountdown ? 'Starting' : 'Waiting'}
-                          </Badge>
+                        )}
+                        
+                        <div className="flex items-center justify-between pt-2">
+                          <div className="flex items-center">
+                            <Trophy className="w-4 h-4 mr-2 text-purple-600" />
+                            <span className="text-sm text-gray-600">Available</span>
+                          </div>
+                          <span className="font-semibold text-purple-600">
+                            {game.maxTickets - game.bookedTickets} tickets
+                          </span>
                         </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Ticket Booking Grid */}
-                {Object.keys(tickets).length > 0 && (
-                  <TicketBookingGrid 
-                    tickets={tickets}
-                    gameData={selectedGame}
-                    onBookTicket={handleBookTicket}
-                    onGameStart={handleGameStart}
-                  />
-                )}
-              </>
-            )}
-          </>
+                      
+                      <div className="mt-4 pt-3 border-t">
+                        <Button 
+                          className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectGame(game.gameId);
+                          }}
+                        >
+                          {game.hasStarted ? (
+                            <>
+                              <Gamepad2 className="w-4 h-4 mr-2" />
+                              Watch Game
+                            </>
+                          ) : (
+                            <>
+                              <Ticket className="w-4 h-4 mr-2" />
+                              Join Game
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
