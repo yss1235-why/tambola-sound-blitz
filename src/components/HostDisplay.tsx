@@ -1,4 +1,4 @@
-// src/components/HostDisplay.tsx - FIXED: Stable Host Controls
+// src/components/HostDisplay.tsx - UPDATED: Uses new simplified GameController
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     return Object.values(gameData.tickets).filter(ticket => ticket.isBooked).length;
   };
 
-  // Handle interval change - FIXED: No dependency issues
+  // ✅ FIXED: Handle interval change with new controller
   const handleIntervalChange = (newInterval: number) => {
     setCallInterval(newInterval);
     if (hostControls) {
@@ -45,11 +45,11 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     }
   };
 
-  // FIXED: Stable control handlers
+  // ✅ FIXED: Control handlers using new simplified controller
   const handleStartGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
-      await hostControls.startGame();
+      await hostControls.startGame(); // Uses new startGameCountdown method
     } catch (error: any) {
       alert(error.message || 'Failed to start game');
     }
@@ -58,7 +58,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const handlePauseGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
-      await hostControls.pauseGame();
+      await hostControls.pauseGame(); // Uses new pauseGame method
     } catch (error: any) {
       alert(error.message || 'Failed to pause game');
     }
@@ -67,7 +67,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const handleResumeGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
-      await hostControls.resumeGame();
+      await hostControls.resumeGame(); // Uses new resumeGame method
     } catch (error: any) {
       alert(error.message || 'Failed to resume game');
     }
@@ -78,13 +78,15 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     if (!confirmed || !hostControls) return;
 
     try {
-      await hostControls.endGame();
+      await hostControls.endGame(); // Uses new endGame method
     } catch (error: any) {
       alert(error.message || 'Failed to end game');
     }
   }, [hostControls]);
 
-  // FIXED: Better loading state handling
+
+
+  // Better loading state handling
   if (isLoading) {
     return (
       <Card>
@@ -97,7 +99,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     );
   }
 
-  // FIXED: Better error handling
+  // Better error handling
   if (error) {
     return (
       <Card className="border-red-300">
@@ -146,7 +148,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </span>
             <div className="flex items-center space-x-2">
               <Badge variant={
-                currentPhase === 'playing' ? 'default' :
+                currentPhase === 'playing' && gameData.gameState.isActive ? 'default' :
                 currentPhase === 'countdown' ? 'secondary' :
                 currentPhase === 'finished' ? 'destructive' : 'outline'
               } className="text-lg px-4">
@@ -226,7 +228,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             Game Controls
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           {/* Control Buttons */}
           <div className="flex flex-wrap gap-4">
             {currentPhase === 'booking' && (
@@ -301,6 +303,8 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </div>
           )}
 
+
+
           {/* Status Messages */}
           {currentPhase === 'booking' && bookedCount === 0 && (
             <Alert>
@@ -311,11 +315,11 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </Alert>
           )}
 
-          {currentPhase === 'playing' && timeUntilAction > 0 && (
+          {currentPhase === 'playing' && gameData.gameState.isCallingNumber && (
             <Alert>
               <Timer className="h-4 w-4" />
               <AlertDescription>
-                Next number will be called automatically in {timeUntilAction} seconds
+                Calling number... Please wait for the process to complete.
               </AlertDescription>
             </Alert>
           )}
