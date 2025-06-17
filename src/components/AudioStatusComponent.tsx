@@ -1,9 +1,9 @@
-// src/components/AudioStatusComponent.tsx - Visual component for audio status
+// src/components/AudioStatusComponent.tsx - FIXED: Show audio status for both hosts and users
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Volume2, VolumeX, AlertCircle } from 'lucide-react';
+import { Volume2, VolumeX, AlertCircle, CheckCircle } from 'lucide-react';
 
 interface AudioStatusComponentProps {
   showInGameHost?: boolean; // Show in host dashboard
@@ -16,6 +16,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
   const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
   const [audioError, setAudioError] = useState<string | null>(null);
   const [userInteracted, setUserInteracted] = useState<boolean>(false);
+  const [showNotification, setShowNotification] = useState<boolean>(true);
 
   // Check audio support and status
   useEffect(() => {
@@ -83,16 +84,21 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
       if (success) {
         setAudioEnabled(true);
         setAudioError(null);
+        // Hide notification after successful enablement
+        setTimeout(() => setShowNotification(false), 3000);
       }
     } catch (error) {
       setAudioError('Failed to enable audio');
     }
   };
 
-  // Don't show anything if audio is working fine
-  if (audioSupported && audioEnabled && !audioError) {
-    return null;
-  }
+  // ✅ FIXED: Auto-hide notification if audio is working
+  useEffect(() => {
+    if (audioSupported && audioEnabled && !audioError) {
+      const timer = setTimeout(() => setShowNotification(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [audioSupported, audioEnabled, audioError]);
 
   // Show in game host dashboard
   if (showInGameHost) {
@@ -102,7 +108,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               {audioEnabled ? (
-                <Volume2 className="w-5 h-5 text-green-600" />
+                <CheckCircle className="w-5 h-5 text-green-600" />
               ) : (
                 <VolumeX className="w-5 h-5 text-red-600" />
               )}
@@ -133,36 +139,74 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
     );
   }
 
-  // Show floating notification for players
+  // ✅ FIXED: Show for users (default behavior) - only show if there's an issue or needs attention
+  if (!showNotification || (audioSupported && audioEnabled && !audioError)) {
+    return null;
+  }
+
+  // Show floating notification for players when needed
   return (
-    <div className="fixed top-4 right-4 z-50 max-w-sm">
+    <div className="fixed top-4 right-4 z-50 max-w-sm animate-bounce-in">
       <Card className="border-yellow-400 bg-yellow-50 shadow-lg">
         <CardContent className="p-4">
           <div className="flex items-start space-x-3">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+            <div className="flex-shrink-0">
+              {audioEnabled ? (
+                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              )}
+            </div>
             <div className="flex-1">
               <div className="flex items-center space-x-2 mb-2">
-                <Badge variant="outline" className="text-yellow-700 border-yellow-400">
-                  Audio Status
+                <Badge 
+                  variant="outline" 
+                  className={`text-xs ${
+                    audioEnabled ? 'text-green-700 border-green-400' : 'text-yellow-700 border-yellow-400'
+                  }`}
+                >
+                  🔊 Game Audio
                 </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowNotification(false)}
+                  className="h-4 w-4 p-0 text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </Button>
               </div>
-              <p className="text-sm text-yellow-800 mb-2">
-                {!audioSupported 
-                  ? 'Audio not supported in this browser'
-                  : !userInteracted 
-                    ? 'Click anywhere to enable game audio'
-                    : audioError || 'Audio disabled'
-                }
-              </p>
+              
+              {audioEnabled ? (
+                <p className="text-sm text-green-800 mb-2">
+                  ✅ Audio enabled! You'll hear number announcements during the game.
+                </p>
+              ) : (
+                <p className="text-sm text-yellow-800 mb-2">
+                  {!audioSupported 
+                    ? '❌ Audio not supported in this browser'
+                    : !userInteracted 
+                      ? '👆 Click anywhere to enable game audio'
+                      : audioError || '🔇 Audio disabled - click to enable'
+                  }
+                </p>
+              )}
+
               {audioSupported && userInteracted && !audioEnabled && (
                 <Button
                   onClick={handleEnableAudio}
                   size="sm"
-                  className="bg-yellow-600 hover:bg-yellow-700 text-white"
+                  className="w-full bg-yellow-600 hover:bg-yellow-700 text-white"
                 >
                   <Volume2 className="w-4 h-4 mr-2" />
-                  Enable Audio
+                  Enable Game Audio
                 </Button>
+              )}
+
+              {!audioSupported && (
+                <p className="text-xs text-yellow-700 mt-2">
+                  💡 Try using Chrome, Firefox, or Safari for audio support
+                </p>
               )}
             </div>
           </div>
