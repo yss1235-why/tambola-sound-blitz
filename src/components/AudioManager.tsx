@@ -1,4 +1,4 @@
-// src/components/AudioManager.tsx - Fixed with reliable completion callback
+// src/components/AudioManager.tsx - Fixed with reliable queue system
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { Prize } from '@/services/firebase';
 
@@ -9,7 +9,14 @@ interface AudioManagerProps {
   forceEnable?: boolean;
 }
 
-// Traditional Tambola number calls
+interface AudioQueueItem {
+  id: string;
+  text: string;
+  priority: 'high' | 'normal';
+  callback?: () => void;
+}
+
+// Traditional Tambola number calls (same as before)
 const numberCalls: { [key: number]: string } = {
   1: "Kelly's Eyes, number one",
   2: "One little duck, number two",
@@ -112,14 +119,18 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   // State
   const [isAudioSupported, setIsAudioSupported] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   
   // Refs
   const lastCalledNumber = useRef<number | null>(null);
   const announcedPrizes = useRef<Set<string>>(new Set());
-  const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
-  const completionTimer = useRef<NodeJS.Timeout | null>(null);
   const selectedVoice = useRef<SpeechSynthesisVoice | null>(null);
-  const isSpeaking = useRef<boolean>(false);
+  
+  // Audio Queue System
+  const audioQueue = useRef<AudioQueueItem[]>([]);
+  const isProcessingQueue = useRef<boolean>(false);
+  const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
+  const fallbackTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize speech synthesis
   useEffect(() => {
@@ -172,12 +183,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
     // Cleanup
     return () => {
-      if (completionTimer.current) {
-        clearTimeout(completionTimer.current);
-      }
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
+      stopAllAudio();
     };
   }, [forceEnable]);
 
@@ -197,74 +203,145 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     };
   }, [isAudioSupported, isAudioEnabled]);
 
-  // Speak text with completion callback
-  const speak = useCallback((text: string, callback?: () => void) => {
+  // Stop all audio
+  const stopAllAudio = useCallback(() => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    
+    if (fallbackTimer.current) {
+      clearTimeout(fallbackTimer.current);
+      fallbackTimer.current = null;
+    }
+    
+    currentUtterance.current = null;
+    isProcessingQueue.current = false;
+    setIsPlaying(false);
+  }, []);
+
+  // Add to queue
+  const addToQueue = useCallback((item: AudioQueueItem) => {
     if (!isAudioSupported || !isAudioEnabled) {
-      callback?.();
+      // Call callback immediately if audio not available
+      if (item.callback) {
+        setTimeout(item.callback, 100);
+      }
       return;
     }
 
-    // Cancel any ongoing speech
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
+    // If high priority, add to front of queue
+    if (item.priority === 'high') {
+      audioQueue.current.unshift(item);
+    } else {
+      audioQueue.current.push(item);
     }
 
-    // Clear any existing timer
-    if (completionTimer.current) {
-      clearTimeout(completionTimer.current);
-      completionTimer.current = null;
-    }
-
-    try {
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      if (selectedVoice.current) {
-        utterance.voice = selectedVoice.current;
-      }
-      
-      utterance.rate = 0.9;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-
-      currentUtterance.current = utterance;
-      isSpeaking.current = true;
-
-      // Handle completion
-      const handleComplete = () => {
-        isSpeaking.current = false;
-        currentUtterance.current = null;
-        
-        if (completionTimer.current) {
-          clearTimeout(completionTimer.current);
-          completionTimer.current = null;
-        }
-        
-        callback?.();
-      };
-
-      utterance.onend = handleComplete;
-      
-      utterance.onerror = (event) => {
-        console.warn('Speech error:', event.error);
-        handleComplete();
-      };
-
-      // Fallback timer (estimate based on text length)
-      const estimatedDuration = Math.min(text.length * 60 + 1000, 5000);
-      completionTimer.current = setTimeout(() => {
-        if (isSpeaking.current) {
-          handleComplete();
-        }
-      }, estimatedDuration);
-
-      window.speechSynthesis.speak(utterance);
-      
-    } catch (error) {
-      console.error('Speech synthesis error:', error);
-      isSpeaking.current = false;
-      callback?.();
+    console.log(`🔊 Added to audio queue: ${item.text} (Priority: ${item.priority})`);
+    
+    // Start processing if not already processing
+    if (!isProcessingQueue.current) {
+      processQueue();
     }
   }, [isAudioSupported, isAudioEnabled]);
+
+  // Process audio queue
+  const processQueue = useCallback(() => {
+    if (isProcessingQueue.current || audioQueue.current.length === 0) {
+      return;
+    }
+
+    isProcessingQueue.current = true;
+    setIsPlaying(true);
+
+    const processNext = () => {
+      if (audioQueue.current.length === 0) {
+        isProcessingQueue.current = false;
+        setIsPlaying(false);
+        console.log('🔇 Audio queue completed');
+        return;
+      }
+
+      const item = audioQueue.current.shift()!;
+      console.log(`🎤 Speaking: ${item.text}`);
+
+      try {
+        // Cancel any existing speech
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+        }
+
+        const utterance = new SpeechSynthesisUtterance(item.text);
+        
+        if (selectedVoice.current) {
+          utterance.voice = selectedVoice.current;
+        }
+        
+        utterance.rate = 0.9;
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+
+        currentUtterance.current = utterance;
+
+        // Handle completion
+        const handleComplete = () => {
+          console.log(`✅ Completed: ${item.text}`);
+          
+          // Clear fallback timer
+          if (fallbackTimer.current) {
+            clearTimeout(fallbackTimer.current);
+            fallbackTimer.current = null;
+          }
+          
+          currentUtterance.current = null;
+          
+          // Call item callback
+          if (item.callback) {
+            try {
+              item.callback();
+            } catch (error) {
+              console.error('Audio callback error:', error);
+            }
+          }
+          
+          // Process next item after short delay
+          setTimeout(processNext, 500);
+        };
+
+        utterance.onend = handleComplete;
+        
+        utterance.onerror = (event) => {
+          console.warn('Speech error:', event.error);
+          handleComplete();
+        };
+
+        // Fallback timer - estimate based on text length
+        const estimatedDuration = Math.max(item.text.length * 80, 2000); // Minimum 2 seconds
+        fallbackTimer.current = setTimeout(() => {
+          console.warn(`⏰ Audio timeout for: ${item.text}`);
+          handleComplete();
+        }, estimatedDuration);
+
+        window.speechSynthesis.speak(utterance);
+        
+      } catch (error) {
+        console.error('Speech synthesis error:', error);
+        
+        // Call callback on error
+        if (item.callback) {
+          try {
+            item.callback();
+          } catch (callbackError) {
+            console.error('Audio callback error:', callbackError);
+          }
+        }
+        
+        // Continue with next item
+        setTimeout(processNext, 100);
+      }
+    };
+
+    processNext();
+  }, []);
 
   // Handle number announcements
   useEffect(() => {
@@ -273,16 +350,14 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       
       const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
       
-      // Announce number and call completion callback
-      speak(callText, () => {
-        // Only call onAudioComplete for number announcements
-        // Don't call it for prize announcements
-        if (onAudioComplete && !isSpeaking.current) {
-          onAudioComplete();
-        }
+      addToQueue({
+        id: `number-${currentNumber}`,
+        text: callText,
+        priority: 'high',
+        callback: onAudioComplete // Only call completion for number announcements
       });
     }
-  }, [currentNumber, speak, onAudioComplete]);
+  }, [currentNumber, addToQueue, onAudioComplete]);
 
   // Handle prize announcements
   useEffect(() => {
@@ -302,13 +377,15 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         
         announcement += '. Well done!';
         
-        // Delay prize announcement slightly to not interrupt number call
-        setTimeout(() => {
-          speak(announcement);
-        }, 500);
+        addToQueue({
+          id: `prize-${prize.id}`,
+          text: announcement,
+          priority: 'normal' // Lower priority than numbers
+          // No callback for prize announcements
+        });
       }
     });
-  }, [prizes, speak]);
+  }, [prizes, addToQueue]);
 
   // Reset announced prizes when game resets
   useEffect(() => {
@@ -317,8 +394,28 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     if (wonPrizes.length === 0 && announcedPrizes.current.size > 0) {
       announcedPrizes.current.clear();
       lastCalledNumber.current = null;
+      audioQueue.current = [];
+      stopAllAudio();
     }
-  }, [prizes]);
+  }, [prizes, stopAllAudio]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopAllAudio();
+    };
+  }, [stopAllAudio]);
+
+  // Show audio status for debugging (only in development)
+  if (process.env.NODE_ENV === 'development') {
+    return (
+      <div className="fixed bottom-4 right-4 bg-black/80 text-white p-2 rounded text-xs">
+        <div>Audio: {isAudioSupported ? (isAudioEnabled ? 'Enabled' : 'Disabled') : 'Unsupported'}</div>
+        <div>Queue: {audioQueue.current.length}</div>
+        <div>Playing: {isPlaying ? 'Yes' : 'No'}</div>
+      </div>
+    );
+  }
 
   return null;
 };
