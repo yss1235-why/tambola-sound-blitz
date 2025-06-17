@@ -1,4 +1,4 @@
-// src/services/GameController.ts - Pure Game Control Logic (No UI)
+// src/services/GameController.ts - FIXED: Proper Scheduled Actions Management
 import { firebaseService, GameData, GameState } from './firebase';
 
 export interface GameControllerConfig {
@@ -111,17 +111,20 @@ class GameController {
   }
 
   /**
-   * Pure control function - Pause game
+   * FIXED: Pure control function - Pause game
    */
   async pauseGame(gameId: string): Promise<void> {
     try {
+      // First clear all scheduled actions
+      await firebaseService.clearScheduledActions(gameId);
+      
+      // Then update game state
       await firebaseService.updateGameState(gameId, {
         isActive: false,
-        isCountdown: false,
-        scheduledActions: [] // Clear all scheduled actions
+        isCountdown: false
       } as any);
 
-      console.log(`⏸️ Game paused`);
+      console.log(`⏸️ Game paused and scheduled actions cleared`);
     } catch (error: any) {
       throw new Error(`Failed to pause game: ${error.message}`);
     }
@@ -155,18 +158,21 @@ class GameController {
   }
 
   /**
-   * Pure control function - End game
+   * FIXED: Pure control function - End game
    */
   async executeGameEnd(gameId: string): Promise<void> {
     try {
+      // Clear all scheduled actions first
+      await firebaseService.clearScheduledActions(gameId);
+      
+      // Then end the game
       await firebaseService.updateGameState(gameId, {
         isActive: false,
         isCountdown: false,
-        gameOver: true,
-        scheduledActions: [] // Clear all scheduled actions
+        gameOver: true
       } as any);
 
-      console.log(`🏁 Game ended`);
+      console.log(`🏁 Game ended and scheduled actions cleared`);
     } catch (error: any) {
       throw new Error(`Failed to end game: ${error.message}`);
     }
