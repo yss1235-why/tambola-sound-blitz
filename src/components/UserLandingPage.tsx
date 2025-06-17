@@ -1,4 +1,4 @@
-// src/components/UserLandingPage.tsx - FIXED: Real-time subscription for auto-view switching
+// src/components/UserLandingPage.tsx - FIXED: Auto-redirect to booking when new games created
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,8 @@ import {
   Phone,
   Ticket,
   RefreshCw,
-  Activity
+  Activity,
+  Clock
 } from 'lucide-react';
 
 interface UserLandingPageProps {
@@ -32,6 +33,7 @@ interface GameSummary {
   isCountdown: boolean;
   hasStarted: boolean;
   bookedTickets: number;
+  createdAt: string; // ✅ FIXED: Added to track new games
 }
 
 export const UserLandingPage: React.FC<UserLandingPageProps> = ({ 
@@ -43,12 +45,18 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [selectedGameData, setSelectedGameData] = useState<GameData | null>(null);
+  const [autoRedirectShown, setAutoRedirectShown] = useState(false); // ✅ FIXED: Prevent multiple redirects
 
-  // ✅ FIXED: Add real-time subscription refs
+  // ✅ FIXED: Track previous games to detect new ones
+  const previousGameIds = useRef<Set<string>>(new Set());
+  const lastGameCount = useRef<number>(0);
+  const hasInitialLoad = useRef<boolean>(false);
+
+  // Real-time subscription refs
   const gameSubscriptionRef = useRef<(() => void) | null>(null);
   const gameListSubscriptionRef = useRef<(() => void) | null>(null);
 
-  // ✅ FIXED: Real-time game list subscription
+  // ✅ FIXED: Real-time game list subscription with new game detection
   const setupGameListSubscription = useCallback(() => {
     console.log('🔔 Setting up real-time game list subscription');
     
@@ -71,24 +79,59 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
           isActive: game.gameState.isActive,
           isCountdown: game.gameState.isCountdown,
           hasStarted: (game.gameState.calledNumbers?.length || 0) > 0,
-          bookedTickets
+          bookedTickets,
+          createdAt: game.createdAt // ✅ FIXED: Track creation time
         };
       });
+      
+      // Sort by creation time (newest first)
+      summaries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      
+      // ✅ FIXED: Detect new games and auto-redirect
+      if (hasInitialLoad.current && currentView === 'list' && !autoRedirectShown) {
+        const currentGameIds = new Set(summaries.map(g => g.gameId));
+        const newGames = summaries.filter(game => !previousGameIds.current.has(game.gameId));
+        
+        // ✅ FIXED: Auto-redirect to newest game if:
+        // 1. There are new games
+        // 2. User is on list view  
+        // 3. No game currently selected
+        // 4. Auto-redirect not already shown
+        if (newGames.length > 0 && !selectedGameId) {
+          const newestGame = newGames[0]; // Already sorted by creation time
+          console.log(`🆕 New game detected: ${newestGame.name}, auto-redirecting to booking`);
+          
+          setAutoRedirectShown(true);
+          selectGame(newestGame.gameId);
+          
+          // Reset auto-redirect flag after 5 seconds to allow future redirects
+          setTimeout(() => setAutoRedirectShown(false), 5000);
+        }
+        
+        // Update previous games set
+        previousGameIds.current = currentGameIds;
+      }
       
       setGameSummaries(summaries);
       setLastUpdate(new Date());
       setIsLoading(false);
 
-      // Auto-select first game if none selected and games available
-      if (summaries.length > 0 && !selectedGameId && currentView === 'list') {
-        selectGame(summaries[0].gameId);
+      // ✅ FIXED: Only auto-select on initial load if no games and one becomes available
+      if (!hasInitialLoad.current) {
+        hasInitialLoad.current = true;
+        previousGameIds.current = new Set(summaries.map(g => g.gameId));
+        
+        // Auto-select first game only on initial load if none selected
+        if (summaries.length > 0 && !selectedGameId && currentView === 'list') {
+          selectGame(summaries[0].gameId);
+        }
       }
     });
 
     gameListSubscriptionRef.current = unsubscribe;
-  }, [selectedGameId, currentView]);
+  }, [selectedGameId, currentView, autoRedirectShown]);
 
-  // ✅ FIXED: Real-time game subscription for auto-view switching
+  // Real-time game subscription for auto-view switching
   const setupGameSubscription = useCallback((gameId: string) => {
     console.log('🔔 Setting up real-time game subscription for:', gameId);
     
@@ -108,7 +151,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
         setSelectedGameData(updatedGame);
 
-        // ✅ FIXED: Auto-switch views based on game state changes
+        // Auto-switch views based on game state changes
         const hasGameStarted = (updatedGame.gameState.calledNumbers?.length || 0) > 0 || 
                               updatedGame.gameState.isActive || 
                               updatedGame.gameState.isCountdown ||
@@ -117,7 +160,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
         if (hasGameStarted && currentView === 'booking') {
           console.log('🎮 Auto-switching to game view - game has started!');
           setCurrentView('game');
-        } else if (!hasGameStarted && currentView === 'game') {
+        } else if (!hasGameStarted && currentView === 'game' && !updatedGame.gameState.gameOver) {
           console.log('🎫 Auto-switching to booking view - game reset to booking');
           setCurrentView('booking');
         }
@@ -161,7 +204,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
           setCurrentView('booking');
         }
 
-        // ✅ FIXED: Setup real-time subscription for this game
+        // Setup real-time subscription for this game
         setupGameSubscription(gameId);
       }
     } catch (error) {
@@ -169,7 +212,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     }
   }, [onGameSelection, setupGameSubscription]);
 
-  // ✅ FIXED: Setup real-time subscriptions on mount
+  // Setup real-time subscriptions on mount
   useEffect(() => {
     setupGameListSubscription();
     
@@ -190,8 +233,6 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
     try {
       await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGameData.gameId);
-      
-      // No need to manually refresh - real-time subscription will update automatically
       console.log('✅ Ticket booked, waiting for real-time update...');
     } catch (error: any) {
       alert(error.message || 'Failed to book ticket');
@@ -212,6 +253,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     
     setCurrentView('list');
     setSelectedGameData(null);
+    setAutoRedirectShown(false); // Reset auto-redirect flag
     if (onGameSelection) {
       onGameSelection('');
     }
@@ -245,13 +287,29 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
             </Button>
             <div className="flex items-center space-x-2">
               <Badge variant="default">Booking Phase</Badge>
-              {/* ✅ FIXED: Real-time indicator */}
               <Badge variant="outline" className="text-green-600 border-green-400">
                 <Activity className="w-3 h-3 mr-1" />
-                Live Updates
+                Auto-Switch Enabled
               </Badge>
             </div>
           </div>
+
+          {/* ✅ FIXED: Show auto-redirect notification for new games */}
+          {autoRedirectShown && (
+            <Card className="border-blue-400 bg-blue-50">
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-3">
+                  <Clock className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <p className="font-medium text-blue-800">🆕 New Game Available!</p>
+                    <p className="text-sm text-blue-600">
+                      You've been automatically taken to this new game's booking page
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <TicketBookingGrid 
             tickets={selectedGameData.tickets || {}}
@@ -290,10 +348,14 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               Join the excitement! Book your tickets and play live Tambola games.
             </p>
             <div className="flex justify-center items-center space-x-4 mt-4 text-sm">
-              {/* ✅ FIXED: Real-time indicators */}
+              {/* Real-time indicators */}
               <Badge variant="default" className="flex items-center bg-green-600">
                 <Activity className="w-3 h-3 mr-1" />
                 Real-time Updates
+              </Badge>
+              <Badge variant="outline" className="flex items-center border-blue-400 text-blue-600">
+                <Clock className="w-3 h-3 mr-1" />
+                Auto-Redirect
               </Badge>
               {lastUpdate && (
                 <Badge variant="outline" className="text-xs">
@@ -314,8 +376,12 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               <div className="text-6xl mb-4">🎯</div>
               <h2 className="text-2xl font-bold text-gray-800 mb-2">No Active Games</h2>
               <p className="text-gray-600 mb-4">
-                There are currently no active Tambola games. New games will appear automatically.
+                There are currently no active Tambola games. New games will appear automatically and you'll be redirected to them!
               </p>
+              <div className="flex justify-center items-center space-x-2 mb-4">
+                <Activity className="w-4 h-4 text-green-600" />
+                <span className="text-sm text-green-700 font-medium">Auto-redirect enabled for new games</span>
+              </div>
               <Button 
                 onClick={handleRefresh}
                 className="bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
@@ -331,21 +397,36 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               <CardTitle className="text-2xl text-gray-800 text-center">
                 Available Games ({gameSummaries.length})
               </CardTitle>
-              <p className="text-center text-gray-600">
-                🔴 Games update automatically when hosts make changes
-              </p>
+              <div className="text-center space-y-2">
+                <p className="text-gray-600">
+                  🔴 Games update automatically • New games auto-redirect to booking
+                </p>
+                <div className="flex justify-center items-center space-x-2">
+                  <Badge variant="outline" className="text-xs border-green-400 text-green-600">
+                    <Activity className="w-2 h-2 mr-1" />
+                    Auto-redirect enabled
+                  </Badge>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {gameSummaries.map((game) => (
+                {gameSummaries.map((game, index) => (
                   <Card 
                     key={game.gameId}
-                    className="cursor-pointer transition-all duration-200 border-gray-200 hover:border-orange-300 hover:shadow-lg"
+                    className={`cursor-pointer transition-all duration-200 border-gray-200 hover:border-orange-300 hover:shadow-lg ${
+                      index === 0 ? 'ring-2 ring-blue-200' : ''
+                    }`}
                     onClick={() => selectGame(game.gameId)}
                   >
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-bold text-gray-800 text-lg">{game.name}</h3>
+                        <div className="flex-1">
+                          <h3 className="font-bold text-gray-800 text-lg">{game.name}</h3>
+                          {index === 0 && (
+                            <p className="text-xs text-blue-600 font-medium">← Newest Game</p>
+                          )}
+                        </div>
                         <div className="flex flex-col space-y-1">
                           <Badge 
                             variant={
@@ -360,7 +441,6 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                              game.hasStarted ? '🏁 Finished' :
                              '⚪ Booking'}
                           </Badge>
-                          {/* ✅ FIXED: Real-time update indicator */}
                           <Badge variant="outline" className="text-xs text-green-600 border-green-400">
                             <Activity className="w-2 h-2 mr-1" />
                             Live
