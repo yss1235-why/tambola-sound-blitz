@@ -100,10 +100,14 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
     }
   }, []); // FIXED: No dependencies to prevent recreation
 
-  // FIXED: Process scheduled actions with stable dependencies
+  // FIXED: Process scheduled actions with proper Firebase object handling
   const processScheduledActions = useCallback((updatedGameData: GameData) => {
-    const scheduledActions = (updatedGameData as any).scheduledActions || [];
+    // FIXED: Convert Firebase object to array
+    const scheduledActionsObj = (updatedGameData as any).scheduledActions || {};
+    const scheduledActions = Object.values(scheduledActionsObj) as ScheduledAction[];
     const now = Date.now();
+
+    console.log(`📅 Processing ${scheduledActions.length} scheduled actions`);
 
     // Clear existing timer
     if (actionTimerRef.current) {
@@ -128,6 +132,7 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       console.log(`⏰ Next action ${nextAction.type} scheduled in ${Math.ceil(delay / 1000)} seconds`);
     } else {
       setTimeUntilAction(0);
+      console.log(`⏰ No pending actions found`);
     }
   }, [executeScheduledAction]); // FIXED: Only depends on stable executeScheduledAction
 
