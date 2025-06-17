@@ -1,4 +1,4 @@
-// src/components/NumberGrid.tsx - UPDATED: Automatic calling only, no manual clicking
+// src/components/NumberGrid.tsx - CLEANED: Only display, no manual clicking
 import React from 'react';
 
 interface NumberGridProps {
@@ -32,8 +32,6 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
     
     return `${baseClass} bg-gradient-to-br from-slate-100 to-slate-200 text-slate-800 border-slate-300 hover:border-slate-400 hover:from-slate-200 hover:to-slate-300`;
   };
-
-
 
   const getNumberDisplayClass = (number: number) => {
     const isCalled = calledNumbers.includes(number);
@@ -76,7 +74,7 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
         </div>
       </div>
 
-      {/* Number Grid */}
+      {/* Number Grid - Display Only */}
       <div className="space-y-2">
         {numberRows.map((row, rowIndex) => (
           <div key={rowIndex} className="grid grid-cols-10 gap-2">
@@ -124,6 +122,10 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
           {90 - calledNumbers.length} numbers remaining
         </div>
       </div>
+
+      {/* ❌ REMOVED: All manual clicking functionality */}
+      {/* ❌ REMOVED: onNumberClick handlers */}
+      {/* ❌ REMOVED: Manual calling UI elements */}
     </div>
   );
 };
