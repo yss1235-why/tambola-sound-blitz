@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete Updated Firebase Service
+// src/services/firebase.ts - Complete Updated Firebase Service with New Architecture Support
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -114,6 +114,7 @@ export interface GameData {
   ticketSetId?: string;
   lastWinnerAnnouncement?: string;
   lastWinnerAt?: string;
+  scheduledActions?: any[]; // For new architecture
 }
 
 export interface TicketSetData {
@@ -180,6 +181,38 @@ const removeUndefinedValues = (obj: any): any => {
 
 // Firebase service class
 class FirebaseService {
+
+  // NEW: Get single game data (for controller use)
+  async getGameData(gameId: string): Promise<GameData | null> {
+    try {
+      const gameSnapshot = await get(ref(database, `games/${gameId}`));
+      if (!gameSnapshot.exists()) return null;
+      return gameSnapshot.val() as GameData;
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to fetch game data');
+    }
+  }
+
+  // NEW: Schedule action for synchronized execution
+  async scheduleAction(gameId: string, action: any): Promise<void> {
+    try {
+      const actionsRef = ref(database, `games/${gameId}/scheduledActions`);
+      const newActionRef = push(actionsRef);
+      await set(newActionRef, removeUndefinedValues(action));
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to schedule action');
+    }
+  }
+
+  // UPDATED: Update game state with additional scheduled actions support
+  async updateGameState(gameId: string, gameState: any): Promise<void> {
+    try {
+      const cleanedGameState = removeUndefinedValues({ gameState });
+      await update(ref(database, `games/${gameId}`), cleanedGameState);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to update game state');
+    }
+  }
 
   // Admin operations
   async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
@@ -400,7 +433,7 @@ class FirebaseService {
     }
   }
 
-  // Get host's current active game
+  // Get host's current active game (special handling for HOST_CURRENT)
   async getHostCurrentGame(hostId: string): Promise<GameData | null> {
     try {
       const gamesQuery = query(
@@ -642,7 +675,8 @@ class FirebaseService {
         prizes,
         tickets: ticketSetData.tickets,
         createdAt: new Date().toISOString(),
-        ticketSetId
+        ticketSetId,
+        scheduledActions: [] // NEW: Initialize empty scheduled actions
       };
 
       const cleanedGameData = removeUndefinedValues(gameData);
@@ -652,15 +686,6 @@ class FirebaseService {
     } catch (error: any) {
       console.error('Game creation failed:', error);
       throw new Error(error.message || 'Failed to create game');
-    }
-  }
-
-  async updateGameState(gameId: string, gameState: GameState): Promise<void> {
-    try {
-      const cleanedGameState = removeUndefinedValues({ gameState });
-      await update(ref(database, `games/${gameId}`), cleanedGameState);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to update game state');
     }
   }
 
