@@ -1,4 +1,4 @@
-// src/components/HostDisplay.tsx - UPDATED: Uses new simplified GameController
+// src/components/HostDisplay.tsx - CLEANED: Only automatic game controls, no manual calling
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,7 +37,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     return Object.values(gameData.tickets).filter(ticket => ticket.isBooked).length;
   };
 
-  // ✅ FIXED: Handle interval change with new controller
+  // Handle interval change
   const handleIntervalChange = (newInterval: number) => {
     setCallInterval(newInterval);
     if (hostControls) {
@@ -45,11 +45,11 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     }
   };
 
-  // ✅ FIXED: Control handlers using new simplified controller
+  // ✅ CLEANED: Only automatic game control handlers
   const handleStartGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
-      await hostControls.startGame(); // Uses new startGameCountdown method
+      await hostControls.startGame();
     } catch (error: any) {
       alert(error.message || 'Failed to start game');
     }
@@ -58,7 +58,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const handlePauseGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
-      await hostControls.pauseGame(); // Uses new pauseGame method
+      await hostControls.pauseGame();
     } catch (error: any) {
       alert(error.message || 'Failed to pause game');
     }
@@ -67,7 +67,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const handleResumeGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
-      await hostControls.resumeGame(); // Uses new resumeGame method
+      await hostControls.resumeGame();
     } catch (error: any) {
       alert(error.message || 'Failed to resume game');
     }
@@ -78,15 +78,13 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     if (!confirmed || !hostControls) return;
 
     try {
-      await hostControls.endGame(); // Uses new endGame method
+      await hostControls.endGame();
     } catch (error: any) {
       alert(error.message || 'Failed to end game');
     }
   }, [hostControls]);
 
-
-
-  // Better loading state handling
+  // Loading state
   if (isLoading) {
     return (
       <Card>
@@ -99,7 +97,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     );
   }
 
-  // Better error handling
+  // Error state
   if (error) {
     return (
       <Card className="border-red-300">
@@ -117,6 +115,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     );
   }
 
+  // No game state
   if (!gameData) {
     return (
       <Card>
@@ -225,7 +224,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
         <CardHeader>
           <CardTitle className="flex items-center">
             <Timer className="w-5 h-5 mr-2" />
-            Game Controls
+            Automatic Game Controls
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -239,7 +238,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 size="lg"
               >
                 <Play className="w-4 h-4 mr-2" />
-                Start Game ({bookedCount > 0 ? 'Ready' : 'Need players'})
+                Start Automatic Game ({bookedCount > 0 ? 'Ready' : 'Need players'})
               </Button>
             )}
 
@@ -255,12 +254,12 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 {gameData.gameState.isActive ? (
                   <Button onClick={handlePauseGame} variant="secondary" className="flex-1" size="lg">
                     <Pause className="w-4 h-4 mr-2" />
-                    Pause Game
+                    Pause Automatic Game
                   </Button>
                 ) : (
                   <Button onClick={handleResumeGame} className="flex-1 bg-green-600 hover:bg-green-700" size="lg">
                     <Play className="w-4 h-4 mr-2" />
-                    Resume Game
+                    Resume Automatic Game
                   </Button>
                 )}
 
@@ -282,7 +281,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           {/* Call Interval Control */}
           {(currentPhase === 'booking' || (currentPhase === 'playing' && !gameData.gameState.gameOver)) && (
             <div className="space-y-2">
-              <Label htmlFor="call-interval">Auto Call Interval: {callInterval} seconds</Label>
+              <Label htmlFor="call-interval">Automatic Call Interval: {callInterval} seconds</Label>
               <div className="flex items-center space-x-4">
                 <Input
                   id="call-interval"
@@ -298,12 +297,10 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 </span>
               </div>
               <p className="text-xs text-gray-500">
-                Time between automatic number calls
+                Time between automatic number calls (system controlled)
               </p>
             </div>
           )}
-
-
 
           {/* Status Messages */}
           {currentPhase === 'booking' && bookedCount === 0 && (
@@ -315,11 +312,11 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </Alert>
           )}
 
-          {currentPhase === 'playing' && gameData.gameState.isCallingNumber && (
+          {currentPhase === 'playing' && gameData.gameState.isActive && (
             <Alert>
               <Timer className="h-4 w-4" />
               <AlertDescription>
-                Calling number... Please wait for the process to complete.
+                Game is running automatically. Numbers are called every {callInterval} seconds.
               </AlertDescription>
             </Alert>
           )}
@@ -328,7 +325,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             <Alert>
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
-                Game completed successfully! {gameData.gameState.calledNumbers?.length || 0} numbers were called.
+                Game completed successfully! {gameData.gameState.calledNumbers?.length || 0} numbers were called automatically.
               </AlertDescription>
             </Alert>
           )}
@@ -341,7 +338,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           <CardHeader>
             <CardTitle className="flex items-center">
               <Hash className="w-5 h-5 mr-2" />
-              Recent Numbers Called
+              Recent Numbers Called (Automatically)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -412,6 +409,10 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           </div>
         </CardContent>
       </Card>
+
+      {/* ❌ REMOVED: All manual calling UI elements */}
+      {/* ❌ REMOVED: Manual number calling buttons */}
+      {/* ❌ REMOVED: Manual number selection interface */}
     </div>
   );
 };
