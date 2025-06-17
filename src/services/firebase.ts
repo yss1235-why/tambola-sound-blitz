@@ -1,28 +1,30 @@
-// src/services/firebase.ts - Complete Updated Firebase Service with All Fixes
+// src/services/firebase.ts - COMPLETE CLEANED VERSION
 import { initializeApp } from 'firebase/app';
+import { 
+  getDatabase, 
+  ref, 
+  push, 
+  set, 
+  get, 
+  update, 
+  remove, 
+  onValue, 
+  off,
+  query,
+  orderByChild,
+  equalTo,
+  limitToLast,
+  Database
+} from 'firebase/database';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, 
-  updatePassword
+  onAuthStateChanged,
+  User,
+  Auth
 } from 'firebase/auth';
-import { 
-  getDatabase,
-  ref,
-  set,
-  get,
-  update,
-  remove,
-  push,
-  onValue,
-  off,
-  query,
-  orderByChild,
-  equalTo,
-  limitToFirst,
-  child
-} from 'firebase/database';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -37,33 +39,18 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-const database = getDatabase(app);
+export const database: Database = getDatabase(app);
+export const auth: Auth = getAuth(app);
 
-// Type definitions
-export interface AdminUser {
-  uid: string;
-  email: string;
-  name: string;
-  role: 'admin';
-  createdAt: string;
-  permissions: {
-    createHosts: boolean;
-    manageUsers: boolean;
-  };
-}
+// ================== TYPE DEFINITIONS ==================
 
-export interface HostUser {
-  uid: string;
-  email: string;
-  name: string;
-  phone: string;
-  role: 'host';
-  createdBy: string;
-  createdAt: string;
-  subscriptionEndDate: string;
-  isActive: boolean;
-  updatedAt?: string;
+export interface TambolaTicket {
+  ticketId: string;
+  rows: number[][]; // 3 rows x 9 columns
+  isBooked: boolean;
+  playerName?: string;
+  playerPhone?: string;
+  bookedAt?: string;
 }
 
 export interface GameState {
@@ -73,53 +60,46 @@ export interface GameState {
   gameOver: boolean;
   calledNumbers: number[];
   currentNumber: number | null;
-  callInterval: number;
 }
 
 export interface Prize {
   id: string;
   name: string;
   pattern: string;
+  description: string;
   won: boolean;
-  winners?: Array<{
-    ticketId: string;
+  winners?: {
     name: string;
+    ticketId: string;
     phone?: string;
-  }>;
+  }[];
   winningNumber?: number;
   wonAt?: string;
-}
-
-export interface TambolaTicket {
-  ticketId: string;
-  rows: number[][];
-  isBooked: boolean;
-  playerName?: string;
-  playerPhone?: string;
-  bookedAt?: string;
-  updatedAt?: string;
 }
 
 export interface GameData {
   gameId: string;
   name: string;
   hostId: string;
-  hostPhone?: string;
+  hostPhone: string;
+  createdAt: string;
   maxTickets: number;
   ticketPrice: number;
   gameState: GameState;
-  prizes: { [key: string]: Prize };
-  tickets?: { [key: string]: TambolaTicket };
-  createdAt: string;
-  ticketSetId?: string;
+  tickets: { [ticketId: string]: TambolaTicket };
+  prizes: { [prizeId: string]: Prize };
   lastWinnerAnnouncement?: string;
   lastWinnerAt?: string;
-  scheduledActions?: any[]; // For new architecture
 }
 
-export interface TicketSetData {
-  ticketCount: number;
-  tickets: { [key: string]: TambolaTicket };
+export interface HostUser {
+  uid: string;
+  email: string;
+  name: string;
+  phone: string;
+  role: 'host';
+  subscriptionEndDate: string;
+  isActive: boolean;
 }
 
 export interface HostSettings {
@@ -129,46 +109,20 @@ export interface HostSettings {
   selectedPrizes: string[];
 }
 
-interface RawTicketRow {
-  setId: number;
-  ticketId: number;
-  rowId: number;
-  numbers: number[];
+export interface CreateGameConfig {
+  name: string;
+  maxTickets: number;
+  ticketPrice: number;
+  hostPhone: string;
 }
 
-// Cache for ticket sets to avoid reloading
-const ticketSetCache = new Map<string, TicketSetData>();
+// ================== UTILITY FUNCTIONS ==================
 
-// Get current user role
-export const getCurrentUserRole = async (): Promise<'admin' | 'host' | null> => {
-  const user = auth.currentUser;
-  if (!user) return null;
-
-  try {
-    const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
-    if (adminSnapshot.exists() && adminSnapshot.val().permissions?.createHosts) {
-      return 'admin';
-    }
-
-    const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
-    if (hostSnapshot.exists() && hostSnapshot.val().isActive) {
-      return 'host';
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error getting user role:', error);
-    return null;
-  }
-};
-
-// Utility function to remove undefined values
-const removeUndefinedValues = (obj: any): any => {
-  if (obj === null || typeof obj !== 'object') return obj;
-  
-  if (Array.isArray(obj)) {
-    return obj.map(removeUndefinedValues);
-  }
+// Remove undefined values from objects before Firebase updates
+export const removeUndefinedValues = (obj: any): any => {
+  if (obj === null || obj === undefined) return null;
+  if (typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(removeUndefinedValues).filter(item => item !== undefined);
   
   const cleaned: any = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -179,292 +133,264 @@ const removeUndefinedValues = (obj: any): any => {
   return cleaned;
 };
 
-// Firebase service class
-class FirebaseService {
+// Generate traditional Tambola ticket (3 rows x 9 columns)
+const generateTambolaTicket = (ticketId: string): TambolaTicket => {
+  const ticket: number[][] = [[], [], []];
+  
+  // Column ranges for Tambola: 1-9, 10-19, 20-29, ..., 80-90
+  const columnRanges = [
+    [1, 9], [10, 19], [20, 29], [30, 39], [40, 49],
+    [50, 59], [60, 69], [70, 79], [80, 90]
+  ];
+  
+  // Generate numbers for each row
+  for (let row = 0; row < 3; row++) {
+    const rowNumbers: number[] = [];
+    const usedColumns = new Set<number>();
+    
+    // Each row needs 5 numbers and 4 empty spaces
+    while (rowNumbers.length < 5) {
+      const col = Math.floor(Math.random() * 9);
+      if (usedColumns.has(col)) continue;
+      
+      const [min, max] = columnRanges[col];
+      const number = Math.floor(Math.random() * (max - min + 1)) + min;
+      
+      if (!rowNumbers.includes(number)) {
+        rowNumbers.push(number);
+        usedColumns.add(col);
+      }
+    }
+    
+    // Sort numbers for this row
+    rowNumbers.sort((a, b) => a - b);
+    
+    // Create row with numbers and empty spaces
+    const fullRow: number[] = new Array(9).fill(0);
+    const positions = Array.from(usedColumns).sort((a, b) => a - b);
+    
+    for (let i = 0; i < positions.length; i++) {
+      fullRow[positions[i]] = rowNumbers[i];
+    }
+    
+    ticket[row] = fullRow;
+  }
+  
+  return {
+    ticketId,
+    rows: ticket,
+    isBooked: false
+  };
+};
 
-  // NEW: Get single game data (for controller use)
+// ================== FIREBASE SERVICE CLASS ==================
+
+class FirebaseService {
+  
+  // ================== AUTHENTICATION ==================
+  
+  async signIn(email: string, password: string): Promise<HostUser> {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userData = await this.getUserData(userCredential.user.uid);
+      if (!userData) {
+        throw new Error('User data not found');
+      }
+      return userData;
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to sign in');
+    }
+  }
+
+  async signUp(email: string, password: string, userData: Partial<HostUser>): Promise<HostUser> {
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const hostUser: HostUser = {
+        uid: userCredential.user.uid,
+        email,
+        role: 'host',
+        ...userData
+      } as HostUser;
+      
+      await set(ref(database, `users/${userCredential.user.uid}`), removeUndefinedValues(hostUser));
+      return hostUser;
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to create account');
+    }
+  }
+
+  async signOut(): Promise<void> {
+    try {
+      await signOut(auth);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to sign out');
+    }
+  }
+
+  async getUserData(uid: string): Promise<HostUser | null> {
+    try {
+      const userSnapshot = await get(ref(database, `users/${uid}`));
+      return userSnapshot.exists() ? userSnapshot.val() as HostUser : null;
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      return null;
+    }
+  }
+
+  onAuthStateChanged(callback: (user: HostUser | null) => void): () => void {
+    return onAuthStateChanged(auth, async (firebaseUser: User | null) => {
+      if (firebaseUser) {
+        const userData = await this.getUserData(firebaseUser.uid);
+        callback(userData);
+      } else {
+        callback(null);
+      }
+    });
+  }
+
+  // ================== HOST SETTINGS ==================
+
+  async saveHostSettings(hostId: string, settings: HostSettings): Promise<void> {
+    try {
+      await set(ref(database, `hostSettings/${hostId}`), removeUndefinedValues(settings));
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to save host settings');
+    }
+  }
+
+  async getHostSettings(hostId: string): Promise<HostSettings | null> {
+    try {
+      const settingsSnapshot = await get(ref(database, `hostSettings/${hostId}`));
+      return settingsSnapshot.exists() ? settingsSnapshot.val() as HostSettings : null;
+    } catch (error) {
+      console.error('Error fetching host settings:', error);
+      return null;
+    }
+  }
+
+  // ================== GAME MANAGEMENT ==================
+
+  async createGame(
+    config: CreateGameConfig,
+    hostId: string,
+    ticketSetId: string,
+    selectedPrizes: string[]
+  ): Promise<GameData> {
+    try {
+      console.log(`🎮 Creating game for host ${hostId} with ${config.maxTickets} tickets`);
+
+      // Generate tickets based on selected set
+      const tickets: { [ticketId: string]: TambolaTicket } = {};
+      for (let i = 1; i <= config.maxTickets; i++) {
+        const ticketId = i.toString().padStart(3, '0');
+        tickets[ticketId] = generateTambolaTicket(ticketId);
+      }
+
+      // Initialize selected prizes
+      const availablePrizes = {
+        quickFive: {
+          id: 'quickFive',
+          name: 'Quick Five',
+          pattern: 'First 5 numbers',
+          description: 'First player to mark any 5 numbers',
+          won: false
+        },
+        topLine: {
+          id: 'topLine',
+          name: 'Top Line',
+          pattern: 'Complete top row',
+          description: 'Complete the top row of any ticket',
+          won: false
+        },
+        middleLine: {
+          id: 'middleLine',
+          name: 'Middle Line',
+          pattern: 'Complete middle row',
+          description: 'Complete the middle row of any ticket',
+          won: false
+        },
+        bottomLine: {
+          id: 'bottomLine',
+          name: 'Bottom Line',
+          pattern: 'Complete bottom row',
+          description: 'Complete the bottom row of any ticket',
+          won: false
+        },
+        fullHouse: {
+          id: 'fullHouse',
+          name: 'Full House',
+          pattern: 'All numbers',
+          description: 'Mark all numbers on the ticket',
+          won: false
+        }
+      };
+
+      const prizes: { [prizeId: string]: Prize } = {};
+      for (const prizeId of selectedPrizes) {
+        if (availablePrizes[prizeId as keyof typeof availablePrizes]) {
+          prizes[prizeId] = availablePrizes[prizeId as keyof typeof availablePrizes];
+        }
+      }
+
+      // Create game data
+      const gameData: GameData = {
+        gameId: '', // Will be set after push
+        name: config.name,
+        hostId,
+        hostPhone: config.hostPhone,
+        createdAt: new Date().toISOString(),
+        maxTickets: config.maxTickets,
+        ticketPrice: config.ticketPrice,
+        gameState: {
+          isActive: false,
+          isCountdown: false,
+          countdownTime: 0,
+          gameOver: false,
+          calledNumbers: [],
+          currentNumber: null
+        },
+        tickets,
+        prizes
+      };
+
+      // Save to Firebase
+      const gamesRef = ref(database, 'games');
+      const newGameRef = push(gamesRef);
+      const gameId = newGameRef.key!;
+      
+      gameData.gameId = gameId;
+      
+      await set(newGameRef, removeUndefinedValues(gameData));
+      
+      console.log(`✅ Game created successfully with ID: ${gameId}`);
+      return gameData;
+    } catch (error: any) {
+      console.error('❌ Error creating game:', error);
+      throw new Error(error.message || 'Failed to create game');
+    }
+  }
+
   async getGameData(gameId: string): Promise<GameData | null> {
     try {
       const gameSnapshot = await get(ref(database, `games/${gameId}`));
-      if (!gameSnapshot.exists()) return null;
-      return gameSnapshot.val() as GameData;
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch game data');
+      return gameSnapshot.exists() ? gameSnapshot.val() as GameData : null;
+    } catch (error) {
+      console.error('Error fetching game data:', error);
+      return null;
     }
   }
 
-  // FIXED: Schedule action for synchronized execution
-  async scheduleAction(gameId: string, action: any): Promise<void> {
+  async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void> {
     try {
-      console.log(`📅 Scheduling action: ${action.type} for ${new Date(action.executeAt).toLocaleTimeString()}`);
-      
-      const actionsRef = ref(database, `games/${gameId}/scheduledActions`);
-      const newActionRef = push(actionsRef);
-      
-      // Clean the action data
-      const cleanedAction = removeUndefinedValues(action);
-      await set(newActionRef, cleanedAction);
-      
-      console.log(`✅ Action scheduled successfully: ${newActionRef.key}`);
-    } catch (error: any) {
-      console.error('❌ Failed to schedule action:', error);
-      throw new Error(error.message || 'Failed to schedule action');
-    }
-  }
-
-  // NEW: Clear all scheduled actions
-  async clearScheduledActions(gameId: string): Promise<void> {
-    try {
-      console.log(`🧹 Clearing all scheduled actions for game: ${gameId}`);
-      const actionsRef = ref(database, `games/${gameId}/scheduledActions`);
-      await remove(actionsRef);
-      console.log(`✅ Scheduled actions cleared successfully`);
-    } catch (error: any) {
-      console.error('❌ Failed to clear scheduled actions:', error);
-      throw new Error(error.message || 'Failed to clear scheduled actions');
-    }
-  }
-
-  // UPDATED: Update game state with better logging
-  async updateGameState(gameId: string, gameState: any): Promise<void> {
-    try {
-      console.log(`🎮 Updating game state:`, {
-        isActive: gameState.isActive,
-        isCountdown: gameState.isCountdown,
-        gameOver: gameState.gameOver,
-        currentNumber: gameState.currentNumber
-      });
-
-      const cleanedGameState = removeUndefinedValues({ gameState });
-      await update(ref(database, `games/${gameId}`), cleanedGameState);
-      
+      const cleanUpdates = removeUndefinedValues(updates);
+      await update(ref(database, `games/${gameId}/gameState`), cleanUpdates);
       console.log(`✅ Game state updated successfully`);
     } catch (error: any) {
-      console.error('❌ Failed to update game state:', error);
+      console.error('❌ Error updating game state:', error);
       throw new Error(error.message || 'Failed to update game state');
     }
   }
 
-  // Admin operations
-  async loginAdmin(email: string, password: string): Promise<AdminUser | null> {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
-      if (!adminSnapshot.exists()) {
-        throw new Error(`Admin record not found for ${user.email}. Please contact system administrator.`);
-      }
-
-      const adminData = adminSnapshot.val() as AdminUser;
-      
-      if (!adminData.permissions?.createHosts) {
-        throw new Error('Admin account does not have sufficient permissions.');
-      }
-
-      return adminData;
-    } catch (error: any) {
-      console.error('Admin login failed:', error);
-      throw new Error(error.message || 'Admin login failed');
-    }
-  }
-
-  // Host operations
-  async loginHost(email: string, password: string): Promise<HostUser | null> {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
-      if (!hostSnapshot.exists()) {
-        throw new Error('Host account not found. Please contact administrator.');
-      }
-
-      const hostData = hostSnapshot.val() as HostUser;
-      if (!hostData.isActive) {
-        throw new Error('Host account is deactivated');
-      }
-
-      const subscriptionEnd = new Date(hostData.subscriptionEndDate);
-      if (subscriptionEnd < new Date()) {
-        throw new Error('Host subscription has expired');
-      }
-
-      return hostData;
-    } catch (error: any) {
-      console.error('Host login failed:', error);
-      throw new Error(error.message || 'Host login failed');
-    }
-  }
-
-  // Create host with credential switch
-  async createHost(
-    email: string, 
-    password: string, 
-    name: string, 
-    phone: string,
-    adminUid: string, 
-    subscriptionMonths: number = 12
-  ): Promise<HostUser> {
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser || currentUser.uid !== adminUid) {
-        throw new Error('Admin authorization failed. Please log in again.');
-      }
-
-      const adminSnapshot = await get(ref(database, `admins/${adminUid}`));
-      if (!adminSnapshot.exists() || !adminSnapshot.val().permissions?.createHosts) {
-        throw new Error('Admin does not have permission to create hosts.');
-      }
-
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const newUser = userCredential.user;
-
-      const subscriptionEndDate = new Date();
-      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
-
-      const hostData: HostUser = {
-        uid: newUser.uid,
-        email,
-        name,
-        phone,
-        role: 'host',
-        createdBy: adminUid,
-        createdAt: new Date().toISOString(),
-        subscriptionEndDate: subscriptionEndDate.toISOString(),
-        isActive: true
-      };
-
-      await set(ref(database, `hosts/${newUser.uid}`), removeUndefinedValues(hostData));
-
-      await signOut(auth);
-
-      throw new Error(`SUCCESS: Host account created for ${email}! Please log in again as admin to continue.`);
-
-    } catch (error: any) {
-      try { await signOut(auth); } catch {}
-      throw new Error(error.message || 'Failed to create host');
-    }
-  }
-
-  async getHostById(hostId: string): Promise<HostUser | null> {
-    try {
-      const hostSnapshot = await get(ref(database, `hosts/${hostId}`));
-      if (!hostSnapshot.exists()) return null;
-      return hostSnapshot.val() as HostUser;
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch host');
-    }
-  }
-
-  // OPTIMIZED: Only get essential data for active games list
-  async getAllActiveGames(): Promise<GameData[]> {
-    try {
-      const gamesSnapshot = await get(ref(database, 'games'));
-      if (!gamesSnapshot.exists()) return [];
-      
-      const gamesData = gamesSnapshot.val();
-      const activeGames: GameData[] = [];
-      
-      // Process each game without loading all ticket data
-      for (const [gameId, gameData] of Object.entries(gamesData)) {
-        const game = gameData as GameData;
-        
-        // Skip finished games
-        if (game.gameState.gameOver) continue;
-        
-        // For active games, only include essential data
-        activeGames.push({
-          ...game,
-          tickets: {} // Don't load tickets for list view
-        });
-      }
-      
-      return activeGames;
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch active games');
-    }
-  }
-
-  async getAllHosts(): Promise<HostUser[]> {
-    try {
-      const hostsSnapshot = await get(ref(database, 'hosts'));
-      if (!hostsSnapshot.exists()) return [];
-      
-      const hostsData = hostsSnapshot.val();
-      return Object.values(hostsData) as HostUser[];
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch hosts');
-    }
-  }
-
-  async updateHost(hostId: string, updates: Partial<HostUser>): Promise<void> {
-    try {
-      const cleanedUpdates = removeUndefinedValues(updates);
-      await update(ref(database, `hosts/${hostId}`), cleanedUpdates);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to update host');
-    }
-  }
-
-  async deleteHost(hostId: string): Promise<void> {
-    try {
-      await remove(ref(database, `hosts/${hostId}`));
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to delete host');
-    }
-  }
-
-  async changeHostPassword(hostId: string, newPassword: string): Promise<void> {
-    try {
-      const user = auth.currentUser;
-      if (user && user.uid === hostId) {
-        await updatePassword(user, newPassword);
-      } else {
-        throw new Error('Cannot change password for different user');
-      }
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to change password');
-    }
-  }
-
-  async extendHostSubscription(hostId: string, additionalMonths: number): Promise<void> {
-    try {
-      const hostSnapshot = await get(ref(database, `hosts/${hostId}`));
-      if (!hostSnapshot.exists()) {
-        throw new Error('Host not found');
-      }
-
-      const hostData = hostSnapshot.val() as HostUser;
-      const currentEnd = new Date(hostData.subscriptionEndDate);
-      const newEnd = new Date(currentEnd);
-      newEnd.setMonth(newEnd.getMonth() + additionalMonths);
-
-      const updateData = removeUndefinedValues({
-        subscriptionEndDate: newEnd.toISOString(),
-        updatedAt: new Date().toISOString()
-      });
-
-      await update(ref(database, `hosts/${hostId}`), updateData);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to extend subscription');
-    }
-  }
-
-  async toggleHostStatus(hostId: string, isActive: boolean): Promise<void> {
-    try {
-      const updateData = removeUndefinedValues({
-        isActive,
-        updatedAt: new Date().toISOString()
-      });
-      
-      await update(ref(database, `hosts/${hostId}`), updateData);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to update host status');
-    }
-  }
-
-  // Get host's current active game (special handling for HOST_CURRENT)
   async getHostCurrentGame(hostId: string): Promise<GameData | null> {
     try {
       const gamesQuery = query(
@@ -474,298 +400,184 @@ class FirebaseService {
       );
       
       const gamesSnapshot = await get(gamesQuery);
-      if (!gamesSnapshot.exists()) return null;
       
-      const gamesData = gamesSnapshot.val();
-      const games = Object.values(gamesData) as GameData[];
-      
+      if (!gamesSnapshot.exists()) {
+        return null;
+      }
+
+      // Find the most recent non-finished game
+      const games = Object.values(gamesSnapshot.val()) as GameData[];
       const activeGame = games
         .filter(game => !game.gameState.gameOver)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      
+
       return activeGame || null;
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch current game');
+    } catch (error) {
+      console.error('Error fetching host current game:', error);
+      return null;
     }
   }
 
-  // Check if host can create a new game
-  async canHostCreateNewGame(hostId: string): Promise<{
-    canCreate: boolean;
-    reason?: string;
-    existingGameId?: string;
-  }> {
+  async getAllActiveGames(): Promise<GameData[]> {
     try {
-      const existingGame = await this.getHostCurrentGame(hostId);
+      const gamesSnapshot = await get(ref(database, 'games'));
       
-      if (existingGame) {
-        const bookedTickets = existingGame.tickets ? 
-          Object.values(existingGame.tickets).filter(t => t.isBooked).length : 0;
-        
-        return {
-          canCreate: false,
-          reason: `You have an active game "${existingGame.name}" with ${bookedTickets} booked tickets. Please finish or delete it first.`,
-          existingGameId: existingGame.gameId
-        };
+      if (!gamesSnapshot.exists()) {
+        return [];
       }
 
-      return { canCreate: true };
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to check game creation eligibility');
+      const allGames = Object.values(gamesSnapshot.val()) as GameData[];
+      
+      // Return games that are not finished, sorted by creation date
+      return allGames
+        .filter(game => !game.gameState.gameOver)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch (error) {
+      console.error('Error fetching active games:', error);
+      return [];
     }
   }
 
-  // Delete a game
   async deleteGame(gameId: string): Promise<void> {
     try {
-      const gameSnapshot = await get(ref(database, `games/${gameId}`));
+      await remove(ref(database, `games/${gameId}`));
+      console.log(`✅ Game ${gameId} deleted successfully`);
+    } catch (error: any) {
+      console.error('❌ Error deleting game:', error);
+      throw new Error(error.message || 'Failed to delete game');
+    }
+  }
+
+  // ================== TICKET MANAGEMENT ==================
+
+  async bookTicket(
+    ticketId: string, 
+    playerName: string, 
+    playerPhone: string, 
+    gameId: string
+  ): Promise<void> {
+    try {
+      const ticketData = {
+        isBooked: true,
+        playerName: playerName.trim(),
+        playerPhone: playerPhone.trim(),
+        bookedAt: new Date().toISOString()
+      };
+
+      await update(
+        ref(database, `games/${gameId}/tickets/${ticketId}`),
+        removeUndefinedValues(ticketData)
+      );
+      
+      console.log(`✅ Ticket ${ticketId} booked for ${playerName}`);
+    } catch (error: any) {
+      console.error('❌ Error booking ticket:', error);
+      throw new Error(error.message || 'Failed to book ticket');
+    }
+  }
+
+  async unbookTicket(gameId: string, ticketId: string): Promise<void> {
+    try {
+      const ticketData = {
+        isBooked: false,
+        playerName: null,
+        playerPhone: null,
+        bookedAt: null
+      };
+
+      await update(
+        ref(database, `games/${gameId}/tickets/${ticketId}`),
+        ticketData
+      );
+      
+      console.log(`✅ Ticket ${ticketId} unbooked successfully`);
+    } catch (error: any) {
+      console.error('❌ Error unbooking ticket:', error);
+      throw new Error(error.message || 'Failed to unbook ticket');
+    }
+  }
+
+  // ================== AUTOMATIC NUMBER CALLING ==================
+
+  /**
+   * ✅ NEW: Automatic number calling (generates random number)
+   */
+  async callNextNumber(gameId: string): Promise<{
+    success: boolean;
+    number?: number;
+    winners?: { [prizeId: string]: any };
+    announcements?: string[];
+    gameEnded?: boolean;
+  }> {
+    try {
+      console.log(`🎯 Calling next random number for game: ${gameId}`);
+      
+      const gameRef = ref(database, `games/${gameId}`);
+      const gameSnapshot = await get(gameRef);
+      
       if (!gameSnapshot.exists()) {
         throw new Error('Game not found');
       }
 
       const gameData = gameSnapshot.val() as GameData;
+      const calledNumbers = gameData.gameState.calledNumbers || [];
       
-      const currentUser = auth.currentUser;
-      if (!currentUser || currentUser.uid !== gameData.hostId) {
-        throw new Error('You can only delete your own games');
+      // Generate available numbers (1-90)
+      const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
+      const availableNumbers = allNumbers.filter(num => !calledNumbers.includes(num));
+      
+      if (availableNumbers.length === 0) {
+        console.log(`🏁 No more numbers available for game: ${gameId}`);
+        return { 
+          success: true, 
+          gameEnded: true
+        };
       }
 
-      if (gameData.gameState.isActive || gameData.gameState.isCountdown) {
-        throw new Error('Cannot delete a game that is currently running. Please end the game first.');
+      // Select random number
+      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      const selectedNumber = availableNumbers[randomIndex];
+      
+      // Validate the selected number
+      if (typeof selectedNumber !== 'number' || selectedNumber < 1 || selectedNumber > 90) {
+        console.error('❌ Invalid number generated:', selectedNumber);
+        throw new Error(`Invalid number generated: ${selectedNumber}`);
       }
 
-      const bookedTickets = gameData.tickets ? 
-        Object.values(gameData.tickets).filter(ticket => ticket.isBooked).length : 0;
+      console.log(`🎲 Selected number ${selectedNumber} from ${availableNumbers.length} available numbers`);
       
-      if (bookedTickets > 0) {
-        throw new Error(`Cannot delete game with ${bookedTickets} booked tickets. Please contact players first.`);
-      }
-
-      await remove(ref(database, `games/${gameId}`));
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to delete game');
-    }
-  }
-
-  // Host settings operations
-  async saveHostSettings(hostId: string, settings: HostSettings): Promise<void> {
-    try {
-      const settingsData = removeUndefinedValues({
-        ...settings,
-        updatedAt: new Date().toISOString()
-      });
+      // Call the internal validation method
+      const result = await this.processNumberCall(gameId, selectedNumber);
       
-      await set(ref(database, `hostSettings/${hostId}`), settingsData);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to save host settings');
-    }
-  }
-
-  async getHostSettings(hostId: string): Promise<HostSettings | null> {
-    try {
-      const settingsSnapshot = await get(ref(database, `hostSettings/${hostId}`));
-      if (!settingsSnapshot.exists()) return null;
-      return settingsSnapshot.val() as HostSettings;
-    } catch (error: any) {
-      return null;
-    }
-  }
-
-  // OPTIMIZED: Load only required tickets from set
-  async loadTicketSet(setId: string, maxTickets: number): Promise<TicketSetData> {
-    try {
-      // Check cache first
-      const cacheKey = `${setId}-${maxTickets}`;
-      if (ticketSetCache.has(cacheKey)) {
-        return ticketSetCache.get(cacheKey)!;
-      }
-
-      const response = await fetch(`/data/${setId}.json`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ticket set ${setId}`);
-      }
-      
-      const rawData = await response.json() as RawTicketRow[];
-      
-      const tickets: { [key: string]: TambolaTicket } = {};
-      
-      // Group by ticket ID
-      const ticketGroups: { [ticketId: string]: RawTicketRow[] } = {};
-      rawData.forEach(row => {
-        const ticketKey = row.ticketId.toString();
-        if (!ticketGroups[ticketKey]) {
-          ticketGroups[ticketKey] = [];
-        }
-        ticketGroups[ticketKey].push(row);
-      });
-      
-      // Process only the tickets we need
-      const allTicketIds = Object.keys(ticketGroups).sort((a, b) => parseInt(a) - parseInt(b));
-      const ticketsToProcess = Math.min(maxTickets, allTicketIds.length);
-      
-      for (let i = 0; i < ticketsToProcess; i++) {
-        const originalTicketId = allTicketIds[i];
-        const rows = ticketGroups[originalTicketId];
-        
-        if (rows.length === 3) {
-          rows.sort((a, b) => a.rowId - b.rowId);
-          
-          const newTicketId = (i + 1).toString();
-          
-          tickets[newTicketId] = {
-            ticketId: newTicketId,
-            rows: [
-              rows[0].numbers,
-              rows[1].numbers,
-              rows[2].numbers
-            ],
-            isBooked: false
-          };
-        }
-      }
-      
-      const result = {
-        ticketCount: Object.keys(tickets).length,
-        tickets
+      return {
+        ...result,
+        number: selectedNumber
       };
       
-      // Cache the result
-      ticketSetCache.set(cacheKey, result);
-      
-      return result;
-      
     } catch (error: any) {
-      console.error(`Error loading ticket set ${setId}:`, error);
-      return { ticketCount: 0, tickets: {} };
+      console.error('❌ Error in callNextNumber:', error);
+      throw new Error(error.message || 'Failed to call next number');
     }
   }
 
-  // FIXED: Create game with proper scheduledActions initialization
-  async createGame(
-    gameConfig: { name: string; maxTickets: number; ticketPrice: number; hostPhone?: string },
-    hostId: string,
-    ticketSetId: string,
-    selectedPrizes: string[]
-  ): Promise<GameData> {
-    try {
-      const currentUser = auth.currentUser;
-      if (!currentUser || currentUser.uid !== hostId) {
-        throw new Error('Authentication error. Please log in again.');
-      }
-
-      const existingGame = await this.getHostCurrentGame(hostId);
-      if (existingGame) {
-        throw new Error('You already have an active game. Please finish or delete it before creating a new one.');
-      }
-
-      const gameRef = push(ref(database, 'games'));
-      const gameId = gameRef.key!;
-
-      // OPTIMIZED: Only load required tickets
-      const ticketSetData = await this.loadTicketSet(ticketSetId, gameConfig.maxTickets);
-
-      const prizes: { [key: string]: Prize } = {};
-      const prizeDefinitions = {
-        quickFive: { name: 'Quick Five', pattern: 'First 5 numbers' },
-        topLine: { name: 'Top Line', pattern: 'Complete top row' },
-        middleLine: { name: 'Middle Line', pattern: 'Complete middle row' },
-        bottomLine: { name: 'Bottom Line', pattern: 'Complete bottom row' },
-        fourCorners: { name: 'Four Corners', pattern: 'All four corner numbers' },
-        fullHouse: { name: 'Full House', pattern: 'Complete ticket' }
-      };
-
-      selectedPrizes.forEach(prizeId => {
-        if (prizeDefinitions[prizeId as keyof typeof prizeDefinitions]) {
-          const prizeDef = prizeDefinitions[prizeId as keyof typeof prizeDefinitions];
-          prizes[prizeId] = {
-            id: prizeId,
-            name: prizeDef.name,
-            pattern: prizeDef.pattern,
-            won: false
-          };
-        }
-      });
-
-      const gameData: GameData = {
-        gameId,
-        name: gameConfig.name,
-        hostId,
-        hostPhone: gameConfig.hostPhone,
-        maxTickets: gameConfig.maxTickets,
-        ticketPrice: gameConfig.ticketPrice,
-        gameState: {
-          isActive: false,
-          isCountdown: false,
-          countdownTime: 0,
-          gameOver: false,
-          calledNumbers: [],
-          currentNumber: null,
-          callInterval: 5000
-        },
-        prizes,
-        tickets: ticketSetData.tickets,
-        createdAt: new Date().toISOString(),
-        ticketSetId
-        // FIXED: Don't initialize scheduledActions here - let Firebase handle it
-      };
-
-      const cleanedGameData = removeUndefinedValues(gameData);
-      await set(gameRef, cleanedGameData);
-      
-      console.log(`🎮 Game created successfully: ${gameId}`);
-      return gameData;
-    } catch (error: any) {
-      console.error('Game creation failed:', error);
-      throw new Error(error.message || 'Failed to create game');
-    }
-  }
-
-  async updateGameData(gameId: string, gameData: Partial<GameData>): Promise<void> {
-    try {
-      const gameSnapshot = await get(ref(database, `games/${gameId}`));
-      if (!gameSnapshot.exists()) {
-        throw new Error('Game not found');
-      }
-
-      const currentGameData = gameSnapshot.val() as GameData;
-      
-      const currentUser = auth.currentUser;
-      if (!currentUser || currentUser.uid !== currentGameData.hostId) {
-        throw new Error('You can only modify your own games');
-      }
-
-      if (currentGameData.gameState.isActive || currentGameData.gameState.isCountdown) {
-        throw new Error('Cannot modify game settings while game is running');
-      }
-
-      if (gameData.maxTickets !== undefined) {
-        const bookedCount = currentGameData.tickets ? 
-          Object.values(currentGameData.tickets).filter(ticket => ticket.isBooked).length : 0;
-        
-        if (gameData.maxTickets < bookedCount) {
-          throw new Error(`Cannot reduce max tickets below ${bookedCount} (current bookings)`);
-        }
-      }
-
-      const cleanedGameData = removeUndefinedValues(gameData);
-      await update(ref(database, `games/${gameId}`), cleanedGameData);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to update game data');
-    }
-  }
-
-  async callNumber(gameId: string, number: number) {
-    return this.callNumberWithPrizeValidation(gameId, number);
-  }
-
-  async callNumberWithPrizeValidation(gameId: string, number: number): Promise<{
+  /**
+   * ✅ RENAMED: Internal method for processing number calls (was callNumberWithPrizeValidation)
+   */
+  private async processNumberCall(gameId: string, number: number): Promise<{
     success: boolean;
     winners?: { [prizeId: string]: any };
     announcements?: string[];
     gameEnded?: boolean;
   }> {
     try {
+      // Input validation
+      if (typeof number !== 'number' || number < 1 || number > 90 || !Number.isInteger(number)) {
+        console.error('❌ Invalid number provided:', number);
+        throw new Error(`Invalid number: ${number}. Must be integer between 1-90.`);
+      }
+
+      console.log(`📞 Processing number call: ${number} for game: ${gameId}`);
+      
       const gameRef = ref(database, `games/${gameId}`);
       const gameSnapshot = await get(gameRef);
       
@@ -776,11 +588,19 @@ class FirebaseService {
       const gameData = gameSnapshot.val() as GameData;
       const currentCalledNumbers = gameData.gameState.calledNumbers || [];
       
+      // Check if number already called
       if (currentCalledNumbers.includes(number)) {
+        console.warn(`⚠️ Number ${number} already called`);
         return { success: false };
       }
 
       const updatedCalledNumbers = [...currentCalledNumbers, number];
+      
+      // Validate the array before updating
+      if (updatedCalledNumbers.some(n => typeof n !== 'number' || n < 1 || n > 90)) {
+        console.error('❌ Invalid numbers in calledNumbers array:', updatedCalledNumbers);
+        throw new Error('Invalid numbers detected in calledNumbers array');
+      }
       
       const unwonPrizes = Object.fromEntries(
         Object.entries(gameData.prizes).filter(([_, prize]) => !prize.won)
@@ -792,6 +612,7 @@ class FirebaseService {
         unwonPrizes
       );
       
+      // Clean game state updates
       const gameUpdates: any = {
         gameState: removeUndefinedValues({
           ...gameData.gameState,
@@ -802,6 +623,7 @@ class FirebaseService {
 
       const announcements: string[] = [];
 
+      // Handle prize wins
       if (Object.keys(validationResult.winners).length > 0) {
         for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
           const prizeData = prizeWinners as any;
@@ -822,6 +644,7 @@ class FirebaseService {
         gameUpdates.lastWinnerAt = new Date().toISOString();
       }
 
+      // Check if game should end
       const allPrizesAfterUpdate = { ...gameData.prizes };
       if (Object.keys(validationResult.winners).length > 0) {
         for (const prizeId of Object.keys(validationResult.winners)) {
@@ -833,6 +656,8 @@ class FirebaseService {
       let gameEnded = false;
 
       if (allPrizesWon || updatedCalledNumbers.length >= 90) {
+        console.log(`🏁 Game ${gameId} ending - All prizes won: ${allPrizesWon}, Numbers called: ${updatedCalledNumbers.length}/90`);
+        
         gameUpdates.gameState = removeUndefinedValues({
           ...gameData.gameState,
           calledNumbers: updatedCalledNumbers,
@@ -854,242 +679,67 @@ class FirebaseService {
       };
       
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to call number with prize validation');
+      console.error('❌ Error in processNumberCall:', error);
+      throw new Error(error.message || 'Failed to process number call');
     }
   }
 
-  // OPTIMIZED: Batch book multiple tickets at once
-  async bookTicketsBatch(
-    ticketIds: string[], 
-    playerName: string, 
-    playerPhone: string, 
-    gameId: string
-  ): Promise<void> {
-    try {
-      const bookingData = removeUndefinedValues({
-        isBooked: true,
-        playerName: playerName.trim(),
-        playerPhone: playerPhone.trim() || null,
-        bookedAt: new Date().toISOString()
-      });
+  // ================== PRIZE VALIDATION ==================
 
-      // Create batch update object
-      const updates: { [key: string]: any } = {};
-      
-      // Prepare all updates
-      ticketIds.forEach(ticketId => {
-        updates[`games/${gameId}/tickets/${ticketId}`] = {
-          ...bookingData,
-          ticketId // Ensure ticketId is preserved
-        };
-      });
-
-      // Execute all updates in a single operation
-      await update(ref(database), updates);
-      
-    } catch (error: any) {
-      console.error('Batch book tickets error:', error);
-      throw new Error(error.message || 'Failed to book tickets');
-    }
-  }
-
-  // OPTIMIZED: Book ticket without loading entire ticket set
-  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<void> {
-    try {
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      
-      // First check if ticket exists and is available
-      const ticketSnapshot = await get(ticketRef);
-      if (!ticketSnapshot.exists()) {
-        throw new Error(`Ticket ${ticketId} does not exist`);
-      }
-      
-      const ticketData = ticketSnapshot.val();
-      if (ticketData.isBooked) {
-        throw new Error(`Ticket ${ticketId} is already booked`);
-      }
-      
-      // Update only the booking fields
-      const bookingData = removeUndefinedValues({
-        isBooked: true,
-        playerName: playerName.trim(),
-        playerPhone: playerPhone.trim() || null,
-        bookedAt: new Date().toISOString()
-      });
-
-      // Use update instead of set to avoid overwriting ticket data
-      await update(ticketRef, bookingData);
-    } catch (error: any) {
-      console.error('Book ticket error:', error);
-      throw new Error(error.message || 'Failed to book ticket');
-    }
-  }
-
-  async updateTicket(gameId: string, ticketId: string, ticketData: Partial<TambolaTicket>): Promise<void> {
-    try {
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      
-      const updatedData = removeUndefinedValues({
-        ...ticketData,
-        updatedAt: new Date().toISOString()
-      });
-
-      await update(ticketRef, updatedData);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to update ticket');
-    }
-  }
-
-  async unbookTicket(gameId: string, ticketId: string): Promise<void> {
-    try {
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      
-      const unbookingData = removeUndefinedValues({
-        isBooked: false,
-        playerName: null,
-        playerPhone: null,
-        bookedAt: null,
-        updatedAt: new Date().toISOString()
-      });
-
-      await update(ticketRef, unbookingData);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to cancel booking');
-    }
-  }
-
-  // OPTIMIZED: Subscription with minimal data transfer
-  subscribeToGame(gameId: string, callback: (game: GameData | null) => void): () => void {
-    const gameRef = ref(database, `games/${gameId}`);
-    
-    const unsubscribe = onValue(gameRef, (snapshot) => {
-      if (snapshot.exists()) {
-        callback(snapshot.val() as GameData);
-      } else {
-        callback(null);
-      }
-    }, {
-      // Only sync once initially, then listen for changes
-      onlyOnce: false
-    });
-
-    return () => off(gameRef, 'value', unsubscribe);
-  }
-
-  subscribeToTickets(gameId: string, callback: (tickets: { [key: string]: TambolaTicket } | null) => void): () => void {
-    const ticketsRef = ref(database, `games/${gameId}/tickets`);
-    
-    const unsubscribe = onValue(ticketsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        callback(snapshot.val());
-      } else {
-        callback(null);
-      }
-    }, {
-      onlyOnce: false
-    });
-
-    return () => off(ticketsRef, 'value', unsubscribe);
-  }
-
-  subscribeToHosts(callback: (hosts: HostUser[]) => void): () => void {
-    const hostsRef = ref(database, 'hosts');
-    
-    const unsubscribe = onValue(hostsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const hostsData = snapshot.val();
-        const hosts = Object.values(hostsData) as HostUser[];
-        callback(hosts);
-      } else {
-        callback([]);
-      }
-    });
-
-    return () => off(hostsRef, 'value', unsubscribe);
-  }
-
-  subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
-    const gamesRef = ref(database, 'games');
-    
-    const unsubscribe = onValue(gamesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const gamesData = snapshot.val();
-        const activeGames: GameData[] = [];
-        
-        // Process games without loading all ticket data
-        for (const [gameId, gameData] of Object.entries(gamesData)) {
-          const game = gameData as GameData;
-          
-          if (!game.gameState.gameOver) {
-            activeGames.push({
-              ...game,
-              tickets: {} // Don't load tickets for list view
-            });
-          }
-        }
-        
-        callback(activeGames);
-      } else {
-        callback([]);
-      }
-    });
-
-    return () => off(gamesRef, 'value', unsubscribe);
-  }
-
-  // Authentication
-  async getUserData(): Promise<AdminUser | HostUser | null> {
-    const user = auth.currentUser;
-    if (!user) return null;
-
-    try {
-      const adminSnapshot = await get(ref(database, `admins/${user.uid}`));
-      if (adminSnapshot.exists()) {
-        return adminSnapshot.val() as AdminUser;
-      }
-
-      const hostSnapshot = await get(ref(database, `hosts/${user.uid}`));
-      if (hostSnapshot.exists()) {
-        return hostSnapshot.val() as HostUser;
-      }
-
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  async logout(): Promise<void> {
-    try {
-      await signOut(auth);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to logout');
-    }
-  }
-
-  private async validateTicketsForPrizes(
-    tickets: { [key: string]: TambolaTicket },
+  async validateTicketsForPrizes(
+    tickets: { [ticketId: string]: TambolaTicket },
     calledNumbers: number[],
-    prizes: { [key: string]: Prize }
-  ): Promise<{
-    winners: { [prizeId: string]: any };
-    statistics: any;
-  }> {
-    const bookedTickets = Object.values(tickets).filter(ticket => ticket.isBooked);
-    const calledSet = new Set(calledNumbers);
+    prizes: { [prizeId: string]: Prize }
+  ): Promise<{ winners: { [prizeId: string]: any } }> {
     const winners: { [prizeId: string]: any } = {};
-    
+
     for (const [prizeId, prize] of Object.entries(prizes)) {
       if (prize.won) continue;
 
-      const prizeWinners: any[] = [];
+      const prizeWinners: { name: string; ticketId: string; phone?: string }[] = [];
 
-      for (const ticket of bookedTickets) {
-        const isWinner = this.checkTicketForPrize(ticket, calledSet, prize);
-        if (isWinner) {
+      for (const [ticketId, ticket] of Object.entries(tickets)) {
+        if (!ticket.isBooked || !ticket.playerName) continue;
+
+        let hasWon = false;
+
+        switch (prizeId) {
+          case 'quickFive': {
+            const ticketNumbers = ticket.rows.flat().filter(n => n > 0);
+            const markedCount = ticketNumbers.filter(n => calledNumbers.includes(n)).length;
+            hasWon = markedCount >= 5;
+            break;
+          }
+
+          case 'topLine': {
+            const topLineNumbers = ticket.rows[0].filter(n => n > 0);
+            hasWon = topLineNumbers.every(n => calledNumbers.includes(n));
+            break;
+          }
+
+          case 'middleLine': {
+            const middleLineNumbers = ticket.rows[1].filter(n => n > 0);
+            hasWon = middleLineNumbers.every(n => calledNumbers.includes(n));
+            break;
+          }
+
+          case 'bottomLine': {
+            const bottomLineNumbers = ticket.rows[2].filter(n => n > 0);
+            hasWon = bottomLineNumbers.every(n => calledNumbers.includes(n));
+            break;
+          }
+
+          case 'fullHouse': {
+            const allTicketNumbers = ticket.rows.flat().filter(n => n > 0);
+            hasWon = allTicketNumbers.every(n => calledNumbers.includes(n));
+            break;
+          }
+        }
+
+        if (hasWon) {
           prizeWinners.push({
+            name: ticket.playerName,
             ticketId: ticket.ticketId,
-            name: ticket.playerName || 'Unknown Player',
             phone: ticket.playerPhone
           });
         }
@@ -1098,122 +748,57 @@ class FirebaseService {
       if (prizeWinners.length > 0) {
         winners[prizeId] = {
           prizeName: prize.name,
-          prizePattern: prize.pattern,
-          winners: prizeWinners,
-          winningNumber: calledNumbers[calledNumbers.length - 1]
+          winners: prizeWinners
         };
       }
     }
 
-    return {
-      winners,
-      statistics: {
-        totalTickets: Object.keys(tickets).length,
-        bookedTickets: bookedTickets.length,
-        calledNumbers: calledNumbers.length,
-        newWinners: Object.keys(winners).length
-      }
-    };
+    return { winners };
   }
 
-  private checkTicketForPrize(
-    ticket: TambolaTicket,
-    calledNumbers: Set<number>,
-    prize: Prize
-  ): boolean {
-    switch (prize.id) {
-      case 'quickFive':
-        return this.checkQuickFive(ticket, calledNumbers);
-      case 'topLine':
-        return this.checkTopLine(ticket, calledNumbers);
-      case 'middleLine':
-        return this.checkMiddleLine(ticket, calledNumbers);
-      case 'bottomLine':
-        return this.checkBottomLine(ticket, calledNumbers);
-      case 'fourCorners':
-        return this.checkFourCorners(ticket, calledNumbers);
-      case 'fullHouse':
-        return this.checkFullHouse(ticket, calledNumbers);
-      default:
-        return false;
-    }
-  }
+  // ================== REAL-TIME SUBSCRIPTIONS ==================
 
-  private checkQuickFive(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
-    let markedCount = 0;
-    for (const row of ticket.rows) {
-      for (const number of row) {
-        if (number !== 0 && calledNumbers.has(number)) {
-          markedCount++;
-          if (markedCount >= 5) return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  private checkTopLine(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
-    if (ticket.rows.length === 0) return false;
-    const topRow = ticket.rows[0];
+  subscribeToGame(gameId: string, callback: (gameData: GameData | null) => void): () => void {
+    const gameRef = ref(database, `games/${gameId}`);
     
-    for (const number of topRow) {
-      if (number !== 0 && !calledNumbers.has(number)) {
-        return false;
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const gameData = snapshot.val() as GameData;
+        callback(gameData);
+      } else {
+        callback(null);
       }
-    }
-    return true;
+    }, (error) => {
+      console.error('Firebase subscription error:', error);
+      callback(null);
+    });
+
+    return () => off(gameRef, 'value', unsubscribe);
   }
 
-  private checkMiddleLine(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
-    if (ticket.rows.length < 2) return false;
-    const middleRow = ticket.rows[1];
+  subscribeToGames(callback: (games: GameData[]) => void): () => void {
+    const gamesRef = ref(database, 'games');
     
-    for (const number of middleRow) {
-      if (number !== 0 && !calledNumbers.has(number)) {
-        return false;
+    const unsubscribe = onValue(gamesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const allGames = Object.values(snapshot.val()) as GameData[];
+        const activeGames = allGames
+          .filter(game => !game.gameState.gameOver)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        callback(activeGames);
+      } else {
+        callback([]);
       }
-    }
-    return true;
-  }
+    }, (error) => {
+      console.error('Games subscription error:', error);
+      callback([]);
+    });
 
-  private checkBottomLine(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
-    if (ticket.rows.length < 3) return false;
-    const bottomRow = ticket.rows[2];
-    
-    for (const number of bottomRow) {
-      if (number !== 0 && !calledNumbers.has(number)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private checkFourCorners(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
-    if (ticket.rows.length < 3) return false;
-
-    const topRow = ticket.rows[0];
-    const bottomRow = ticket.rows[2];
-    
-    const topLeft = topRow.find(num => num !== 0);
-    const topRight = topRow.slice().reverse().find(num => num !== 0);
-    const bottomLeft = bottomRow.find(num => num !== 0);
-    const bottomRight = bottomRow.slice().reverse().find(num => num !== 0);
-
-    const corners = [topLeft, topRight, bottomLeft, bottomRight].filter(num => num !== undefined);
-    
-    return corners.length === 4 && corners.every(corner => calledNumbers.has(corner!));
-  }
-
-  private checkFullHouse(ticket: TambolaTicket, calledNumbers: Set<number>): boolean {
-    for (const row of ticket.rows) {
-      for (const number of row) {
-        if (number !== 0 && !calledNumbers.has(number)) {
-          return false;
-        }
-      }
-    }
-    return true;
+    return () => off(gamesRef, 'value', unsubscribe);
   }
 }
 
+// ================== EXPORT SINGLETON ==================
+
 export const firebaseService = new FirebaseService();
+export default firebaseService;
