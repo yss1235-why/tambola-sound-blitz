@@ -1,7 +1,7 @@
-// src/providers/GameDataProvider.tsx - FIXED: Stable Subscription System
+// src/providers/GameDataProvider.tsx - FIXED: Simplified subscription system without scheduled actions
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { firebaseService, GameData } from '@/services/firebase';
-import { gameController, ScheduledAction } from '@/services/GameController';
+import { gameController } from '@/services/GameController';
 
 interface GameDataContextType {
   gameData: GameData | null;
@@ -9,7 +9,7 @@ interface GameDataContextType {
   error: string | null;
   // Computed states for convenience
   currentPhase: 'creation' | 'booking' | 'countdown' | 'playing' | 'finished';
-  timeUntilAction: number; // seconds until next scheduled action
+  timeUntilAction: number; // seconds until next action (countdown only)
   isHost: boolean;
 }
 
@@ -40,9 +40,8 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
 
   // Refs for cleanup and state management
   const subscriptionRef = useRef<(() => void) | null>(null);
-  const actionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const currentGameIdRef = useRef<string | null>(null); // Track current gameId
+  const currentGameIdRef = useRef<string | null>(null);
 
   // Determine current game phase
   const currentPhase = (): 'creation' | 'booking' | 'countdown' | 'playing' | 'finished' => {
@@ -56,87 +55,7 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   // Check if current user is host
   const isHost = gameData?.hostId === userId;
 
-  // FIXED: Execute scheduled actions with stable function (no dependencies on gameData)
-  const executeScheduledAction = useCallback(async (action: ScheduledAction, targetGameId: string) => {
-    try {
-      console.log(`🎬 Executing scheduled action: ${action.type} at ${new Date().toLocaleTimeString()}`);
-
-      switch (action.type) {
-        case 'START_COUNTDOWN':
-          await firebaseService.updateGameState(targetGameId, {
-            isCountdown: true,
-            countdownTime: action.data.countdownDuration,
-            isActive: false
-          } as any);
-
-          // Schedule actual game start
-          const gameStartTime = Date.now() + (action.data.countdownDuration * 1000);
-          await gameController.executeGameStart(targetGameId);
-          break;
-
-        case 'START_GAME':
-          await firebaseService.updateGameState(targetGameId, {
-            isActive: true,
-            isCountdown: false,
-            countdownTime: 0
-          } as any);
-          break;
-
-        case 'CALL_NUMBER':
-          // Get fresh game data to check if still active
-          const freshGameData = await firebaseService.getGameData(targetGameId);
-          if (freshGameData?.gameState.isActive && !freshGameData?.gameState.gameOver) {
-            await gameController.executeNumberCall(targetGameId);
-          }
-          break;
-
-        case 'END_GAME':
-          await gameController.executeGameEnd(targetGameId);
-          break;
-      }
-    } catch (error: any) {
-      console.error(`❌ Failed to execute scheduled action:`, error);
-      setError(`Action failed: ${error.message}`);
-    }
-  }, []); // FIXED: No dependencies to prevent recreation
-
-  // FIXED: Process scheduled actions with proper Firebase object handling
-  const processScheduledActions = useCallback((updatedGameData: GameData) => {
-    // FIXED: Convert Firebase object to array
-    const scheduledActionsObj = (updatedGameData as any).scheduledActions || {};
-    const scheduledActions = Object.values(scheduledActionsObj) as ScheduledAction[];
-    const now = Date.now();
-
-    console.log(`📅 Processing ${scheduledActions.length} scheduled actions`);
-
-    // Clear existing timer
-    if (actionTimerRef.current) {
-      clearTimeout(actionTimerRef.current);
-      actionTimerRef.current = null;
-    }
-
-    // Find next action to execute
-    const nextAction = scheduledActions
-      .filter((action: ScheduledAction) => action.executeAt > now)
-      .sort((a: ScheduledAction, b: ScheduledAction) => a.executeAt - b.executeAt)[0];
-
-    if (nextAction) {
-      const delay = nextAction.executeAt - now;
-      setTimeUntilAction(Math.ceil(delay / 1000));
-
-      // Schedule execution with game ID passed directly
-      actionTimerRef.current = setTimeout(() => {
-        executeScheduledAction(nextAction, updatedGameData.gameId);
-      }, delay);
-
-      console.log(`⏰ Next action ${nextAction.type} scheduled in ${Math.ceil(delay / 1000)} seconds`);
-    } else {
-      setTimeUntilAction(0);
-      console.log(`⏰ No pending actions found`);
-    }
-  }, [executeScheduledAction]); // FIXED: Only depends on stable executeScheduledAction
-
-  // FIXED: Handle countdown updates without affecting main subscription
+  // ✅ FIXED: Simple countdown handling without conflicts
   useEffect(() => {
     if (gameData?.gameState.isCountdown) {
       // Clear existing countdown timer
@@ -147,6 +66,7 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       let remainingTime = gameData.gameState.countdownTime || 0;
       setTimeUntilAction(remainingTime);
 
+      // Simple countdown display timer (doesn't affect game logic)
       countdownTimerRef.current = setInterval(() => {
         remainingTime--;
         setTimeUntilAction(Math.max(0, remainingTime));
@@ -164,6 +84,7 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
         clearInterval(countdownTimerRef.current);
         countdownTimerRef.current = null;
       }
+      setTimeUntilAction(0);
     }
 
     return () => {
@@ -172,9 +93,9 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
         countdownTimerRef.current = null;
       }
     };
-  }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime]); // Stable dependencies
+  }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime]);
 
-  // FIXED: Simplified subscription setup
+  // ✅ FIXED: Simplified subscription setup
   const setupSubscription = useCallback(async (targetGameId: string) => {
     console.log(`🔔 Setting up subscription for game: ${targetGameId}`);
     
@@ -184,10 +105,10 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       subscriptionRef.current = null;
     }
 
-    // Clear all timers
-    if (actionTimerRef.current) {
-      clearTimeout(actionTimerRef.current);
-      actionTimerRef.current = null;
+    // Clear countdown timer
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
 
     try {
@@ -209,7 +130,7 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       // Store the current game ID
       currentGameIdRef.current = actualGameId;
 
-      // Create subscription
+      // ✅ FIXED: Simple subscription - no scheduled actions processing
       const unsubscribe = firebaseService.subscribeToGame(actualGameId, (updatedGameData) => {
         // Check if this is still the current subscription
         if (currentGameIdRef.current !== actualGameId) {
@@ -231,8 +152,7 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
           setIsLoading(false);
           setError(null);
 
-          // Process scheduled actions
-          processScheduledActions(updatedGameData);
+          // ✅ REMOVED: No scheduled actions processing - controller handles everything
         } else {
           // Game was deleted
           setGameData(null);
@@ -249,9 +169,9 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       setIsLoading(false);
       setError(error.message || 'Failed to load game');
     }
-  }, [userId, processScheduledActions]); // Stable dependencies
+  }, [userId]);
 
-  // FIXED: Main subscription effect with stable dependencies
+  // ✅ FIXED: Main subscription effect with stable dependencies
   useEffect(() => {
     if (!gameId) {
       // Clean up everything
@@ -273,9 +193,9 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       setupSubscription(gameId);
     }
 
-  }, [gameId, setupSubscription]); // FIXED: Only gameId and stable setupSubscription
+  }, [gameId, setupSubscription]);
 
-  // FIXED: Cleanup on unmount
+  // ✅ FIXED: Cleanup on unmount
   useEffect(() => {
     return () => {
       console.log(`🧹 Cleaning up GameDataProvider`);
@@ -283,10 +203,6 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       if (subscriptionRef.current) {
         subscriptionRef.current();
         subscriptionRef.current = null;
-      }
-      if (actionTimerRef.current) {
-        clearTimeout(actionTimerRef.current);
-        actionTimerRef.current = null;
       }
       if (countdownTimerRef.current) {
         clearInterval(countdownTimerRef.current);
@@ -322,34 +238,48 @@ export const useGameData = (): GameDataContextType => {
   return context;
 };
 
-// Custom hook for host controls (only works if user is host)
+// ✅ FIXED: Simplified host controls using new controller
 export const useHostControls = () => {
   const { gameData, isHost } = useGameData();
   const gameId = gameData?.gameId;
 
-  // FIXED: Stable controls object
+  // ✅ FIXED: Stable controls object with new controller methods
   const controls = React.useMemo(() => {
     if (!isHost || !gameId) return null;
 
     return {
       async startGame() {
-        await gameController.scheduleGameStart(gameId);
+        console.log('🎮 Host starting game countdown');
+        await gameController.startGameCountdown(gameId);
       },
 
       async pauseGame() {
+        console.log('⏸️ Host pausing game');
         await gameController.pauseGame(gameId);
       },
 
       async resumeGame() {
+        console.log('▶️ Host resuming game');
         await gameController.resumeGame(gameId);
       },
 
       async endGame() {
-        await gameController.executeGameEnd(gameId);
+        console.log('🏁 Host ending game');
+        await gameController.endGame(gameId);
+      },
+
+      async callSpecificNumber(number: number) {
+        console.log(`🎯 Host calling specific number: ${number}`);
+        await gameController.callSpecificNumber(gameId, number);
       },
 
       updateCallInterval(seconds: number) {
+        console.log(`⚙️ Host updating call interval: ${seconds}s`);
         gameController.updateConfig({ callInterval: seconds });
+      },
+
+      async getGameStatus() {
+        return await gameController.getGameStatus(gameId);
       }
     };
   }, [isHost, gameId]);
