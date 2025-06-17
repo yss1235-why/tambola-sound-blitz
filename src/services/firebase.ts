@@ -1,4 +1,4 @@
-// src/services/firebase.ts - Complete Updated Firebase Service with New Architecture Support
+// src/services/firebase.ts - Complete Updated Firebase Service with All Fixes
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -193,23 +193,54 @@ class FirebaseService {
     }
   }
 
-  // NEW: Schedule action for synchronized execution
+  // FIXED: Schedule action for synchronized execution
   async scheduleAction(gameId: string, action: any): Promise<void> {
     try {
+      console.log(`📅 Scheduling action: ${action.type} for ${new Date(action.executeAt).toLocaleTimeString()}`);
+      
       const actionsRef = ref(database, `games/${gameId}/scheduledActions`);
       const newActionRef = push(actionsRef);
-      await set(newActionRef, removeUndefinedValues(action));
+      
+      // Clean the action data
+      const cleanedAction = removeUndefinedValues(action);
+      await set(newActionRef, cleanedAction);
+      
+      console.log(`✅ Action scheduled successfully: ${newActionRef.key}`);
     } catch (error: any) {
+      console.error('❌ Failed to schedule action:', error);
       throw new Error(error.message || 'Failed to schedule action');
     }
   }
 
-  // UPDATED: Update game state with additional scheduled actions support
+  // NEW: Clear all scheduled actions
+  async clearScheduledActions(gameId: string): Promise<void> {
+    try {
+      console.log(`🧹 Clearing all scheduled actions for game: ${gameId}`);
+      const actionsRef = ref(database, `games/${gameId}/scheduledActions`);
+      await remove(actionsRef);
+      console.log(`✅ Scheduled actions cleared successfully`);
+    } catch (error: any) {
+      console.error('❌ Failed to clear scheduled actions:', error);
+      throw new Error(error.message || 'Failed to clear scheduled actions');
+    }
+  }
+
+  // UPDATED: Update game state with better logging
   async updateGameState(gameId: string, gameState: any): Promise<void> {
     try {
+      console.log(`🎮 Updating game state:`, {
+        isActive: gameState.isActive,
+        isCountdown: gameState.isCountdown,
+        gameOver: gameState.gameOver,
+        currentNumber: gameState.currentNumber
+      });
+
       const cleanedGameState = removeUndefinedValues({ gameState });
       await update(ref(database, `games/${gameId}`), cleanedGameState);
+      
+      console.log(`✅ Game state updated successfully`);
     } catch (error: any) {
+      console.error('❌ Failed to update game state:', error);
       throw new Error(error.message || 'Failed to update game state');
     }
   }
@@ -610,7 +641,7 @@ class FirebaseService {
     }
   }
 
-  // OPTIMIZED: Create game with only required tickets
+  // FIXED: Create game with proper scheduledActions initialization
   async createGame(
     gameConfig: { name: string; maxTickets: number; ticketPrice: number; hostPhone?: string },
     hostId: string,
@@ -675,13 +706,14 @@ class FirebaseService {
         prizes,
         tickets: ticketSetData.tickets,
         createdAt: new Date().toISOString(),
-        ticketSetId,
-        scheduledActions: [] // NEW: Initialize empty scheduled actions
+        ticketSetId
+        // FIXED: Don't initialize scheduledActions here - let Firebase handle it
       };
 
       const cleanedGameData = removeUndefinedValues(gameData);
       await set(gameRef, cleanedGameData);
       
+      console.log(`🎮 Game created successfully: ${gameId}`);
       return gameData;
     } catch (error: any) {
       console.error('Game creation failed:', error);
