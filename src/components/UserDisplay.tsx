@@ -1,4 +1,4 @@
-// src/components/UserDisplay.tsx - Pure User Display Component
+// src/components/UserDisplay.tsx - FIXED: Added AudioManager for users
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useGameData } from '@/providers/GameDataProvider';
 import { NumberGrid } from './NumberGrid';
+import { AudioManager } from './AudioManager'; // ✅ FIXED: Added AudioManager
+import { AudioStatusComponent } from './AudioStatusComponent'; // ✅ FIXED: Added audio status
 import { TambolaTicket } from '@/services/firebase';
 
 interface SearchedTicket {
@@ -208,6 +210,9 @@ export const UserDisplay: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* ✅ FIXED: Added Audio Status Component for Users */}
+        <AudioStatusComponent />
+
         {/* Header */}
         <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
           <CardHeader className="text-center">
@@ -432,6 +437,19 @@ export const UserDisplay: React.FC = () => {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {/* ✅ FIXED: Added AudioManager for Users */}
+        {gameData && (
+          <AudioManager
+            currentNumber={gameData.gameState.currentNumber}
+            prizes={Object.values(gameData.prizes)}
+            onAudioComplete={() => {
+              // For users, no callback needed - only hosts need timing control
+              console.log('🔊 User audio announcement completed');
+            }}
+            forceEnable={false} // Let users enable manually
+          />
         )}
       </div>
     </div>
