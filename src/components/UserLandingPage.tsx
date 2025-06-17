@@ -1,5 +1,5 @@
-// src/components/UserLandingPage.tsx - Updated to use new architecture
-import React, { useState, useEffect, useCallback } from 'react';
+// src/components/UserLandingPage.tsx - FIXED: Real-time subscription for auto-view switching
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,12 +44,21 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [selectedGameData, setSelectedGameData] = useState<GameData | null>(null);
 
-  // Fast initial load - get only game summaries
-  const loadGames = useCallback(async () => {
-    try {
-      const games = await firebaseService.getAllActiveGames();
+  // ✅ FIXED: Add real-time subscription refs
+  const gameSubscriptionRef = useRef<(() => void) | null>(null);
+  const gameListSubscriptionRef = useRef<(() => void) | null>(null);
+
+  // ✅ FIXED: Real-time game list subscription
+  const setupGameListSubscription = useCallback(() => {
+    console.log('🔔 Setting up real-time game list subscription');
+    
+    if (gameListSubscriptionRef.current) {
+      gameListSubscriptionRef.current();
+    }
+
+    const unsubscribe = firebaseService.subscribeToAllActiveGames((games) => {
+      console.log('📡 Game list updated in real-time:', games.length);
       
-      // Convert to summaries for faster rendering
       const summaries: GameSummary[] = games.map(game => {
         const bookedTickets = game.tickets ? 
           Object.values(game.tickets).filter(t => t.isBooked).length : 0;
@@ -68,21 +77,69 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
       
       setGameSummaries(summaries);
       setLastUpdate(new Date());
-      
+      setIsLoading(false);
+
       // Auto-select first game if none selected and games available
-      if (summaries.length > 0 && !selectedGameId) {
+      if (summaries.length > 0 && !selectedGameId && currentView === 'list') {
         selectGame(summaries[0].gameId);
       }
-    } catch (error) {
-      console.error('Failed to load games:', error);
-    } finally {
-      setIsLoading(false);
+    });
+
+    gameListSubscriptionRef.current = unsubscribe;
+  }, [selectedGameId, currentView]);
+
+  // ✅ FIXED: Real-time game subscription for auto-view switching
+  const setupGameSubscription = useCallback((gameId: string) => {
+    console.log('🔔 Setting up real-time game subscription for:', gameId);
+    
+    if (gameSubscriptionRef.current) {
+      gameSubscriptionRef.current();
     }
-  }, [selectedGameId]);
+
+    const unsubscribe = firebaseService.subscribeToGame(gameId, (updatedGame) => {
+      if (updatedGame) {
+        console.log('📡 Selected game updated in real-time:', {
+          gameId: updatedGame.gameId,
+          isActive: updatedGame.gameState.isActive,
+          isCountdown: updatedGame.gameState.isCountdown,
+          calledNumbers: updatedGame.gameState.calledNumbers?.length || 0,
+          gameOver: updatedGame.gameState.gameOver
+        });
+
+        setSelectedGameData(updatedGame);
+
+        // ✅ FIXED: Auto-switch views based on game state changes
+        const hasGameStarted = (updatedGame.gameState.calledNumbers?.length || 0) > 0 || 
+                              updatedGame.gameState.isActive || 
+                              updatedGame.gameState.isCountdown ||
+                              updatedGame.gameState.gameOver;
+
+        if (hasGameStarted && currentView === 'booking') {
+          console.log('🎮 Auto-switching to game view - game has started!');
+          setCurrentView('game');
+        } else if (!hasGameStarted && currentView === 'game') {
+          console.log('🎫 Auto-switching to booking view - game reset to booking');
+          setCurrentView('booking');
+        }
+      } else {
+        // Game was deleted
+        console.log('🗑️ Selected game was deleted');
+        setSelectedGameData(null);
+        setCurrentView('list');
+        if (onGameSelection) {
+          onGameSelection('');
+        }
+      }
+    });
+
+    gameSubscriptionRef.current = unsubscribe;
+  }, [currentView, onGameSelection]);
 
   // Select and load game for viewing
   const selectGame = useCallback(async (gameId: string) => {
     try {
+      console.log('🎯 Selecting game:', gameId);
+      
       if (onGameSelection) {
         onGameSelection(gameId);
       }
@@ -92,7 +149,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
       if (gameData) {
         setSelectedGameData(gameData);
         
-        // Determine view based on game state
+        // Determine initial view based on game state
         const hasGameStarted = (gameData.gameState.calledNumbers?.length || 0) > 0 || 
                               gameData.gameState.isActive || 
                               gameData.gameState.isCountdown ||
@@ -103,21 +160,29 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
         } else {
           setCurrentView('booking');
         }
+
+        // ✅ FIXED: Setup real-time subscription for this game
+        setupGameSubscription(gameId);
       }
     } catch (error) {
       console.error('Failed to select game:', error);
     }
-  }, [onGameSelection]);
+  }, [onGameSelection, setupGameSubscription]);
 
-  // Initial load
+  // ✅ FIXED: Setup real-time subscriptions on mount
   useEffect(() => {
-    loadGames();
+    setupGameListSubscription();
     
-    // Setup periodic refresh for game list
-    const interval = setInterval(loadGames, 30000); // Refresh every 30 seconds
-    
-    return () => clearInterval(interval);
-  }, [loadGames]);
+    return () => {
+      // Cleanup all subscriptions
+      if (gameListSubscriptionRef.current) {
+        gameListSubscriptionRef.current();
+      }
+      if (gameSubscriptionRef.current) {
+        gameSubscriptionRef.current();
+      }
+    };
+  }, [setupGameListSubscription]);
 
   // Handle booking
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
@@ -126,21 +191,25 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     try {
       await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGameData.gameId);
       
-      // Refresh game data
-      const updatedGame = await firebaseService.getGameData(selectedGameData.gameId);
-      if (updatedGame) {
-        setSelectedGameData(updatedGame);
-      }
+      // No need to manually refresh - real-time subscription will update automatically
+      console.log('✅ Ticket booked, waiting for real-time update...');
     } catch (error: any) {
       alert(error.message || 'Failed to book ticket');
     }
   };
 
   const handleRefresh = () => {
-    loadGames();
+    // Force refresh game list
+    setupGameListSubscription();
   };
 
   const handleBackToList = () => {
+    // Clean up game subscription
+    if (gameSubscriptionRef.current) {
+      gameSubscriptionRef.current();
+      gameSubscriptionRef.current = null;
+    }
+    
     setCurrentView('list');
     setSelectedGameData(null);
     if (onGameSelection) {
@@ -174,7 +243,14 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
             <Button onClick={handleBackToList} variant="outline">
               ← Back to Games
             </Button>
-            <Badge variant="default">Booking Phase</Badge>
+            <div className="flex items-center space-x-2">
+              <Badge variant="default">Booking Phase</Badge>
+              {/* ✅ FIXED: Real-time indicator */}
+              <Badge variant="outline" className="text-green-600 border-green-400">
+                <Activity className="w-3 h-3 mr-1" />
+                Live Updates
+              </Badge>
+            </div>
           </div>
 
           <TicketBookingGrid 
@@ -214,13 +290,14 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               Join the excitement! Book your tickets and play live Tambola games.
             </p>
             <div className="flex justify-center items-center space-x-4 mt-4 text-sm">
-              <Badge variant="default" className="flex items-center">
+              {/* ✅ FIXED: Real-time indicators */}
+              <Badge variant="default" className="flex items-center bg-green-600">
                 <Activity className="w-3 h-3 mr-1" />
-                Live Updates
+                Real-time Updates
               </Badge>
               {lastUpdate && (
                 <Badge variant="outline" className="text-xs">
-                  {lastUpdate.toLocaleTimeString()}
+                  Updated: {lastUpdate.toLocaleTimeString()}
                 </Badge>
               )}
               <Button onClick={handleRefresh} size="sm" variant="outline">
@@ -254,6 +331,9 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               <CardTitle className="text-2xl text-gray-800 text-center">
                 Available Games ({gameSummaries.length})
               </CardTitle>
+              <p className="text-center text-gray-600">
+                🔴 Games update automatically when hosts make changes
+              </p>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -266,19 +346,26 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="font-bold text-gray-800 text-lg">{game.name}</h3>
-                        <Badge 
-                          variant={
-                            game.isActive ? "default" :
-                            game.isCountdown ? "secondary" :
-                            game.hasStarted ? "destructive" :
-                            "outline"
-                          }
-                        >
-                          {game.isActive ? '🔴 Live' : 
-                           game.isCountdown ? '🟡 Starting' : 
-                           game.hasStarted ? '🏁 Finished' :
-                           '⚪ Booking'}
-                        </Badge>
+                        <div className="flex flex-col space-y-1">
+                          <Badge 
+                            variant={
+                              game.isActive ? "default" :
+                              game.isCountdown ? "secondary" :
+                              game.hasStarted ? "destructive" :
+                              "outline"
+                            }
+                          >
+                            {game.isActive ? '🔴 Live' : 
+                             game.isCountdown ? '🟡 Starting' : 
+                             game.hasStarted ? '🏁 Finished' :
+                             '⚪ Booking'}
+                          </Badge>
+                          {/* ✅ FIXED: Real-time update indicator */}
+                          <Badge variant="outline" className="text-xs text-green-600 border-green-400">
+                            <Activity className="w-2 h-2 mr-1" />
+                            Live
+                          </Badge>
+                        </div>
                       </div>
                       
                       <div className="space-y-3">
