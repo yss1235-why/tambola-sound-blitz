@@ -1,4 +1,4 @@
-// src/components/HostDisplay.tsx - Pure Host Display Component
+// src/components/HostDisplay.tsx - FIXED: Stable Host Controls
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,18 +18,16 @@ import {
   Gamepad2,
   Timer,
   Hash,
-  Volume2,
   CheckCircle
 } from 'lucide-react';
 import { useGameData, useHostControls } from '@/providers/GameDataProvider';
-import { gameController } from '@/services/GameController';
 
 interface HostDisplayProps {
   onCreateNewGame?: () => void;
 }
 
 export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => {
-  const { gameData, currentPhase, timeUntilAction, isLoading } = useGameData();
+  const { gameData, currentPhase, timeUntilAction, isLoading, error } = useGameData();
   const hostControls = useHostControls();
   const [callInterval, setCallInterval] = React.useState(5);
 
@@ -39,7 +37,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     return Object.values(gameData.tickets).filter(ticket => ticket.isBooked).length;
   };
 
-  // Handle interval change
+  // Handle interval change - FIXED: No dependency issues
   const handleIntervalChange = (newInterval: number) => {
     setCallInterval(newInterval);
     if (hostControls) {
@@ -47,56 +45,71 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     }
   };
 
-  // Control handlers
-  const handleStartGame = async () => {
+  // FIXED: Stable control handlers
+  const handleStartGame = React.useCallback(async () => {
+    if (!hostControls) return;
     try {
-      if (hostControls) {
-        await hostControls.startGame();
-      }
+      await hostControls.startGame();
     } catch (error: any) {
       alert(error.message || 'Failed to start game');
     }
-  };
+  }, [hostControls]);
 
-  const handlePauseGame = async () => {
+  const handlePauseGame = React.useCallback(async () => {
+    if (!hostControls) return;
     try {
-      if (hostControls) {
-        await hostControls.pauseGame();
-      }
+      await hostControls.pauseGame();
     } catch (error: any) {
       alert(error.message || 'Failed to pause game');
     }
-  };
+  }, [hostControls]);
 
-  const handleResumeGame = async () => {
+  const handleResumeGame = React.useCallback(async () => {
+    if (!hostControls) return;
     try {
-      if (hostControls) {
-        await hostControls.resumeGame();
-      }
+      await hostControls.resumeGame();
     } catch (error: any) {
       alert(error.message || 'Failed to resume game');
     }
-  };
+  }, [hostControls]);
 
-  const handleEndGame = async () => {
+  const handleEndGame = React.useCallback(async () => {
     const confirmed = window.confirm('Are you sure you want to end the game?');
-    if (!confirmed) return;
+    if (!confirmed || !hostControls) return;
 
     try {
-      if (hostControls) {
-        await hostControls.endGame();
-      }
+      await hostControls.endGame();
     } catch (error: any) {
       alert(error.message || 'Failed to end game');
     }
-  };
+  }, [hostControls]);
 
+  // FIXED: Better loading state handling
   if (isLoading) {
     return (
       <Card>
         <CardContent className="p-8 text-center">
           <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Game...</h2>
+          <p className="text-gray-600">Setting up your game dashboard</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // FIXED: Better error handling
+  if (error) {
+    return (
+      <Card className="border-red-300">
+        <CardContent className="p-8 text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-xl font-semibold text-red-800 mb-2">Error Loading Game</h2>
+          <p className="text-red-600 mb-4">{error}</p>
+          {onCreateNewGame && (
+            <Button onClick={onCreateNewGame} className="bg-blue-600 hover:bg-blue-700">
+              Create New Game
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
@@ -118,6 +131,8 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
       </Card>
     );
   }
+
+  const bookedCount = getBookedTicketsCount();
 
   return (
     <div className="space-y-6">
@@ -167,7 +182,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </div>
             <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
               <div className="text-2xl font-bold text-orange-600">
-                {getBookedTicketsCount()}
+                {bookedCount}
               </div>
               <div className="text-sm text-orange-700">Players</div>
             </div>
@@ -217,12 +232,12 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             {currentPhase === 'booking' && (
               <Button 
                 onClick={handleStartGame}
-                disabled={getBookedTicketsCount() === 0}
+                disabled={bookedCount === 0}
                 className="flex-1 bg-green-600 hover:bg-green-700"
                 size="lg"
               >
                 <Play className="w-4 h-4 mr-2" />
-                Start Game ({timeUntilAction > 0 ? `${timeUntilAction}s` : 'Ready'})
+                Start Game ({bookedCount > 0 ? 'Ready' : 'Need players'})
               </Button>
             )}
 
@@ -287,7 +302,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           )}
 
           {/* Status Messages */}
-          {currentPhase === 'booking' && getBookedTicketsCount() === 0 && (
+          {currentPhase === 'booking' && bookedCount === 0 && (
             <Alert>
               <Users className="h-4 w-4" />
               <AlertDescription>
