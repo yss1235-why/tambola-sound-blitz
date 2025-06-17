@@ -1,8 +1,8 @@
-// src/components/TicketBookingGrid.tsx - Optimized booking speed & removed note
-import React, { useState, useEffect } from 'react';
+// src/components/TicketBookingGrid.tsx - FIXED: Real-time subscription for auto-switching to game view
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Phone, User, Users, Loader2 } from 'lucide-react';
+import { Phone, User, Users, Loader2, Activity, Clock } from 'lucide-react';
 import { TambolaTicket, GameData, firebaseService } from '@/services/firebase';
 
 interface TicketBookingGridProps {
@@ -20,6 +20,52 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 }) => {
   const [hostPhone, setHostPhone] = useState<string>('');
   const [isLoadingHost, setIsLoadingHost] = useState(true);
+  const [realTimeGameData, setRealTimeGameData] = useState<GameData>(gameData); // ✅ FIXED: Track real-time updates
+
+  // ✅ FIXED: Add subscription ref for cleanup
+  const subscriptionRef = useRef<(() => void) | null>(null);
+
+  // ✅ FIXED: Setup real-time subscription to detect game state changes
+  useEffect(() => {
+    console.log('🔔 TicketBooking: Setting up real-time subscription for game:', gameData.gameId);
+    
+    // Clean up existing subscription
+    if (subscriptionRef.current) {
+      subscriptionRef.current();
+    }
+
+    const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGameData) => {
+      if (updatedGameData) {
+        console.log('📡 TicketBooking: Game state updated:', {
+          isActive: updatedGameData.gameState.isActive,
+          isCountdown: updatedGameData.gameState.isCountdown,
+          calledNumbers: updatedGameData.gameState.calledNumbers?.length || 0,
+          gameOver: updatedGameData.gameState.gameOver
+        });
+
+        setRealTimeGameData(updatedGameData);
+
+        // ✅ FIXED: Auto-switch to game view when host starts the game
+        const hasGameStarted = (updatedGameData.gameState.calledNumbers?.length || 0) > 0 || 
+                              updatedGameData.gameState.isActive || 
+                              updatedGameData.gameState.isCountdown ||
+                              updatedGameData.gameState.gameOver;
+
+        if (hasGameStarted) {
+          console.log('🎮 TicketBooking: Auto-switching to game view - host started the game!');
+          onGameStart();
+        }
+      }
+    });
+
+    subscriptionRef.current = unsubscribe;
+
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+      }
+    };
+  }, [gameData.gameId, onGameStart]);
 
   // Load host phone number
   useEffect(() => {
@@ -27,11 +73,11 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       setIsLoadingHost(true);
       try {
         // First try to get phone from game data
-        if (gameData.hostPhone) {
-          setHostPhone(gameData.hostPhone);
+        if (realTimeGameData.hostPhone) {
+          setHostPhone(realTimeGameData.hostPhone);
         } else {
           // Fallback to host profile
-          const host = await firebaseService.getHostById(gameData.hostId);
+          const host = await firebaseService.getHostById(realTimeGameData.hostId);
           if (host && host.phone) {
             setHostPhone(host.phone);
           }
@@ -44,7 +90,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
     };
 
     loadHostInfo();
-  }, [gameData.hostId, gameData.hostPhone]);
+  }, [realTimeGameData.hostId, realTimeGameData.hostPhone]);
 
   const handleBookTicket = (ticketId: string) => {
     const ticket = tickets[ticketId];
@@ -61,22 +107,36 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
     window.open(whatsappUrl, '_blank');
   };
 
-  const bookedCount = Object.values(tickets).filter(t => t.isBooked).length;
-  const totalCount = Math.min(gameData.maxTickets, Object.keys(tickets).length);
+  // ✅ FIXED: Use real-time data for accurate counts
+  const bookedCount = Object.values(realTimeGameData.tickets || {}).filter(t => t.isBooked).length;
+  const totalCount = Math.min(realTimeGameData.maxTickets, Object.keys(realTimeGameData.tickets || {}).length);
   const availableCount = totalCount - bookedCount;
 
   // Get only the tickets up to maxTickets limit
-  const availableTickets = Object.entries(tickets)
-    .slice(0, gameData.maxTickets)
+  const availableTickets = Object.entries(realTimeGameData.tickets || {})
+    .slice(0, realTimeGameData.maxTickets)
     .reduce((acc, [ticketId, ticket]) => {
       acc[ticketId] = ticket;
       return acc;
     }, {} as { [key: string]: TambolaTicket });
 
-  // Check if game should start (when enough tickets are booked or game is active)
-  if (gameData.gameState.isActive) {
-    onGameStart();
-    return null;
+  // ✅ FIXED: Check real-time game state
+  if (realTimeGameData.gameState.isActive || realTimeGameData.gameState.isCountdown) {
+    // Game is starting/started - this view should switch automatically
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
+        <Card className="max-w-md w-full bg-white/90 backdrop-blur-sm border-2 border-orange-200">
+          <CardContent className="p-8 text-center">
+            <Clock className="w-16 h-16 mx-auto mb-4 text-orange-500 animate-pulse" />
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Game Starting!</h2>
+            <p className="text-gray-600 mb-4">
+              The host has started the game. Switching to game view...
+            </p>
+            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
@@ -85,7 +145,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
         <CardHeader className="text-center">
           <CardTitle className="text-3xl text-gray-800">
-            {gameData.name}
+            {realTimeGameData.name}
           </CardTitle>
           <div className="flex justify-center items-center space-x-8 mt-4">
             <div className="text-center">
@@ -99,6 +159,13 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">{totalCount}</div>
               <div className="text-sm text-gray-600">Max Tickets</div>
+            </div>
+          </div>
+          {/* ✅ FIXED: Real-time status indicator */}
+          <div className="mt-4 flex justify-center">
+            <div className="flex items-center space-x-2 bg-green-50 px-3 py-1 rounded-full border border-green-200">
+              <Activity className="w-4 h-4 text-green-600" />
+              <span className="text-sm text-green-700 font-medium">Live Updates Active</span>
             </div>
           </div>
         </CardHeader>
@@ -198,6 +265,16 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 </div>
               </div>
             ))}
+          </div>
+
+          {/* ✅ FIXED: Real-time update notice */}
+          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center justify-center space-x-2 text-blue-800">
+              <Activity className="w-4 h-4" />
+              <p className="text-sm font-medium">
+                This page updates automatically when the host starts the game or other players book tickets
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
