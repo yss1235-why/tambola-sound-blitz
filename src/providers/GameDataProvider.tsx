@@ -1,4 +1,4 @@
-// src/providers/GameDataProvider.tsx - Single Subscription Manager
+// src/providers/GameDataProvider.tsx - FIXED: Stable Subscription System
 import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { firebaseService, GameData } from '@/services/firebase';
 import { gameController, ScheduledAction } from '@/services/GameController';
@@ -38,10 +38,11 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [timeUntilAction, setTimeUntilAction] = useState(0);
 
-  // Refs for cleanup and scheduled action execution
+  // Refs for cleanup and state management
   const subscriptionRef = useRef<(() => void) | null>(null);
   const actionTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentGameIdRef = useRef<string | null>(null); // Track current gameId
 
   // Determine current game phase
   const currentPhase = (): 'creation' | 'booking' | 'countdown' | 'playing' | 'finished' => {
@@ -55,17 +56,14 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   // Check if current user is host
   const isHost = gameData?.hostId === userId;
 
-  // Execute scheduled actions
-  const executeScheduledAction = useCallback(async (action: ScheduledAction) => {
-    if (!gameId) return;
-
+  // FIXED: Execute scheduled actions with stable function (no dependencies on gameData)
+  const executeScheduledAction = useCallback(async (action: ScheduledAction, targetGameId: string) => {
     try {
       console.log(`🎬 Executing scheduled action: ${action.type} at ${new Date().toLocaleTimeString()}`);
 
       switch (action.type) {
         case 'START_COUNTDOWN':
-          // Update game state to show countdown
-          await firebaseService.updateGameState(gameId, {
+          await firebaseService.updateGameState(targetGameId, {
             isCountdown: true,
             countdownTime: action.data.countdownDuration,
             isActive: false
@@ -73,12 +71,11 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
 
           // Schedule actual game start
           const gameStartTime = Date.now() + (action.data.countdownDuration * 1000);
-          await gameController.executeGameStart(gameId);
+          await gameController.executeGameStart(targetGameId);
           break;
 
         case 'START_GAME':
-          // Start the actual game
-          await firebaseService.updateGameState(gameId, {
+          await firebaseService.updateGameState(targetGameId, {
             isActive: true,
             isCountdown: false,
             countdownTime: 0
@@ -86,23 +83,24 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
           break;
 
         case 'CALL_NUMBER':
-          // Only execute if game is still active
-          if (gameData?.gameState.isActive && !gameData?.gameState.gameOver) {
-            await gameController.executeNumberCall(gameId);
+          // Get fresh game data to check if still active
+          const freshGameData = await firebaseService.getGameData(targetGameId);
+          if (freshGameData?.gameState.isActive && !freshGameData?.gameState.gameOver) {
+            await gameController.executeNumberCall(targetGameId);
           }
           break;
 
         case 'END_GAME':
-          await gameController.executeGameEnd(gameId);
+          await gameController.executeGameEnd(targetGameId);
           break;
       }
     } catch (error: any) {
       console.error(`❌ Failed to execute scheduled action:`, error);
       setError(`Action failed: ${error.message}`);
     }
-  }, [gameId, gameData]);
+  }, []); // FIXED: No dependencies to prevent recreation
 
-  // Process scheduled actions from Firebase
+  // FIXED: Process scheduled actions with stable dependencies
   const processScheduledActions = useCallback((updatedGameData: GameData) => {
     const scheduledActions = (updatedGameData as any).scheduledActions || [];
     const now = Date.now();
@@ -122,18 +120,18 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       const delay = nextAction.executeAt - now;
       setTimeUntilAction(Math.ceil(delay / 1000));
 
-      // Schedule execution
+      // Schedule execution with game ID passed directly
       actionTimerRef.current = setTimeout(() => {
-        executeScheduledAction(nextAction);
+        executeScheduledAction(nextAction, updatedGameData.gameId);
       }, delay);
 
       console.log(`⏰ Next action ${nextAction.type} scheduled in ${Math.ceil(delay / 1000)} seconds`);
     } else {
       setTimeUntilAction(0);
     }
-  }, [executeScheduledAction]);
+  }, [executeScheduledAction]); // FIXED: Only depends on stable executeScheduledAction
 
-  // Handle countdown updates
+  // FIXED: Handle countdown updates without affecting main subscription
   useEffect(() => {
     if (gameData?.gameState.isCountdown) {
       // Clear existing countdown timer
@@ -142,20 +140,25 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       }
 
       let remainingTime = gameData.gameState.countdownTime || 0;
+      setTimeUntilAction(remainingTime);
 
       countdownTimerRef.current = setInterval(() => {
         remainingTime--;
+        setTimeUntilAction(Math.max(0, remainingTime));
         
         if (remainingTime <= 0) {
           if (countdownTimerRef.current) {
             clearInterval(countdownTimerRef.current);
             countdownTimerRef.current = null;
           }
-        } else {
-          // Update countdown display (this will trigger re-render)
-          setTimeUntilAction(remainingTime);
         }
       }, 1000);
+    } else {
+      // Clear countdown timer if not in countdown
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
     }
 
     return () => {
@@ -164,90 +167,66 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
         countdownTimerRef.current = null;
       }
     };
-  }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime]);
+  }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime]); // Stable dependencies
 
-  // Main subscription effect
-  useEffect(() => {
-    if (!gameId) {
-      setGameData(null);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
+  // FIXED: Simplified subscription setup
+  const setupSubscription = useCallback(async (targetGameId: string) => {
+    console.log(`🔔 Setting up subscription for game: ${targetGameId}`);
+    
     // Clean up existing subscription
     if (subscriptionRef.current) {
       subscriptionRef.current();
       subscriptionRef.current = null;
     }
 
-    console.log(`🔔 Setting up subscription for game: ${gameId}`);
+    // Clear all timers
+    if (actionTimerRef.current) {
+      clearTimeout(actionTimerRef.current);
+      actionTimerRef.current = null;
+    }
 
-    // Handle special case for host's current game
-    if (gameId === 'HOST_CURRENT' && userId) {
-      // For hosts, load their current game first
-      const loadHostGame = async () => {
-        try {
-          const hostGame = await firebaseService.getHostCurrentGame(userId);
-          if (hostGame) {
-            // Subscribe to the actual game
-            const unsubscribe = firebaseService.subscribeToGame(hostGame.gameId, (updatedGameData) => {
-              if (updatedGameData) {
-                console.log(`📡 Host game data updated:`, {
-                  currentNumber: updatedGameData.gameState.currentNumber,
-                  isActive: updatedGameData.gameState.isActive,
-                  isCountdown: updatedGameData.gameState.isCountdown,
-                  gameOver: updatedGameData.gameState.gameOver
-                });
+    try {
+      let actualGameId = targetGameId;
 
-                setGameData(updatedGameData);
-                setIsLoading(false);
-                setError(null);
-
-                // Process any scheduled actions
-                processScheduledActions(updatedGameData);
-              } else {
-                // Game was deleted
-                setGameData(null);
-                setIsLoading(false);
-                setError('Game was deleted');
-              }
-            });
-
-            subscriptionRef.current = unsubscribe;
-          } else {
-            // Host has no active game
-            setGameData(null);
-            setIsLoading(false);
-            setError(null);
-          }
-        } catch (error: any) {
-          console.error('Failed to load host current game:', error);
+      // Handle HOST_CURRENT case
+      if (targetGameId === 'HOST_CURRENT' && userId) {
+        const hostGame = await firebaseService.getHostCurrentGame(userId);
+        if (!hostGame) {
+          // Host has no active game
           setGameData(null);
           setIsLoading(false);
-          setError(error.message || 'Failed to load host game');
+          setError(null);
+          return;
         }
-      };
+        actualGameId = hostGame.gameId;
+      }
 
-      loadHostGame();
-    } else {
-      // SINGLE subscription for regular games
-      const unsubscribe = firebaseService.subscribeToGame(gameId, (updatedGameData) => {
+      // Store the current game ID
+      currentGameIdRef.current = actualGameId;
+
+      // Create subscription
+      const unsubscribe = firebaseService.subscribeToGame(actualGameId, (updatedGameData) => {
+        // Check if this is still the current subscription
+        if (currentGameIdRef.current !== actualGameId) {
+          console.log(`🚫 Ignoring update for old game: ${actualGameId}`);
+          return;
+        }
+
         if (updatedGameData) {
           console.log(`📡 Game data updated:`, {
+            gameId: updatedGameData.gameId,
             currentNumber: updatedGameData.gameState.currentNumber,
             isActive: updatedGameData.gameState.isActive,
             isCountdown: updatedGameData.gameState.isCountdown,
-            gameOver: updatedGameData.gameState.gameOver
+            gameOver: updatedGameData.gameState.gameOver,
+            calledNumbersCount: updatedGameData.gameState.calledNumbers?.length || 0
           });
 
           setGameData(updatedGameData);
           setIsLoading(false);
           setError(null);
 
-          // Process any scheduled actions
+          // Process scheduled actions
           processScheduledActions(updatedGameData);
         } else {
           // Game was deleted
@@ -258,10 +237,44 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
       });
 
       subscriptionRef.current = unsubscribe;
+
+    } catch (error: any) {
+      console.error('Failed to setup subscription:', error);
+      setGameData(null);
+      setIsLoading(false);
+      setError(error.message || 'Failed to load game');
+    }
+  }, [userId, processScheduledActions]); // Stable dependencies
+
+  // FIXED: Main subscription effect with stable dependencies
+  useEffect(() => {
+    if (!gameId) {
+      // Clean up everything
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+      currentGameIdRef.current = null;
+      setGameData(null);
+      setIsLoading(false);
+      setError(null);
+      return;
     }
 
-    // Cleanup function
+    // Only setup new subscription if gameId actually changed
+    if (currentGameIdRef.current !== gameId) {
+      setIsLoading(true);
+      setError(null);
+      setupSubscription(gameId);
+    }
+
+  }, [gameId, setupSubscription]); // FIXED: Only gameId and stable setupSubscription
+
+  // FIXED: Cleanup on unmount
+  useEffect(() => {
     return () => {
+      console.log(`🧹 Cleaning up GameDataProvider`);
+      
       if (subscriptionRef.current) {
         subscriptionRef.current();
         subscriptionRef.current = null;
@@ -274,21 +287,8 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
         clearInterval(countdownTimerRef.current);
         countdownTimerRef.current = null;
       }
-    };
-  }, [gameId, userId, processScheduledActions]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (actionTimerRef.current) {
-        clearTimeout(actionTimerRef.current);
-      }
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-      }
-      if (subscriptionRef.current) {
-        subscriptionRef.current();
-      }
+      
+      currentGameIdRef.current = null;
     };
   }, []);
 
@@ -322,32 +322,32 @@ export const useHostControls = () => {
   const { gameData, isHost } = useGameData();
   const gameId = gameData?.gameId;
 
-  const controls = {
-    async startGame() {
-      if (!isHost || !gameId) throw new Error('Not authorized');
-      await gameController.scheduleGameStart(gameId);
-    },
+  // FIXED: Stable controls object
+  const controls = React.useMemo(() => {
+    if (!isHost || !gameId) return null;
 
-    async pauseGame() {
-      if (!isHost || !gameId) throw new Error('Not authorized');
-      await gameController.pauseGame(gameId);
-    },
+    return {
+      async startGame() {
+        await gameController.scheduleGameStart(gameId);
+      },
 
-    async resumeGame() {
-      if (!isHost || !gameId) throw new Error('Not authorized');
-      await gameController.resumeGame(gameId);
-    },
+      async pauseGame() {
+        await gameController.pauseGame(gameId);
+      },
 
-    async endGame() {
-      if (!isHost || !gameId) throw new Error('Not authorized');
-      await gameController.executeGameEnd(gameId);
-    },
+      async resumeGame() {
+        await gameController.resumeGame(gameId);
+      },
 
-    updateCallInterval(seconds: number) {
-      if (!isHost) throw new Error('Not authorized');
-      gameController.updateConfig({ callInterval: seconds });
-    }
-  };
+      async endGame() {
+        await gameController.executeGameEnd(gameId);
+      },
 
-  return isHost ? controls : null;
+      updateCallInterval(seconds: number) {
+        gameController.updateConfig({ callInterval: seconds });
+      }
+    };
+  }, [isHost, gameId]);
+
+  return controls;
 };
