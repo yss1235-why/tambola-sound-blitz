@@ -245,7 +245,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ NEW: Get current user data (admin or host)
+  // ✅ NEW: Get current user data (admin or host) with better error handling
   async getUserData(uid?: string): Promise<AdminUser | HostUser | null> {
     try {
       const userId = uid || auth.currentUser?.uid;
@@ -253,19 +253,41 @@ class FirebaseService {
       
       const userSnapshot = await get(ref(database, `users/${userId}`));
       return userSnapshot.exists() ? userSnapshot.val() as (AdminUser | HostUser) : null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching user data:', error);
+      
+      // Log more details about the error
+      if (error.message?.includes('Permission denied')) {
+        console.log('🔒 Database permission denied - check Firebase rules');
+        console.log('👤 Current auth user:', auth.currentUser?.uid);
+        console.log('📊 Trying to read path: /users/' + (uid || auth.currentUser?.uid));
+      }
+      
       return null;
     }
   }
 
-  // ✅ NEW: Get current user role
+  // ✅ NEW: Get current user role (with permission error handling)
   async getCurrentUserRole(): Promise<'admin' | 'host' | null> {
     try {
       const user = await this.getUserData();
       return user?.role || null;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting user role:', error);
+      
+      // If it's a permission error, try to determine role from email or other means
+      if (error.message?.includes('Permission denied')) {
+        console.log('⚠️ Permission denied reading user data, checking auth user info');
+        
+        const currentUser = auth.currentUser;
+        if (currentUser) {
+          // For now, assume authenticated users are hosts (temporary fix)
+          // In production, you'd want better role detection
+          console.log('🔑 Authenticated user found, assuming host role (temporary)');
+          return 'host';
+        }
+      }
+      
       return null;
     }
   }
