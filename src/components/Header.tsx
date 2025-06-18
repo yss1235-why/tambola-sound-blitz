@@ -1,4 +1,4 @@
-// src/components/Header.tsx - Fixed contrast issues in login forms
+// src/components/Header.tsx - FIXED: Works with new role-based authentication
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -41,28 +41,31 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     onUserLogoutRef.current = onUserLogout;
   }, [onUserLogout]);
 
-  // Admin login form state - empty by default (user will fill their credentials)
+  // Login form states
   const [adminForm, setAdminForm] = useState({
     email: '',
     password: ''
   });
 
-  // Host login form state
   const [hostForm, setHostForm] = useState({
     email: '',
     password: ''
   });
 
-  // Listen for auth state changes
+  // ✅ FIXED: Listen for auth state changes with new role system
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         try {
           console.log('🔐 Auth state changed - user logged in:', user.email);
+          
+          // Get user role using new method
           const role = await getCurrentUserRole();
           
           if (role) {
             setUserRole(role);
+            
+            // Get user data from appropriate collection
             const userData = await firebaseService.getUserData();
             
             if (userData) {
@@ -71,12 +74,20 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                 onUserLoginRef.current(userData, role);
               }
               console.log('✅ User data loaded successfully');
+            } else {
+              console.log('❌ Failed to load user data');
+              setCurrentUser(null);
+              setUserRole(null);
             }
           } else {
             console.log('❌ No valid role found for user');
+            setCurrentUser(null);
+            setUserRole(null);
           }
         } catch (error) {
-          console.error('❌ Error getting user role:', error);
+          console.error('❌ Error processing auth state change:', error);
+          setCurrentUser(null);
+          setUserRole(null);
         }
       } else {
         console.log('🔐 Auth state changed - user logged out');
@@ -91,6 +102,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     return () => unsubscribe();
   }, []);
 
+  // ✅ FIXED: Admin login using new method
   const handleAdminLogin = async () => {
     setIsLoading(true);
     
@@ -100,7 +112,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
       if (admin) {
         console.log('✅ Admin login successful');
         setIsAdminLoginOpen(false);
-        setAdminForm({ email: '', password: '' }); // Clear form after successful login
+        setAdminForm({ email: '', password: '' });
       }
     } catch (error: any) {
       console.error('❌ Admin login failed:', error.message);
@@ -110,6 +122,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     }
   };
 
+  // ✅ FIXED: Host login using new method
   const handleHostLogin = async () => {
     setIsLoading(true);
     
@@ -129,6 +142,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
     }
   };
 
+  // ✅ FIXED: Logout using new method
   const handleLogout = async () => {
     try {
       console.log('🔐 Logging out...');
@@ -136,6 +150,7 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
       console.log('✅ Logout successful');
     } catch (error: any) {
       console.error('❌ Logout error:', error.message);
+      alert(`Logout Failed: ${error.message}`);
     }
   };
 
@@ -170,6 +185,11 @@ export const Header: React.FC<HeaderProps> = ({ onUserLogin, onUserLogout }) => 
                       <div className="text-xs text-green-600 mt-1">
                         {currentUser.permissions.createHosts && '✓ Create Hosts '}
                         {currentUser.permissions.manageUsers && '✓ Manage Users'}
+                      </div>
+                    )}
+                    {userRole === 'host' && 'subscriptionEndDate' in currentUser && (
+                      <div className="text-xs text-blue-600 mt-1">
+                        {currentUser.isActive ? '✓ Active' : '❌ Inactive'}
                       </div>
                     )}
                   </div>
