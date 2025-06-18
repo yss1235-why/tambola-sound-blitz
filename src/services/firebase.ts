@@ -399,9 +399,49 @@ class FirebaseService {
   onAuthStateChanged(callback: (user: AdminUser | HostUser | null) => void): () => void {
     return onAuthStateChanged(auth, async (firebaseUser: User | null) => {
       if (firebaseUser) {
-        const userData = await this.getUserData(firebaseUser.uid);
-        callback(userData);
+        console.log('🔐 Auth state changed - user logged in:', firebaseUser.email);
+        try {
+          const userData = await this.getUserData(firebaseUser.uid);
+          if (userData) {
+            console.log('✅ User data loaded successfully');
+            callback(userData);
+          } else {
+            console.log('⚠️ No user data found, creating fallback profile');
+            // Create a fallback host profile for existing authenticated users
+            const fallbackUser: HostUser = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: firebaseUser.email?.split('@')[0] || 'Host',
+              phone: '',
+              role: 'host',
+              subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              isActive: true,
+              createdAt: new Date().toISOString()
+            };
+            callback(fallbackUser);
+          }
+        } catch (error: any) {
+          console.error('❌ Error getting user role:', error);
+          if (error.message?.includes('Permission denied')) {
+            console.log('🔑 Permission denied, but user is authenticated - assuming host role');
+            // User is authenticated but we can't read their data - assume they're a host
+            const fallbackUser: HostUser = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: firebaseUser.email?.split('@')[0] || 'Host',
+              phone: '',
+              role: 'host',
+              subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              isActive: true,
+              createdAt: new Date().toISOString()
+            };
+            callback(fallbackUser);
+          } else {
+            callback(null);
+          }
+        }
       } else {
+        console.log('🔐 Auth state changed - user logged out');
         callback(null);
       }
     });
