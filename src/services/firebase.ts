@@ -1,4 +1,4 @@
-// src/services/firebase.ts - COMPLETE CLEANED VERSION
+// src/services/firebase.ts - COMPLETE VERSION WITH ADMIN FUNCTIONALITY
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -22,6 +22,7 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   onAuthStateChanged,
+  updatePassword,
   User,
   Auth
 } from 'firebase/auth';
@@ -92,6 +93,19 @@ export interface GameData {
   lastWinnerAt?: string;
 }
 
+// ✅ NEW: Admin User Interface
+export interface AdminUser {
+  uid: string;
+  email: string;
+  name: string;
+  role: 'admin';
+  permissions: {
+    createHosts: boolean;
+    manageUsers: boolean;
+  };
+  createdAt: string;
+}
+
 export interface HostUser {
   uid: string;
   email: string;
@@ -100,6 +114,9 @@ export interface HostUser {
   role: 'host';
   subscriptionEndDate: string;
   isActive: boolean;
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: string; // Admin who created this host
 }
 
 export interface HostSettings {
@@ -209,6 +226,7 @@ class FirebaseService {
         uid: userCredential.user.uid,
         email,
         role: 'host',
+        createdAt: new Date().toISOString(),
         ...userData
       } as HostUser;
       
@@ -227,17 +245,92 @@ class FirebaseService {
     }
   }
 
-  async getUserData(uid: string): Promise<HostUser | null> {
+  // ✅ NEW: Get current user data (admin or host)
+  async getUserData(uid?: string): Promise<AdminUser | HostUser | null> {
     try {
-      const userSnapshot = await get(ref(database, `users/${uid}`));
-      return userSnapshot.exists() ? userSnapshot.val() as HostUser : null;
+      const userId = uid || auth.currentUser?.uid;
+      if (!userId) return null;
+      
+      const userSnapshot = await get(ref(database, `users/${userId}`));
+      return userSnapshot.exists() ? userSnapshot.val() as (AdminUser | HostUser) : null;
     } catch (error) {
       console.error('Error fetching user data:', error);
       return null;
     }
   }
 
-  onAuthStateChanged(callback: (user: HostUser | null) => void): () => void {
+  // ✅ NEW: Get current user role
+  async getCurrentUserRole(): Promise<'admin' | 'host' | null> {
+    try {
+      const user = await this.getUserData();
+      return user?.role || null;
+    } catch (error) {
+      console.error('Error getting user role:', error);
+      return null;
+    }
+  }
+
+  // ✅ NEW: Admin login
+  async loginAdmin(email: string, password: string): Promise<AdminUser> {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userData = await this.getUserData(userCredential.user.uid);
+      
+      if (!userData || userData.role !== 'admin') {
+        await signOut(auth);
+        throw new Error('Access denied. Admin credentials required.');
+      }
+      
+      return userData as AdminUser;
+    } catch (error: any) {
+      throw new Error(error.message || 'Admin login failed');
+    }
+  }
+
+  // ✅ NEW: Host login
+  async loginHost(email: string, password: string): Promise<HostUser> {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const userData = await this.getUserData(userCredential.user.uid);
+      
+      if (!userData || userData.role !== 'host') {
+        await signOut(auth);
+        throw new Error('Access denied. Host credentials required.');
+      }
+
+      const hostUser = userData as HostUser;
+      
+      // Check if host account is active
+      if (!hostUser.isActive) {
+        await signOut(auth);
+        throw new Error('Your account has been deactivated. Please contact the administrator.');
+      }
+
+      // Check subscription validity
+      const subscriptionEnd = new Date(hostUser.subscriptionEndDate);
+      const now = new Date();
+      
+      if (subscriptionEnd < now) {
+        await signOut(auth);
+        throw new Error('Your subscription has expired. Please contact the administrator.');
+      }
+      
+      return hostUser;
+    } catch (error: any) {
+      throw new Error(error.message || 'Host login failed');
+    }
+  }
+
+  // ✅ NEW: Logout (unified)
+  async logout(): Promise<void> {
+    try {
+      await signOut(auth);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to logout');
+    }
+  }
+
+  onAuthStateChanged(callback: (user: AdminUser | HostUser | null) => void): () => void {
     return onAuthStateChanged(auth, async (firebaseUser: User | null) => {
       if (firebaseUser) {
         const userData = await this.getUserData(firebaseUser.uid);
@@ -246,6 +339,245 @@ class FirebaseService {
         callback(null);
       }
     });
+  }
+
+  // ================== ADMIN FUNCTIONALITY ==================
+
+  // ✅ NEW: Create host account (Admin only)
+  async createHost(
+    email: string, 
+    password: string, 
+    name: string, 
+    phone: string, 
+    adminId: string, 
+    subscriptionMonths: number = 12
+  ): Promise<HostUser> {
+    try {
+      console.log('🔐 Admin creating host account:', { email, name, phone });
+
+      // Store current user credentials
+      const currentUser = auth.currentUser;
+      const currentUserEmail = currentUser?.email;
+
+      // Create new host account
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const hostId = userCredential.user.uid;
+
+      // Calculate subscription end date
+      const subscriptionEndDate = new Date();
+      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
+
+      const hostUser: HostUser = {
+        uid: hostId,
+        email,
+        name,
+        phone,
+        role: 'host',
+        subscriptionEndDate: subscriptionEndDate.toISOString(),
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        createdBy: adminId
+      };
+
+      // Save host data
+      await set(ref(database, `users/${hostId}`), removeUndefinedValues(hostUser));
+
+      // Sign out the new host user (we're logged in as them now)
+      await signOut(auth);
+
+      // The admin will need to log back in, but that's handled by the component
+      console.log('✅ Host created successfully, admin needs to log back in');
+      
+      // Return success message in error format to trigger re-login
+      throw new Error(`SUCCESS: Host account created successfully for ${name}. Please log back in as admin to continue.`);
+
+    } catch (error: any) {
+      // Re-throw success messages and real errors
+      throw new Error(error.message || 'Failed to create host account');
+    }
+  }
+
+  // ✅ NEW: Get all hosts (Admin only)
+  async getAllHosts(): Promise<HostUser[]> {
+    try {
+      const hostsQuery = query(
+        ref(database, 'users'),
+        orderByChild('role'),
+        equalTo('host')
+      );
+      
+      const hostsSnapshot = await get(hostsQuery);
+      
+      if (!hostsSnapshot.exists()) {
+        return [];
+      }
+
+      const hosts = Object.values(hostsSnapshot.val()) as HostUser[];
+      
+      // Sort by creation date (newest first)
+      return hosts.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    } catch (error: any) {
+      console.error('Error fetching hosts:', error);
+      throw new Error(error.message || 'Failed to fetch hosts');
+    }
+  }
+
+  // ✅ NEW: Get host by ID
+  async getHostById(hostId: string): Promise<HostUser | null> {
+    try {
+      const hostSnapshot = await get(ref(database, `users/${hostId}`));
+      
+      if (hostSnapshot.exists()) {
+        const userData = hostSnapshot.val();
+        return userData.role === 'host' ? userData as HostUser : null;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error fetching host:', error);
+      return null;
+    }
+  }
+
+  // ✅ NEW: Update host (Admin only)
+  async updateHost(hostId: string, updates: Partial<HostUser>): Promise<void> {
+    try {
+      const cleanUpdates = removeUndefinedValues({
+        ...updates,
+        updatedAt: new Date().toISOString()
+      });
+
+      await update(ref(database, `users/${hostId}`), cleanUpdates);
+      console.log('✅ Host updated successfully');
+    } catch (error: any) {
+      console.error('Error updating host:', error);
+      throw new Error(error.message || 'Failed to update host');
+    }
+  }
+
+  // ✅ NEW: Delete host (Admin only)
+  async deleteHost(hostId: string): Promise<void> {
+    try {
+      // Check if host has any active games
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('hostId'),
+        equalTo(hostId)
+      );
+      
+      const gamesSnapshot = await get(gamesQuery);
+      
+      if (gamesSnapshot.exists()) {
+        const games = Object.values(gamesSnapshot.val()) as GameData[];
+        const activeGames = games.filter(game => !game.gameState.gameOver);
+        
+        if (activeGames.length > 0) {
+          throw new Error('Cannot delete host with active games. Please end all games first.');
+        }
+      }
+
+      // Delete host data
+      await remove(ref(database, `users/${hostId}`));
+      
+      // Delete host settings
+      await remove(ref(database, `hostSettings/${hostId}`));
+      
+      console.log('✅ Host deleted successfully');
+    } catch (error: any) {
+      console.error('Error deleting host:', error);
+      throw new Error(error.message || 'Failed to delete host');
+    }
+  }
+
+  // ✅ NEW: Change host password (Admin only)
+  async changeHostPassword(hostId: string, newPassword: string): Promise<void> {
+    try {
+      // This is a simplified approach - in production, you'd want to use Firebase Admin SDK
+      // For now, we'll update the host record to indicate password change needed
+      await update(ref(database, `users/${hostId}`), {
+        passwordChangeRequired: true,
+        passwordChangedAt: new Date().toISOString()
+      });
+      
+      console.log('✅ Password change initiated for host');
+      
+      // Note: Actual password change would require Firebase Admin SDK or 
+      // the host to log in and change it themselves
+      throw new Error('Password change initiated. Host will need to reset password on next login.');
+    } catch (error: any) {
+      console.error('Error changing host password:', error);
+      throw new Error(error.message || 'Failed to change host password');
+    }
+  }
+
+  // ✅ NEW: Extend host subscription (Admin only)
+  async extendHostSubscription(hostId: string, additionalMonths: number): Promise<void> {
+    try {
+      const hostSnapshot = await get(ref(database, `users/${hostId}`));
+      
+      if (!hostSnapshot.exists()) {
+        throw new Error('Host not found');
+      }
+
+      const hostData = hostSnapshot.val() as HostUser;
+      const currentEndDate = new Date(hostData.subscriptionEndDate);
+      
+      // Add months to current end date (even if expired)
+      currentEndDate.setMonth(currentEndDate.getMonth() + additionalMonths);
+
+      await update(ref(database, `users/${hostId}`), {
+        subscriptionEndDate: currentEndDate.toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+
+      console.log(`✅ Extended subscription by ${additionalMonths} months`);
+    } catch (error: any) {
+      console.error('Error extending subscription:', error);
+      throw new Error(error.message || 'Failed to extend subscription');
+    }
+  }
+
+  // ✅ NEW: Toggle host status (Admin only)
+  async toggleHostStatus(hostId: string, isActive: boolean): Promise<void> {
+    try {
+      await update(ref(database, `users/${hostId}`), {
+        isActive,
+        updatedAt: new Date().toISOString()
+      });
+
+      console.log(`✅ Host status updated: ${isActive ? 'activated' : 'deactivated'}`);
+    } catch (error: any) {
+      console.error('Error updating host status:', error);
+      throw new Error(error.message || 'Failed to update host status');
+    }
+  }
+
+  // ✅ NEW: Subscribe to hosts (Admin real-time updates)
+  subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
+    const hostsQuery = query(
+      ref(database, 'users'),
+      orderByChild('role'),
+      equalTo('host')
+    );
+    
+    const unsubscribe = onValue(hostsQuery, (snapshot) => {
+      if (snapshot.exists()) {
+        const hosts = Object.values(snapshot.val()) as HostUser[];
+        const sortedHosts = hosts.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        callback(sortedHosts);
+      } else {
+        callback([]);
+      }
+    }, (error) => {
+      console.error('Hosts subscription error:', error);
+      callback(null);
+    });
+
+    return () => off(hostsQuery, 'value', unsubscribe);
   }
 
   // ================== HOST SETTINGS ==================
@@ -380,6 +712,17 @@ class FirebaseService {
     }
   }
 
+  async updateGameData(gameId: string, updates: Partial<GameData>): Promise<void> {
+    try {
+      const cleanUpdates = removeUndefinedValues(updates);
+      await update(ref(database, `games/${gameId}`), cleanUpdates);
+      console.log(`✅ Game data updated successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating game data:', error);
+      throw new Error(error.message || 'Failed to update game data');
+    }
+  }
+
   async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void> {
     try {
       const cleanUpdates = removeUndefinedValues(updates);
@@ -476,6 +819,17 @@ class FirebaseService {
     }
   }
 
+  async updateTicket(gameId: string, ticketId: string, updates: Partial<TambolaTicket>): Promise<void> {
+    try {
+      const cleanUpdates = removeUndefinedValues(updates);
+      await update(ref(database, `games/${gameId}/tickets/${ticketId}`), cleanUpdates);
+      console.log(`✅ Ticket ${ticketId} updated successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating ticket:', error);
+      throw new Error(error.message || 'Failed to update ticket');
+    }
+  }
+
   async unbookTicket(gameId: string, ticketId: string): Promise<void> {
     try {
       const ticketData = {
@@ -500,7 +854,7 @@ class FirebaseService {
   // ================== AUTOMATIC NUMBER CALLING ==================
 
   /**
-   * ✅ NEW: Automatic number calling (generates random number)
+   * Automatic number calling (generates random number)
    */
   async callNextNumber(gameId: string): Promise<{
     success: boolean;
@@ -561,7 +915,7 @@ class FirebaseService {
   }
 
   /**
-   * ✅ RENAMED: Internal method for processing number calls (was callNumberWithPrizeValidation)
+   * Internal method for processing number calls
    */
   private async processNumberCall(gameId: string, number: number): Promise<{
     success: boolean;
@@ -776,7 +1130,7 @@ class FirebaseService {
     return () => off(gameRef, 'value', unsubscribe);
   }
 
-  subscribeToGames(callback: (games: GameData[]) => void): () => void {
+  subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
     const gamesRef = ref(database, 'games');
     
     const unsubscribe = onValue(gamesRef, (snapshot) => {
@@ -796,9 +1150,16 @@ class FirebaseService {
 
     return () => off(gamesRef, 'value', unsubscribe);
   }
+
+  // Legacy alias for backward compatibility
+  subscribeToGames = this.subscribeToAllActiveGames;
 }
 
 // ================== EXPORT SINGLETON ==================
 
 export const firebaseService = new FirebaseService();
+
+// ✅ NEW: Export getCurrentUserRole as standalone function for backward compatibility
+export const getCurrentUserRole = () => firebaseService.getCurrentUserRole();
+
 export default firebaseService;
