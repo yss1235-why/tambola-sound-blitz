@@ -1,4 +1,4 @@
-// src/components/HostDisplay.tsx - CLEANED: Only automatic game controls, no manual calling
+// src/components/HostDisplay.tsx - COMPLETE: Using new simplified architecture
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,8 @@ import {
   Hash,
   CheckCircle
 } from 'lucide-react';
-import { useGameData, useHostControls } from '@/providers/GameDataProvider';
+import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
+import { useHostControls } from '@/providers/HostControlsProvider';
 
 interface HostDisplayProps {
   onCreateNewGame?: () => void;
@@ -28,14 +29,9 @@ interface HostDisplayProps {
 
 export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => {
   const { gameData, currentPhase, timeUntilAction, isLoading, error } = useGameData();
+  const { bookedCount } = useBookingStats();
   const hostControls = useHostControls();
   const [callInterval, setCallInterval] = React.useState(5);
-
-  // Get booking statistics
-  const getBookedTicketsCount = () => {
-    if (!gameData?.tickets) return 0;
-    return Object.values(gameData.tickets).filter(ticket => ticket.isBooked).length;
-  };
 
   // Handle interval change
   const handleIntervalChange = (newInterval: number) => {
@@ -45,7 +41,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     }
   };
 
-  // ✅ CLEANED: Only automatic game control handlers
+  // ✅ SIMPLIFIED: Only automatic game control handlers
   const handleStartGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
@@ -132,8 +128,6 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
       </Card>
     );
   }
-
-  const bookedCount = getBookedTicketsCount();
 
   return (
     <div className="space-y-6">
@@ -233,12 +227,12 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             {currentPhase === 'booking' && (
               <Button 
                 onClick={handleStartGame}
-                disabled={bookedCount === 0}
+                disabled={bookedCount === 0 || hostControls?.isProcessing}
                 className="flex-1 bg-green-600 hover:bg-green-700"
                 size="lg"
               >
                 <Play className="w-4 h-4 mr-2" />
-                Start Automatic Game ({bookedCount > 0 ? 'Ready' : 'Need players'})
+                {hostControls?.isProcessing ? 'Starting...' : `Start Automatic Game (${bookedCount > 0 ? 'Ready' : 'Need players'})`}
               </Button>
             )}
 
@@ -252,20 +246,36 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             {currentPhase === 'playing' && (
               <>
                 {gameData.gameState.isActive ? (
-                  <Button onClick={handlePauseGame} variant="secondary" className="flex-1" size="lg">
+                  <Button 
+                    onClick={handlePauseGame} 
+                    variant="secondary" 
+                    className="flex-1" 
+                    size="lg"
+                    disabled={hostControls?.isProcessing}
+                  >
                     <Pause className="w-4 h-4 mr-2" />
-                    Pause Automatic Game
+                    {hostControls?.isProcessing ? 'Pausing...' : 'Pause Automatic Game'}
                   </Button>
                 ) : (
-                  <Button onClick={handleResumeGame} className="flex-1 bg-green-600 hover:bg-green-700" size="lg">
+                  <Button 
+                    onClick={handleResumeGame} 
+                    className="flex-1 bg-green-600 hover:bg-green-700" 
+                    size="lg"
+                    disabled={hostControls?.isProcessing}
+                  >
                     <Play className="w-4 h-4 mr-2" />
-                    Resume Automatic Game
+                    {hostControls?.isProcessing ? 'Resuming...' : 'Resume Automatic Game'}
                   </Button>
                 )}
 
-                <Button onClick={handleEndGame} variant="destructive" size="lg">
+                <Button 
+                  onClick={handleEndGame} 
+                  variant="destructive" 
+                  size="lg"
+                  disabled={hostControls?.isProcessing}
+                >
                   <Square className="w-4 h-4 mr-2" />
-                  End Game
+                  {hostControls?.isProcessing ? 'Ending...' : 'End Game'}
                 </Button>
               </>
             )}
@@ -359,6 +369,11 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                   </div>
                 ))}
             </div>
+            {gameData.gameState.calledNumbers.length > 20 && (
+              <p className="text-sm text-gray-500 mt-3 text-center">
+                Showing last 20 numbers • Total called: {gameData.gameState.calledNumbers.length}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -391,9 +406,21 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                       {prize.pattern}
                     </p>
                     {prize.won && prize.winners && prize.winners.length > 0 && (
-                      <p className="text-sm font-medium text-green-700 mt-1">
-                        Won by: {prize.winners.map(w => w.name).join(', ')}
-                      </p>
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-green-700">
+                          Won by: {prize.winners.map(w => w.name).join(', ')}
+                        </p>
+                        {prize.winningNumber && (
+                          <p className="text-xs text-green-600">
+                            Winning number: {prize.winningNumber}
+                          </p>
+                        )}
+                        {prize.wonAt && (
+                          <p className="text-xs text-green-600">
+                            Won at: {new Date(prize.wonAt).toLocaleTimeString()}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
@@ -410,9 +437,20 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
         </CardContent>
       </Card>
 
-      {/* ❌ REMOVED: All manual calling UI elements */}
-      {/* ❌ REMOVED: Manual number calling buttons */}
-      {/* ❌ REMOVED: Manual number selection interface */}
+      {/* Current Number Display for Live Games */}
+      {currentPhase === 'playing' && gameData.gameState.currentNumber && (
+        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white border-0">
+          <CardContent className="text-center py-8">
+            <h3 className="text-2xl font-bold mb-4">🔴 LIVE: Current Number</h3>
+            <div className="text-8xl font-bold animate-pulse mb-4">
+              {gameData.gameState.currentNumber}
+            </div>
+            <p className="text-lg opacity-90">
+              Players should mark this number on their tickets
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
