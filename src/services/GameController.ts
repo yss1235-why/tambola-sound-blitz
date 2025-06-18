@@ -1,5 +1,6 @@
 // src/services/GameController.ts - CLEANED: Only automatic calling, no manual calling
-import { firebaseService, GameData, GameState } from './firebase';
+// ✅ Fixed (use absolute path like other files)
+import { firebaseService, GameData, GameState } from '@/services/firebase';
 
 export interface GameControllerConfig {
   callInterval: number; // seconds between calls
