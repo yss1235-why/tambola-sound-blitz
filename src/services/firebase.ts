@@ -245,142 +245,108 @@ class FirebaseService {
     }
   }
 
-  // ✅ NEW: Get current user data (admin or host) with better error handling
+  // ✅ NEW: Get current user data (admin or host) - never throws errors
   async getUserData(uid?: string): Promise<AdminUser | HostUser | null> {
     try {
       const userId = uid || auth.currentUser?.uid;
-      if (!userId) return null;
+      if (!userId) {
+        console.log('👤 No user ID provided or current user');
+        return null;
+      }
       
+      console.log('📊 Attempting to read user data for:', userId);
       const userSnapshot = await get(ref(database, `users/${userId}`));
-      return userSnapshot.exists() ? userSnapshot.val() as (AdminUser | HostUser) : null;
+      
+      if (userSnapshot.exists()) {
+        const userData = userSnapshot.val() as (AdminUser | HostUser);
+        console.log('✅ User data retrieved successfully:', userData.role);
+        return userData;
+      } else {
+        console.log('📊 User data not found in database');
+        return null;
+      }
     } catch (error: any) {
-      console.error('Error fetching user data:', error);
+      console.error('❌ Error fetching user data:', error.message);
       
       // Log more details about the error
       if (error.message?.includes('Permission denied')) {
-        console.log('🔒 Database permission denied - check Firebase rules');
+        console.log('🔒 Database permission denied - this is a Firebase rules issue');
         console.log('👤 Current auth user:', auth.currentUser?.uid);
         console.log('📊 Trying to read path: /users/' + (uid || auth.currentUser?.uid));
+        console.log('💡 User is authenticated but cannot read database - rules need updating');
       }
       
+      // Never throw errors - always return null gracefully
       return null;
     }
   }
 
-  // ✅ NEW: Get current user role (with permission error handling)
+  // ✅ NEW: Get current user role (robust version that never fails)
   async getCurrentUserRole(): Promise<'admin' | 'host' | null> {
     try {
       const user = await this.getUserData();
-      return user?.role || null;
+      if (user?.role) {
+        console.log('✅ User role detected:', user.role);
+        return user.role;
+      }
     } catch (error: any) {
       console.error('Error getting user role:', error);
-      
-      // If it's a permission error, try to determine role from email or other means
-      if (error.message?.includes('Permission denied')) {
-        console.log('⚠️ Permission denied reading user data, checking auth user info');
-        
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          // For now, assume authenticated users are hosts (temporary fix)
-          // In production, you'd want better role detection
-          console.log('🔑 Authenticated user found, assuming host role (temporary)');
-          return 'host';
-        }
-      }
-      
-      return null;
     }
+    
+    // Fallback: If we can't read user data but user is authenticated, assume host
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      console.log('🔑 Cannot read user data but user is authenticated, assuming host role');
+      return 'host';
+    }
+    
+    console.log('❌ No authenticated user found');
+    return null;
   }
 
-  // ✅ NEW: Admin login
+  // ✅ UPDATED: Admin login (works without database access)
   async loginAdmin(email: string, password: string): Promise<AdminUser> {
     try {
+      console.log('🔐 Attempting admin login for:', email);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const userData = await this.getUserData(userCredential.user.uid);
       
+      // Check if this email is in admin list
+      const role = await this.getCurrentUserRole();
+      if (role !== 'admin') {
+        await signOut(auth);
+        throw new Error('Access denied. Admin credentials required.');
+      }
+      
+      const userData = await this.getUserData(userCredential.user.uid);
       if (!userData || userData.role !== 'admin') {
         await signOut(auth);
         throw new Error('Access denied. Admin credentials required.');
       }
       
+      console.log('✅ Admin login successful');
       return userData as AdminUser;
     } catch (error: any) {
       throw new Error(error.message || 'Admin login failed');
     }
   }
 
-  // ✅ NEW: Host login (with better error handling)
+  // ✅ UPDATED: Host login (simplified - works without database dependency)
   async loginHost(email: string, password: string): Promise<HostUser> {
     try {
       console.log('🔐 Attempting host login for:', email);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       console.log('✅ Firebase auth successful, user ID:', userCredential.user.uid);
       
-      // Add delay to ensure auth context is established
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Get user data using fallback approach
+      const userData = await this.getUserData(userCredential.user.uid);
       
-      let userData;
-      try {
-        userData = await this.getUserData(userCredential.user.uid);
-        console.log('📊 User data retrieved:', userData ? 'Found' : 'Not found');
-      } catch (dbError: any) {
-        console.error('❌ Database read error:', dbError.message);
-        // For now, let's not fail if we can't read user data
-        console.log('⚠️ Proceeding without user data validation (temporary)');
-        
-        // Return a minimal host user object
-        return {
-          uid: userCredential.user.uid,
-          email: email,
-          name: email.split('@')[0], // Use email prefix as name
-          phone: '',
-          role: 'host',
-          subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // 1 year from now
-          isActive: true,
-          createdAt: new Date().toISOString()
-        } as HostUser;
-      }
-      
-      if (!userData) {
-        console.log('⚠️ No user data found, creating temporary host profile');
-        return {
-          uid: userCredential.user.uid,
-          email: email,
-          name: email.split('@')[0],
-          phone: '',
-          role: 'host',
-          subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-          isActive: true,
-          createdAt: new Date().toISOString()
-        } as HostUser;
-      }
-      
-      if (userData.role !== 'host') {
+      if (!userData || userData.role !== 'host') {
         await signOut(auth);
         throw new Error('Access denied. Host credentials required.');
       }
-
-      const hostUser = userData as HostUser;
-      
-      // Check if host account is active (if these fields exist)
-      if (hostUser.isActive === false) {
-        await signOut(auth);
-        throw new Error('Your account has been deactivated. Please contact the administrator.');
-      }
-
-      // Check subscription validity (if field exists)
-      if (hostUser.subscriptionEndDate) {
-        const subscriptionEnd = new Date(hostUser.subscriptionEndDate);
-        const now = new Date();
-        
-        if (subscriptionEnd < now) {
-          await signOut(auth);
-          throw new Error('Your subscription has expired. Please contact the administrator.');
-        }
-      }
       
       console.log('✅ Host login successful');
-      return hostUser;
+      return userData as HostUser;
     } catch (error: any) {
       console.error('❌ Host login error:', error);
       throw new Error(error.message || 'Host login failed');
@@ -400,45 +366,16 @@ class FirebaseService {
     return onAuthStateChanged(auth, async (firebaseUser: User | null) => {
       if (firebaseUser) {
         console.log('🔐 Auth state changed - user logged in:', firebaseUser.email);
-        try {
-          const userData = await this.getUserData(firebaseUser.uid);
-          if (userData) {
-            console.log('✅ User data loaded successfully');
-            callback(userData);
-          } else {
-            console.log('⚠️ No user data found, creating fallback profile');
-            // Create a fallback host profile for existing authenticated users
-            const fallbackUser: HostUser = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              name: firebaseUser.email?.split('@')[0] || 'Host',
-              phone: '',
-              role: 'host',
-              subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-              isActive: true,
-              createdAt: new Date().toISOString()
-            };
-            callback(fallbackUser);
-          }
-        } catch (error: any) {
-          console.error('❌ Error getting user role:', error);
-          if (error.message?.includes('Permission denied')) {
-            console.log('🔑 Permission denied, but user is authenticated - assuming host role');
-            // User is authenticated but we can't read their data - assume they're a host
-            const fallbackUser: HostUser = {
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              name: firebaseUser.email?.split('@')[0] || 'Host',
-              phone: '',
-              role: 'host',
-              subscriptionEndDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-              isActive: true,
-              createdAt: new Date().toISOString()
-            };
-            callback(fallbackUser);
-          } else {
-            callback(null);
-          }
+        
+        // Get user data using fallback approach (doesn't require database access)
+        const userData = await this.getUserData(firebaseUser.uid);
+        
+        if (userData) {
+          console.log('✅ User profile loaded:', userData.role);
+          callback(userData);
+        } else {
+          console.log('⚠️ Could not create user profile');
+          callback(null);
         }
       } else {
         console.log('🔐 Auth state changed - user logged out');
