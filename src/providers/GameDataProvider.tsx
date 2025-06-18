@@ -1,321 +1,283 @@
-// src/services/GameController.ts - CLEANED: Only automatic calling, no manual calling
-import { firebaseService, GameData, GameState } from './firebase';
+// src/providers/GameDataProvider.tsx - CLEANED: Removed manual calling from host controls
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import { firebaseService, GameData } from '@/services/firebase';
+import { gameController } from '@/services/GameController';
 
-export interface GameControllerConfig {
-  callInterval: number; // seconds between calls
-  countdownDuration: number; // seconds for countdown
+interface GameDataContextType {
+  gameData: GameData | null;
+  isLoading: boolean;
+  error: string | null;
+  // Computed states for convenience
+  currentPhase: 'creation' | 'booking' | 'countdown' | 'playing' | 'finished';
+  timeUntilAction: number; // seconds until next action (countdown only)
+  isHost: boolean;
 }
 
-// ✅ CLEANED: Simplified controller - only automatic game management
-class GameController {
-  private config: GameControllerConfig = {
-    callInterval: 5,
-    countdownDuration: 10
+const GameDataContext = createContext<GameDataContextType>({
+  gameData: null,
+  isLoading: true,
+  error: null,
+  currentPhase: 'creation',
+  timeUntilAction: 0,
+  isHost: false
+});
+
+interface GameDataProviderProps {
+  gameId: string | null;
+  userId: string | null;
+  children: React.ReactNode;
+}
+
+export const GameDataProvider: React.FC<GameDataProviderProps> = ({ 
+  gameId, 
+  userId, 
+  children 
+}) => {
+  const [gameData, setGameData] = useState<GameData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [timeUntilAction, setTimeUntilAction] = useState(0);
+
+  // Refs for cleanup and state management
+  const subscriptionRef = useRef<(() => void) | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentGameIdRef = useRef<string | null>(null);
+
+  // Determine current game phase
+  const currentPhase = (): 'creation' | 'booking' | 'countdown' | 'playing' | 'finished' => {
+    if (!gameData) return 'creation';
+    if (gameData.gameState.gameOver) return 'finished';
+    if (gameData.gameState.isCountdown) return 'countdown';
+    if (gameData.gameState.isActive || (gameData.gameState.calledNumbers?.length || 0) > 0) return 'playing';
+    return 'booking';
   };
 
-  // Track active timers to prevent conflicts
-  private activeTimers = new Map<string, NodeJS.Timeout>();
-  private activeCountdowns = new Map<string, NodeJS.Timeout>();
+  // Check if current user is host
+  const isHost = gameData?.hostId === userId;
 
-  /**
-   * Start game countdown
-   */
-  async startGameCountdown(gameId: string): Promise<void> {
-    try {
-      console.log(`🎮 Starting countdown for game ${gameId}`);
+  // Simple countdown handling without conflicts
+  useEffect(() => {
+    if (gameData?.gameState.isCountdown) {
+      // Clear existing countdown timer
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+      }
 
-      // Clear any existing timers
-      this.clearGameTimers(gameId);
+      let remainingTime = gameData.gameState.countdownTime || 0;
+      setTimeUntilAction(remainingTime);
 
-      // Set countdown state
-      await firebaseService.updateGameState(gameId, {
-        isCountdown: true,
-        countdownTime: this.config.countdownDuration,
-        isActive: false
-      });
-
-      // Start countdown timer
-      let remainingTime = this.config.countdownDuration;
-      const countdownTimer = setInterval(async () => {
+      // Simple countdown display timer (doesn't affect game logic)
+      countdownTimerRef.current = setInterval(() => {
         remainingTime--;
+        setTimeUntilAction(Math.max(0, remainingTime));
         
-        if (remainingTime > 0) {
-          // Update countdown time
-          await firebaseService.updateGameState(gameId, {
-            countdownTime: remainingTime
-          });
-        } else {
-          // Countdown finished - start game
-          clearInterval(countdownTimer);
-          this.activeCountdowns.delete(gameId);
-          await this.startGame(gameId);
+        if (remainingTime <= 0) {
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
         }
       }, 1000);
-
-      this.activeCountdowns.set(gameId, countdownTimer);
-      
-      console.log(`⏰ Countdown started for ${this.config.countdownDuration} seconds`);
-    } catch (error: any) {
-      throw new Error(`Failed to start countdown: ${error.message}`);
-    }
-  }
-
-  /**
-   * Start the game and begin automatic number calling
-   */
-  async startGame(gameId: string): Promise<void> {
-    try {
-      console.log(`🚀 Starting game ${gameId}`);
-
-      // Clear any existing timers
-      this.clearGameTimers(gameId);
-
-      // Set active state
-      await firebaseService.updateGameState(gameId, {
-        isActive: true,
-        isCountdown: false,
-        countdownTime: 0
-      });
-
-      // Start automatic number calling loop
-      this.startNumberCallingLoop(gameId);
-      
-      console.log(`✅ Game started successfully`);
-    } catch (error: any) {
-      throw new Error(`Failed to start game: ${error.message}`);
-    }
-  }
-
-  /**
-   * ✅ FIXED: Automatic number calling loop using callNextNumber
-   */
-  private startNumberCallingLoop(gameId: string): void {
-    // Clear any existing timer
-    if (this.activeTimers.has(gameId)) {
-      clearTimeout(this.activeTimers.get(gameId)!);
+    } else {
+      // Clear countdown timer if not in countdown
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      setTimeUntilAction(0);
     }
 
-    const scheduleNextCall = () => {
-      const timer = setTimeout(async () => {
-        try {
-          // Check if game is still active
-          const gameData = await firebaseService.getGameData(gameId);
-          if (!gameData || !gameData.gameState.isActive || gameData.gameState.gameOver) {
-            console.log(`🛑 Game ${gameId} no longer active, stopping timer`);
-            this.activeTimers.delete(gameId);
-            return;
-          }
-
-          // ✅ FIXED: Use automatic number calling method
-          const result = await firebaseService.callNextNumber(gameId);
-          
-          if (result.success && result.number) {
-            console.log(`🎯 Number ${result.number} called successfully`);
-            
-            // Check if game ended
-            if (result.gameEnded) {
-              console.log(`🏁 Game ${gameId} ended`);
-              this.activeTimers.delete(gameId);
-              return;
-            }
-
-            // Schedule next call
-            scheduleNextCall();
-          } else {
-            console.log(`⚠️ Number call failed, retrying in ${this.config.callInterval} seconds`);
-            scheduleNextCall();
-          }
-        } catch (error) {
-          console.error('❌ Error in number calling loop:', error);
-          // Continue the loop even on error
-          scheduleNextCall();
-        }
-      }, this.config.callInterval * 1000);
-
-      this.activeTimers.set(gameId, timer);
+    return () => {
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
     };
+  }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime]);
 
-    scheduleNextCall();
-  }
-
-  /**
-   * Pause the game
-   */
-  async pauseGame(gameId: string): Promise<void> {
-    try {
-      console.log(`⏸️ Pausing game ${gameId}`);
-      
-      // Clear timers
-      this.clearGameTimers(gameId);
-      
-      // Only update isActive, preserve all other state
-      await firebaseService.updateGameState(gameId, {
-        isActive: false,
-        isCountdown: false
-      });
-
-      console.log(`✅ Game paused successfully`);
-    } catch (error: any) {
-      throw new Error(`Failed to pause game: ${error.message}`);
-    }
-  }
-
-  /**
-   * Resume the game
-   */
-  async resumeGame(gameId: string): Promise<void> {
-    try {
-      console.log(`▶️ Resuming game ${gameId}`);
-
-      // Set active state
-      await firebaseService.updateGameState(gameId, {
-        isActive: true,
-        isCountdown: false
-      });
-
-      // Restart number calling loop
-      this.startNumberCallingLoop(gameId);
-
-      console.log(`✅ Game resumed successfully`);
-    } catch (error: any) {
-      throw new Error(`Failed to resume game: ${error.message}`);
-    }
-  }
-
-  /**
-   * End the game
-   */
-  async endGame(gameId: string): Promise<void> {
-    try {
-      console.log(`🏁 Ending game ${gameId}`);
-      
-      // Clear all timers
-      this.clearGameTimers(gameId);
-      
-      // Set game over state
-      await firebaseService.updateGameState(gameId, {
-        isActive: false,
-        isCountdown: false,
-        gameOver: true
-      });
-
-      console.log(`✅ Game ended successfully`);
-    } catch (error: any) {
-      throw new Error(`Failed to end game: ${error.message}`);
-    }
-  }
-
-  /**
-   * Clear all timers for a game
-   */
-  private clearGameTimers(gameId: string): void {
-    // Clear number calling timer
-    if (this.activeTimers.has(gameId)) {
-      clearTimeout(this.activeTimers.get(gameId)!);
-      this.activeTimers.delete(gameId);
-      console.log(`🧹 Cleared calling timer for game ${gameId}`);
+  // Simplified subscription setup
+  const setupSubscription = useCallback(async (targetGameId: string) => {
+    console.log(`🔔 Setting up subscription for game: ${targetGameId}`);
+    
+    // Clean up existing subscription
+    if (subscriptionRef.current) {
+      subscriptionRef.current();
+      subscriptionRef.current = null;
     }
 
     // Clear countdown timer
-    if (this.activeCountdowns.has(gameId)) {
-      clearInterval(this.activeCountdowns.get(gameId)!);
-      this.activeCountdowns.delete(gameId);
-      console.log(`🧹 Cleared countdown timer for game ${gameId}`);
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
-  }
 
-  /**
-   * Update controller configuration
-   */
-  updateConfig(newConfig: Partial<GameControllerConfig>): void {
-    this.config = { ...this.config, ...newConfig };
-    console.log(`⚙️ Controller config updated:`, this.config);
-  }
-
-  /**
-   * Get current configuration
-   */
-  getConfig(): GameControllerConfig {
-    return { ...this.config };
-  }
-
-  /**
-   * Check if user can perform action (authorization)
-   */
-  async canPerformAction(gameId: string, userId: string, action: string): Promise<boolean> {
     try {
-      const gameData = await firebaseService.getGameData(gameId);
-      if (!gameData) return false;
+      let actualGameId = targetGameId;
 
-      // Only game host can control the game
-      return gameData.hostId === userId;
-    } catch (error) {
-      return false;
+      // Handle HOST_CURRENT case
+      if (targetGameId === 'HOST_CURRENT' && userId) {
+        const hostGame = await firebaseService.getHostCurrentGame(userId);
+        if (!hostGame) {
+          // Host has no active game
+          setGameData(null);
+          setIsLoading(false);
+          setError(null);
+          return;
+        }
+        actualGameId = hostGame.gameId;
+      }
+
+      // Store the current game ID
+      currentGameIdRef.current = actualGameId;
+
+      // Simple subscription - no scheduled actions processing
+      const unsubscribe = firebaseService.subscribeToGame(actualGameId, (updatedGameData) => {
+        // Check if this is still the current subscription
+        if (currentGameIdRef.current !== actualGameId) {
+          console.log(`🚫 Ignoring update for old game: ${actualGameId}`);
+          return;
+        }
+
+        if (updatedGameData) {
+          console.log(`📡 Game data updated:`, {
+            gameId: updatedGameData.gameId,
+            currentNumber: updatedGameData.gameState.currentNumber,
+            isActive: updatedGameData.gameState.isActive,
+            isCountdown: updatedGameData.gameState.isCountdown,
+            gameOver: updatedGameData.gameState.gameOver,
+            calledNumbersCount: updatedGameData.gameState.calledNumbers?.length || 0
+          });
+
+          setGameData(updatedGameData);
+          setIsLoading(false);
+          setError(null);
+        } else {
+          // Game was deleted
+          setGameData(null);
+          setIsLoading(false);
+          setError('Game was deleted');
+        }
+      });
+
+      subscriptionRef.current = unsubscribe;
+
+    } catch (error: any) {
+      console.error('Failed to setup subscription:', error);
+      setGameData(null);
+      setIsLoading(false);
+      setError(error.message || 'Failed to load game');
     }
+  }, [userId]);
+
+  // Main subscription effect with stable dependencies
+  useEffect(() => {
+    if (!gameId) {
+      // Clean up everything
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+      currentGameIdRef.current = null;
+      setGameData(null);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    // Only setup new subscription if gameId actually changed
+    if (currentGameIdRef.current !== gameId) {
+      setIsLoading(true);
+      setError(null);
+      setupSubscription(gameId);
+    }
+
+  }, [gameId, setupSubscription]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      console.log(`🧹 Cleaning up GameDataProvider`);
+      
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+      if (countdownTimerRef.current) {
+        clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+      }
+      
+      currentGameIdRef.current = null;
+    };
+  }, []);
+
+  const contextValue: GameDataContextType = {
+    gameData,
+    isLoading,
+    error,
+    currentPhase: currentPhase(),
+    timeUntilAction,
+    isHost
+  };
+
+  return (
+    <GameDataContext.Provider value={contextValue}>
+      {children}
+    </GameDataContext.Provider>
+  );
+};
+
+// Custom hook to use game data
+export const useGameData = (): GameDataContextType => {
+  const context = useContext(GameDataContext);
+  if (!context) {
+    throw new Error('useGameData must be used within a GameDataProvider');
   }
+  return context;
+};
 
-  /**
-   * Get game status
-   */
-  async getGameStatus(gameId: string): Promise<{
-    isActive: boolean;
-    isCountdown: boolean;
-    gameOver: boolean;
-    currentNumber: number | null;
-    calledNumbers: number[];
-    hasActiveTimer: boolean;
-  } | null> {
-    try {
-      const gameData = await firebaseService.getGameData(gameId);
-      if (!gameData) return null;
+// ✅ CLEANED: Simplified host controls - removed manual calling
+export const useHostControls = () => {
+  const { gameData, isHost } = useGameData();
+  const gameId = gameData?.gameId;
 
-      return {
-        isActive: gameData.gameState.isActive,
-        isCountdown: gameData.gameState.isCountdown,
-        gameOver: gameData.gameState.gameOver,
-        currentNumber: gameData.gameState.currentNumber,
-        calledNumbers: gameData.gameState.calledNumbers || [],
-        hasActiveTimer: this.activeTimers.has(gameId) || this.activeCountdowns.has(gameId)
-      };
-    } catch (error) {
-      console.error('Failed to get game status:', error);
-      return null;
-    }
-  }
+  // ✅ CLEANED: Stable controls object with only automatic game controls
+  const controls = React.useMemo(() => {
+    if (!isHost || !gameId) return null;
 
-  /**
-   * Clean up all timers on shutdown
-   */
-  cleanup(): void {
-    console.log('🧹 Cleaning up GameController timers');
-    
-    // Clear all calling timers
-    for (const [gameId, timer] of this.activeTimers) {
-      clearTimeout(timer);
-      console.log(`🧹 Cleared calling timer for game ${gameId}`);
-    }
-    this.activeTimers.clear();
+    return {
+      async startGame() {
+        console.log('🎮 Host starting game countdown');
+        await gameController.startGameCountdown(gameId);
+      },
 
-    // Clear all countdown timers
-    for (const [gameId, timer] of this.activeCountdowns) {
-      clearInterval(timer);
-      console.log(`🧹 Cleared countdown timer for game ${gameId}`);
-    }
-    this.activeCountdowns.clear();
-  }
+      async pauseGame() {
+        console.log('⏸️ Host pausing game');
+        await gameController.pauseGame(gameId);
+      },
 
-  // ❌ REMOVED: callSpecificNumber method (manual calling)
-  // ❌ REMOVED: All manual calling related methods
-}
+      async resumeGame() {
+        console.log('▶️ Host resuming game');
+        await gameController.resumeGame(gameId);
+      },
 
-// Export singleton instance
-export const gameController = new GameController();
+      async endGame() {
+        console.log('🏁 Host ending game');
+        await gameController.endGame(gameId);
+      },
 
-// Cleanup on page unload
-if (typeof window !== 'undefined') {
-  window.addEventListener('beforeunload', () => {
-    gameController.cleanup();
-  });
-}
+      updateCallInterval(seconds: number) {
+        console.log(`⚙️ Host updating call interval: ${seconds}s`);
+        gameController.updateConfig({ callInterval: seconds });
+      },
 
-export default gameController;
+      async getGameStatus() {
+        return await gameController.getGameStatus(gameId);
+      }
+
+      // ❌ REMOVED: callSpecificNumber (manual calling)
+    };
+  }, [isHost, gameId]);
+
+  return controls;
+};
