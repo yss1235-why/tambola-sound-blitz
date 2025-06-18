@@ -1,4 +1,4 @@
-// src/services/firebase.ts - FIXED: Added missing subscribeToAllActiveGames method
+// src/services/firebase.ts - FIXED: Added missing subscribeToAllActiveGames method and fixed getUserData()
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -234,26 +234,26 @@ class FirebaseService {
     }
   }
 
+  // ✅ FIXED: Streamlined getUserData() method - removed problematic users collection check
   async getUserData(): Promise<AdminUser | HostUser | null> {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) return null;
 
-      const userSnapshot = await get(ref(database, `users/${currentUser.uid}`));
-      if (!userSnapshot.exists()) {
-        // Try hosts collection
-        const hostSnapshot = await get(ref(database, `hosts/${currentUser.uid}`));
-        if (hostSnapshot.exists()) {
-          return { ...hostSnapshot.val(), role: 'host' } as HostUser;
-        }
-        // Try admins collection
-        const adminSnapshot = await get(ref(database, `admins/${currentUser.uid}`));
-        if (adminSnapshot.exists()) {
-          return { ...adminSnapshot.val(), role: 'admin' } as AdminUser;
-        }
-        return null;
+      // Check hosts collection first
+      const hostSnapshot = await get(ref(database, `hosts/${currentUser.uid}`));
+      if (hostSnapshot.exists()) {
+        return { ...hostSnapshot.val(), role: 'host' } as HostUser;
       }
-      return userSnapshot.val() as AdminUser | HostUser;
+      
+      // Check admins collection as fallback
+      const adminSnapshot = await get(ref(database, `admins/${currentUser.uid}`));
+      if (adminSnapshot.exists()) {
+        return { ...adminSnapshot.val(), role: 'admin' } as AdminUser;
+      }
+      
+      // Neither hosts nor admins collection has this user
+      return null;
     } catch (error) {
       console.error('Error fetching user data:', error);
       return null;
