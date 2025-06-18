@@ -1,397 +1,100 @@
-// src/providers/GameDataProvider.tsx - FIXED: Works with new authentication system
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import { firebaseService, GameData } from '@/services/firebase';
+// src/providers/GameDataProvider.tsx - SIMPLIFIED: Data-only provider using smart hook
+import React, { createContext, useContext, useMemo } from 'react';
+import { GameData } from '@/services/firebase';
+import { useGameSubscription, useHostCurrentGameSubscription } from '@/hooks/useFirebaseSubscription';
 
-// ================== TYPES ==================
+// Game phase enum for cleaner state management
+export type GamePhase = 'creation' | 'booking' | 'countdown' | 'playing' | 'finished';
 
-type GamePhase = 'creation' | 'booking' | 'countdown' | 'playing' | 'finished';
-
-interface HostControls {
-  startGame: () => Promise<void>;
-  pauseGame: () => Promise<void>;
-  resumeGame: () => Promise<void>;
-  endGame: () => Promise<void>;
-  updateCallInterval: (interval: number) => void;
-}
-
-interface GameDataContextType {
+interface GameDataContextValue {
   gameData: GameData | null;
   currentPhase: GamePhase;
   timeUntilAction: number;
   isLoading: boolean;
   error: string | null;
-  refreshGame: () => Promise<void>;
 }
 
-interface HostControlsContextType extends HostControls {}
-
-// ================== CONTEXTS ==================
-
-const GameDataContext = createContext<GameDataContextType | null>(null);
-const HostControlsContext = createContext<HostControlsContextType | null>(null);
-
-// ================== PROVIDER ==================
+const GameDataContext = createContext<GameDataContextValue | null>(null);
 
 interface GameDataProviderProps {
   children: React.ReactNode;
-  gameId: string | null;
-  userId: string | null; // null for public users, uid for hosts
+  gameId?: string | null;
+  userId?: string | null; // For host mode
 }
 
+/**
+ * Simplified GameDataProvider - Only handles data, no subscriptions or actions
+ * Uses smart useFirebaseSubscription hook to prevent infinite loops
+ */
 export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   children,
   gameId,
   userId
 }) => {
-  // State
-  const [gameData, setGameData] = useState<GameData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [timeUntilAction, setTimeUntilAction] = useState(0);
-  const [callInterval, setCallInterval] = useState(5); // seconds
+  // Determine subscription type based on props
+  const isHostMode = !!userId && (!gameId || gameId === 'HOST_CURRENT');
+  
+  // Use appropriate subscription
+  const hostGameSub = useHostCurrentGameSubscription(isHostMode ? userId : null);
+  const directGameSub = useGameSubscription(!isHostMode && gameId ? gameId : null);
+  
+  // Select active subscription data
+  const activeSubscription = isHostMode ? hostGameSub : directGameSub;
+  const gameData = activeSubscription.data;
+  const isLoading = activeSubscription.loading;
+  const error = activeSubscription.error;
 
-  // Refs for managing timers and subscriptions
-  const subscriptionRef = useRef<(() => void) | null>(null);
-  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const gameActiveRef = useRef(false);
-  const isCallingNumberRef = useRef(false);
+  // Calculate current game phase (pure function)
+  const currentPhase = useMemo((): GamePhase => {
+    if (!gameData) {
+      return 'creation';
+    }
 
-  // ================== GAME PHASE LOGIC ==================
-
-  const getCurrentPhase = useCallback((data: GameData | null): GamePhase => {
-    if (!data) return 'creation';
+    const { gameState } = gameData;
     
-    if (data.gameState.gameOver) return 'finished';
-    if (data.gameState.isCountdown) return 'countdown';
-    if (data.gameState.isActive || (data.gameState.calledNumbers?.length || 0) > 0) return 'playing';
+    if (gameState.gameOver) {
+      return 'finished';
+    }
+    
+    if (gameState.isCountdown) {
+      return 'countdown';
+    }
+    
+    if (gameState.isActive || (gameState.calledNumbers && gameState.calledNumbers.length > 0)) {
+      return 'playing';
+    }
     
     return 'booking';
-  }, []);
+  }, [gameData]);
 
-  const currentPhase = getCurrentPhase(gameData);
-
-  // ================== TIMER MANAGEMENT ==================
-
-  const clearAllTimers = useCallback(() => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
+  // Calculate time until next action (pure function)
+  const timeUntilAction = useMemo((): number => {
+    if (currentPhase === 'countdown' && gameData?.gameState.countdownTime) {
+      return gameData.gameState.countdownTime;
     }
-    if (gameTimerRef.current) {
-      clearTimeout(gameTimerRef.current);
-      gameTimerRef.current = null;
-    }
-    gameActiveRef.current = false;
-    isCallingNumberRef.current = false;
-  }, []);
+    return 0;
+  }, [currentPhase, gameData?.gameState.countdownTime]);
 
-  // ================== GAME CONTROLS (HOST ONLY) ==================
-
-  const startGame = useCallback(async () => {
-    if (!gameData || !userId) {
-      throw new Error('Unauthorized: Host access required');
-    }
-
-    if (gameData.hostId !== userId) {
-      throw new Error('Unauthorized: Only game host can start the game');
-    }
-
-    try {
-      console.log('🎮 Starting countdown...');
-      clearAllTimers();
-
-      // Start countdown
-      const countdownDuration = 10;
-      setTimeUntilAction(countdownDuration);
-
-      await firebaseService.updateGameState(gameData.gameId, {
-        isCountdown: true,
-        countdownTime: countdownDuration,
-        isActive: false
-      });
-
-      // Countdown timer
-      let remainingTime = countdownDuration;
-      countdownTimerRef.current = setInterval(async () => {
-        remainingTime--;
-        setTimeUntilAction(remainingTime);
-
-        if (remainingTime <= 0) {
-          clearInterval(countdownTimerRef.current!);
-          countdownTimerRef.current = null;
-
-          // Start actual game
-          await firebaseService.updateGameState(gameData.gameId, {
-            isActive: true,
-            isCountdown: false,
-            countdownTime: 0
-          });
-
-          // Start automatic number calling
-          gameActiveRef.current = true;
-          scheduleNextNumberCall();
-        }
-      }, 1000);
-
-    } catch (error: any) {
-      console.error('❌ Error starting game:', error);
-      throw new Error(error.message || 'Failed to start game');
-    }
-  }, [gameData, userId]);
-
-  const pauseGame = useCallback(async () => {
-    if (!gameData || !userId || gameData.hostId !== userId) {
-      throw new Error('Unauthorized');
-    }
-
-    try {
-      clearAllTimers();
-      await firebaseService.updateGameState(gameData.gameId, {
-        isActive: false,
-        isCountdown: false
-      });
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to pause game');
-    }
-  }, [gameData, userId]);
-
-  const resumeGame = useCallback(async () => {
-    if (!gameData || !userId || gameData.hostId !== userId) {
-      throw new Error('Unauthorized');
-    }
-
-    try {
-      await firebaseService.updateGameState(gameData.gameId, {
-        isActive: true,
-        isCountdown: false
-      });
-
-      gameActiveRef.current = true;
-      scheduleNextNumberCall();
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to resume game');
-    }
-  }, [gameData, userId]);
-
-  const endGame = useCallback(async () => {
-    if (!gameData || !userId || gameData.hostId !== userId) {
-      throw new Error('Unauthorized');
-    }
-
-    try {
-      clearAllTimers();
-      await firebaseService.updateGameState(gameData.gameId, {
-        isActive: false,
-        isCountdown: false,
-        gameOver: true
-      });
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to end game');
-    }
-  }, [gameData, userId]);
-
-  // ================== AUTOMATIC NUMBER CALLING ==================
-
-  const scheduleNextNumberCall = useCallback(() => {
-    if (!gameActiveRef.current || isCallingNumberRef.current) return;
-
-    gameTimerRef.current = setTimeout(async () => {
-      if (!gameActiveRef.current || !gameData) return;
-
-      try {
-        isCallingNumberRef.current = true;
-        console.log('🎯 Calling next number automatically...');
-
-        const result = await firebaseService.callNextNumber(gameData.gameId);
-
-        if (result.success) {
-          if (result.gameEnded) {
-            console.log('🏁 Game ended automatically');
-            gameActiveRef.current = false;
-          } else {
-            // Schedule next call
-            scheduleNextNumberCall();
-          }
-        } else {
-          console.warn('⚠️ Number call failed, retrying...');
-          scheduleNextNumberCall();
-        }
-      } catch (error) {
-        console.error('❌ Error in automatic number calling:', error);
-        scheduleNextNumberCall(); // Continue even on error
-      } finally {
-        isCallingNumberRef.current = false;
-      }
-    }, callInterval * 1000);
-  }, [gameData, callInterval]);
-
-  const updateCallInterval = useCallback((interval: number) => {
-    setCallInterval(interval);
-  }, []);
-
-  // ================== GAME DATA LOADING ==================
-
-  const refreshGame = useCallback(async () => {
-    if (!gameId) return;
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const data = await firebaseService.getGameData(gameId);
-      if (data) {
-        setGameData(data);
-      } else {
-        setError('Game not found');
-      }
-    } catch (error: any) {
-      console.error('❌ Error refreshing game:', error);
-      setError(error.message || 'Failed to load game');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [gameId]);
-
-  const loadHostCurrentGame = useCallback(async () => {
-    if (!userId) return;
-
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const hostGame = await firebaseService.getHostCurrentGame(userId);
-      if (hostGame) {
-        setGameData(hostGame);
-      } else {
-        setGameData(null); // No active game
-      }
-    } catch (error: any) {
-      console.error('❌ Error loading host game:', error);
-      setError(error.message || 'Failed to load host game');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [userId]);
-
-  // ================== REAL-TIME SUBSCRIPTION ==================
-
-  const setupGameSubscription = useCallback((targetGameId: string) => {
-    console.log('🔔 Setting up game subscription for:', targetGameId);
-
-    // Clean up existing subscription
-    if (subscriptionRef.current) {
-      subscriptionRef.current();
-    }
-
-    const unsubscribe = firebaseService.subscribeToGame(targetGameId, (updatedGame) => {
-      if (updatedGame) {
-        console.log('📡 Game updated via subscription');
-        setGameData(updatedGame);
-        setError(null);
-
-        // Update game active state for hosts
-        if (userId && updatedGame.hostId === userId) {
-          gameActiveRef.current = updatedGame.gameState.isActive && !updatedGame.gameState.gameOver;
-
-          // Handle countdown timer sync
-          if (updatedGame.gameState.isCountdown && updatedGame.gameState.countdownTime > 0) {
-            setTimeUntilAction(updatedGame.gameState.countdownTime);
-          }
-
-          // Start/stop automatic calling based on game state
-          if (updatedGame.gameState.isActive && !gameActiveRef.current && !isCallingNumberRef.current) {
-            gameActiveRef.current = true;
-            scheduleNextNumberCall();
-          }
-        }
-      } else {
-        console.log('📡 Game deleted or not found');
-        setGameData(null);
-        setError('Game not found');
-        clearAllTimers();
-      }
-    });
-
-    subscriptionRef.current = unsubscribe;
-  }, [userId, scheduleNextNumberCall]);
-
-  // ================== EFFECTS ==================
-
-  // Initial load effect
-  useEffect(() => {
-    const initializeData = async () => {
-      if (!gameId) {
-        // For hosts with no specific game ID, load their current game
-        if (userId) {
-          await loadHostCurrentGame();
-        } else {
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      // Load specific game
-      await refreshGame();
-    };
-
-    initializeData();
-  }, [gameId, userId, refreshGame, loadHostCurrentGame]);
-
-  // Subscription effect
-  useEffect(() => {
-    if (gameData?.gameId) {
-      setupGameSubscription(gameData.gameId);
-    }
-
-    return () => {
-      if (subscriptionRef.current) {
-        subscriptionRef.current();
-      }
-    };
-  }, [gameData?.gameId, setupGameSubscription]);
-
-  // Cleanup effect
-  useEffect(() => {
-    return () => {
-      clearAllTimers();
-      if (subscriptionRef.current) {
-        subscriptionRef.current();
-      }
-    };
-  }, [clearAllTimers]);
-
-  // ================== CONTEXT VALUES ==================
-
-  const gameDataValue: GameDataContextType = {
+  // Create stable context value
+  const contextValue = useMemo((): GameDataContextValue => ({
     gameData,
     currentPhase,
     timeUntilAction,
     isLoading,
-    error,
-    refreshGame
-  };
-
-  const hostControlsValue: HostControlsContextType | null = userId && gameData?.hostId === userId ? {
-    startGame,
-    pauseGame,
-    resumeGame,
-    endGame,
-    updateCallInterval
-  } : null;
+    error
+  }), [gameData, currentPhase, timeUntilAction, isLoading, error]);
 
   return (
-    <GameDataContext.Provider value={gameDataValue}>
-      <HostControlsContext.Provider value={hostControlsValue}>
-        {children}
-      </HostControlsContext.Provider>
+    <GameDataContext.Provider value={contextValue}>
+      {children}
     </GameDataContext.Provider>
   );
 };
 
-// ================== HOOKS ==================
-
-export const useGameData = (): GameDataContextType => {
+/**
+ * Hook to access game data from any child component
+ */
+export const useGameData = (): GameDataContextValue => {
   const context = useContext(GameDataContext);
   if (!context) {
     throw new Error('useGameData must be used within a GameDataProvider');
@@ -399,8 +102,58 @@ export const useGameData = (): GameDataContextType => {
   return context;
 };
 
-export const useHostControls = (): HostControlsContextType | null => {
-  return useContext(HostControlsContext);
+/**
+ * Utility hooks for specific data needs
+ */
+
+// Get booking statistics
+export const useBookingStats = () => {
+  const { gameData } = useGameData();
+  
+  return useMemo(() => {
+    if (!gameData?.tickets) {
+      return { bookedCount: 0, availableCount: 0, totalCount: 0 };
+    }
+    
+    const bookedCount = Object.values(gameData.tickets).filter(t => t.isBooked).length;
+    const totalCount = gameData.maxTickets;
+    const availableCount = totalCount - bookedCount;
+    
+    return { bookedCount, availableCount, totalCount };
+  }, [gameData?.tickets, gameData?.maxTickets]);
 };
 
-export default GameDataProvider;
+// Get game progress
+export const useGameProgress = () => {
+  const { gameData } = useGameData();
+  
+  return useMemo(() => {
+    if (!gameData?.gameState.calledNumbers) {
+      return { called: 0, remaining: 90, percentage: 0 };
+    }
+    
+    const called = gameData.gameState.calledNumbers.length;
+    const remaining = 90 - called;
+    const percentage = Math.round((called / 90) * 100);
+    
+    return { called, remaining, percentage };
+  }, [gameData?.gameState.calledNumbers]);
+};
+
+// Get prize statistics
+export const usePrizeStats = () => {
+  const { gameData } = useGameData();
+  
+  return useMemo(() => {
+    if (!gameData?.prizes) {
+      return { total: 0, won: 0, remaining: 0 };
+    }
+    
+    const prizes = Object.values(gameData.prizes);
+    const total = prizes.length;
+    const won = prizes.filter(p => p.won).length;
+    const remaining = total - won;
+    
+    return { total, won, remaining };
+  }, [gameData?.prizes]);
+};
