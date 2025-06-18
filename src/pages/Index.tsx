@@ -1,4 +1,4 @@
-// src/pages/Index.tsx - Updated to use GameDataProvider
+// src/pages/Index.tsx - SIMPLIFIED: Using new provider architecture
 import React, { useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { UserLandingPage } from '@/components/UserLandingPage';
@@ -12,15 +12,14 @@ const Index = () => {
   const [userRole, setUserRole] = useState<'admin' | 'host' | null>(null);
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
 
-  // Memoize callbacks to prevent infinite re-renders
+  // ✅ SIMPLIFIED: Memoized callbacks (same as before)
   const handleUserLogin = useCallback((user: AdminUser | HostUser, role: 'admin' | 'host') => {
     setCurrentUser(user);
     setUserRole(role);
     
-    // For hosts, we'll load their current game automatically
+    // For hosts, set special identifier for their current game
     if (role === 'host') {
-      // GameDataProvider will handle loading the host's current game
-      setSelectedGameId('HOST_CURRENT'); // Special identifier for host's current game
+      setSelectedGameId('HOST_CURRENT');
     }
   }, []);
 
@@ -34,26 +33,23 @@ const Index = () => {
     setSelectedGameId(gameId);
   }, []);
 
+  // ✅ SIMPLIFIED: Cleaner content rendering
   const renderContent = () => {
-    // Role-based content rendering
-    if (currentUser && userRole) {
-      if (userRole === 'admin') {
-        // Admin Dashboard - User management only
-        return <AdminDashboard user={currentUser as AdminUser} />;
-      } else if (userRole === 'host') {
-        // Host Dashboard - Single-page game management with provider
-        return (
-          <GameDataProvider 
-            gameId={selectedGameId} 
-            userId={currentUser.uid}
-          >
-            <GameHost user={currentUser as HostUser} userRole={userRole} />
-          </GameDataProvider>
-        );
-      }
+    // Admin Dashboard - No game data needed
+    if (currentUser && userRole === 'admin') {
+      return <AdminDashboard user={currentUser as AdminUser} />;
+    }
+    
+    // Host Dashboard - Single GameDataProvider with HostControlsProvider inside
+    if (currentUser && userRole === 'host') {
+      return (
+        <GameDataProvider userId={currentUser.uid}>
+          <GameHost user={currentUser as HostUser} userRole={userRole} />
+        </GameDataProvider>
+      );
     }
 
-    // Default: show public landing page for players
+    // Public landing page for players
     return (
       <UserLandingPage 
         onGameSelection={handleGameSelection}
