@@ -1,4 +1,4 @@
-// src/components/TicketManagementGrid.tsx - Fixed version without ANY Firebase subscriptions
+// src/components/TicketManagementGrid.tsx - VERIFIED: Compatible with simple numeric ticket IDs
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -55,13 +55,13 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     playerPhone: ''
   });
 
-  // Generate ticket info with memoization
+  // ✅ VERIFIED: Generate ticket info with simple numeric IDs (1, 2, 3...)
   const ticketInfo = useMemo(() => {
     const info: TicketInfo[] = [];
     const tickets = gameData.tickets || {};
     
     for (let i = 1; i <= gameData.maxTickets; i++) {
-      const ticketId = i.toString();
+      const ticketId = i.toString(); // ✅ Simple numeric format matches creation
       const ticket = tickets[ticketId];
       
       info.push({
@@ -73,6 +73,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       });
     }
     
+    console.log(`🎫 Generated ticket info for ${info.length} tickets with IDs: ${info.slice(0, 5).map(t => t.ticketId).join(', ')}...`);
     return info;
   }, [gameData.tickets, gameData.maxTickets]);
 
@@ -81,6 +82,8 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   const availableCount = gameData.maxTickets - bookedCount;
 
   const handleTicketClick = (ticketId: string, isBooked: boolean) => {
+    console.log(`🖱️ Ticket clicked: ${ticketId} (booked: ${isBooked})`);
+    
     if (isBooked) {
       // If ticket is booked, open edit dialog
       const ticket = ticketInfo.find(t => t.ticketId === ticketId);
@@ -129,6 +132,8 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     setIsBooking(true);
     try {
+      console.log(`🎫 Booking tickets: ${selectedTickets.join(', ')} for ${bookingForm.playerName}`);
+      
       // Book all tickets in parallel for better performance
       const bookingPromises = selectedTickets.map(ticketId => 
         firebaseService.bookTicket(
@@ -141,15 +146,17 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
       await Promise.all(bookingPromises);
 
+      console.log(`✅ Successfully booked ${selectedTickets.length} tickets`);
+
       // Reset form and selections
       setSelectedTickets([]);
       setBookingForm({ playerName: '', playerPhone: '' });
       setShowBookingDialog(false);
       
-      // NO onRefreshGame() - let Firebase subscription handle the update
+      // Firebase subscription will handle the update automatically
 
     } catch (error: any) {
-      console.error('Error booking tickets:', error);
+      console.error('❌ Error booking tickets:', error);
       alert(error.message || 'Failed to book tickets');
     } finally {
       setIsBooking(false);
@@ -168,6 +175,8 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     setIsUpdating(true);
     try {
+      console.log(`✏️ Updating ticket ${editingTicket.ticketId} for ${editForm.playerName}`);
+      
       await firebaseService.updateTicket(
         gameData.gameId,
         editingTicket.ticketId,
@@ -178,14 +187,16 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         }
       );
 
+      console.log(`✅ Ticket ${editingTicket.ticketId} updated successfully`);
+
       setShowEditDialog(false);
       setEditingTicket(null);
       setEditForm({ playerName: '', playerPhone: '' });
       
-      // NO onRefreshGame() - let Firebase subscription handle the update
+      // Firebase subscription will handle the update automatically
 
     } catch (error: any) {
-      console.error('Error updating ticket:', error);
+      console.error('❌ Error updating ticket:', error);
       alert(error.message || 'Failed to update ticket');
     } finally {
       setIsUpdating(false);
@@ -197,10 +208,12 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     if (!confirmed) return;
 
     try {
+      console.log(`🗑️ Cancelling booking for ticket ${ticketId}`);
       await firebaseService.unbookTicket(gameData.gameId, ticketId);
-      // NO onRefreshGame() - let Firebase subscription handle the update
+      console.log(`✅ Booking cancelled for ticket ${ticketId}`);
+      // Firebase subscription will handle the update automatically
     } catch (error: any) {
-      console.error('Error cancelling booking:', error);
+      console.error('❌ Error cancelling booking:', error);
       alert(error.message || 'Failed to cancel booking');
     }
   };
@@ -314,7 +327,12 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       {/* Tickets Grid */}
       <Card>
         <CardHeader>
-          <CardTitle>Tickets Grid (Click to select available tickets or edit booked ones)</CardTitle>
+          <CardTitle>
+            Tickets Grid - Simple Numeric IDs ({ticketInfo.length} tickets)
+          </CardTitle>
+          <p className="text-sm text-gray-600">
+            ✅ Using standardized format: Ticket 1, Ticket 2, Ticket 3...
+          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 sm:space-y-3">
@@ -325,6 +343,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                     key={ticket.ticketId}
                     className={getTicketClassName(ticket)}
                     onClick={() => handleTicketClick(ticket.ticketId, ticket.isBooked)}
+                    title={`Ticket ${ticket.ticketId}${ticket.isBooked ? ` - ${ticket.playerName}` : ' - Available'}`}
                   >
                     <span className="text-lg sm:text-xl lg:text-2xl font-bold">{ticket.ticketId}</span>
                   </div>
@@ -414,6 +433,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             <div className="p-3 bg-blue-50 rounded-lg">
               <p className="text-sm text-blue-800">
                 <strong>Selected Tickets:</strong> {selectedTickets.join(', ')}
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                ✅ Simple numeric format - matches user expectations
               </p>
             </div>
             
