@@ -1,4 +1,4 @@
-// src/providers/GameDataProvider.tsx - SIMPLIFIED: Data-only provider using smart hook
+// src/providers/GameDataProvider.tsx - FIXED: Better loading state management
 import React, { createContext, useContext, useMemo } from 'react';
 import { GameData } from '@/services/firebase';
 import { useGameSubscription, useHostCurrentGameSubscription } from '@/hooks/useFirebaseSubscription';
@@ -24,7 +24,7 @@ interface GameDataProviderProps {
 
 /**
  * Simplified GameDataProvider - Only handles data, no subscriptions or actions
- * Uses smart useFirebaseSubscription hook to prevent infinite loops
+ * FIXED: Better loading state management to prevent infinite loading
  */
 export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   children,
@@ -41,8 +41,27 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   // Select active subscription data
   const activeSubscription = isHostMode ? hostGameSub : directGameSub;
   const gameData = activeSubscription.data;
-  const isLoading = activeSubscription.loading;
+  const subscriptionLoading = activeSubscription.loading;
   const error = activeSubscription.error;
+
+  // ✅ FIXED: Better loading state logic
+  // Only show loading for a reasonable amount of time
+  const [loadingStartTime] = React.useState(Date.now());
+  const isLoading = useMemo(() => {
+    // If subscription resolved (loading false) or has data/error, don't show loading
+    if (!subscriptionLoading || gameData || error) {
+      return false;
+    }
+    
+    // If loading for more than 5 seconds, stop showing loading
+    const loadingTime = Date.now() - loadingStartTime;
+    if (loadingTime > 5000) {
+      console.warn('GameDataProvider: Loading timeout reached, resolving...');
+      return false;
+    }
+    
+    return true;
+  }, [subscriptionLoading, gameData, error, loadingStartTime]);
 
   // Calculate current game phase (pure function)
   const currentPhase = useMemo((): GamePhase => {
@@ -74,6 +93,20 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
     }
     return 0;
   }, [currentPhase, gameData?.gameState.countdownTime]);
+
+  // ✅ FIXED: Debug logging for host mode
+  React.useEffect(() => {
+    if (isHostMode) {
+      console.log(`🎮 GameDataProvider (Host Mode):`, {
+        userId,
+        gameData: gameData ? `Found: ${gameData.gameId}` : 'None',
+        currentPhase,
+        isLoading,
+        subscriptionLoading,
+        error
+      });
+    }
+  }, [isHostMode, userId, gameData, currentPhase, isLoading, subscriptionLoading, error]);
 
   // Create stable context value
   const contextValue = useMemo((): GameDataContextValue => ({
