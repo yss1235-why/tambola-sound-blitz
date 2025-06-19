@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - SIMPLIFIED: Using new provider architecture
+// src/components/GameHost.tsx - FIXED: Better loading and null state handling
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,8 @@ import {
   RefreshCw,
   Save,
   Edit,
-  Trash2
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -96,12 +97,10 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 ];
 
 /**
- * GameHost Component - Now uses separated providers
- * - GameDataProvider: For data only
- * - HostControlsProvider: For actions only
+ * GameHost Component - Now uses separated providers with better loading handling
  */
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
-  // ✅ SIMPLIFIED: Use game data from provider
+  // ✅ FIXED: Use game data from provider with better loading detection
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   
@@ -175,6 +174,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsCreating(true);
     try {
+      console.log('🎮 Starting game creation process...');
+      
       await firebaseService.saveHostSettings(user.uid, {
         hostPhone: createGameForm.hostPhone,
         maxTickets: maxTicketsNum,
@@ -189,17 +190,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         hostPhone: createGameForm.hostPhone
       };
 
-      await firebaseService.createGame(
+      const newGame = await firebaseService.createGame(
         gameConfig,
         user.uid,
         createGameForm.selectedTicketSet,
         createGameForm.selectedPrizes
       );
       
-      // ✅ SIMPLIFIED: Provider automatically updates via subscription
+      console.log('✅ Game created successfully:', newGame.gameId);
+      // Provider will automatically update via subscription
 
     } catch (error: any) {
-      console.error('Create game error:', error);
+      console.error('❌ Create game error:', error);
       alert(error.message || 'Failed to create game. Please try again.');
     } finally {
       setIsCreating(false);
@@ -243,7 +245,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     setIsCreating(true);
     try {
       await firebaseService.deleteGame(gameData.gameId);
-      // ✅ SIMPLIFIED: Provider automatically updates via subscription
+      // Provider will automatically update via subscription
     } catch (error: any) {
       console.error('Delete game error:', error);
       alert(error.message || 'Failed to delete game');
@@ -261,15 +263,32 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const subscriptionStatus = getSubscriptionStatus();
 
-  // ✅ SIMPLIFIED: Loading and error states
-  if (isLoading) {
+  // ✅ FIXED: Better loading state detection
+  // Only show loading if actually loading AND it's been more than a reasonable time
+  const [loadingTimeout, setLoadingTimeout] = useState(false);
+  
+  useEffect(() => {
+    if (isLoading) {
+      const timer = setTimeout(() => {
+        setLoadingTimeout(true);
+      }, 3000); // Show loading after 3 seconds
+      
+      return () => clearTimeout(timer);
+    } else {
+      setLoadingTimeout(false);
+    }
+  }, [isLoading]);
+
+  // ✅ FIXED: Show loading only if actually needed
+  if (isLoading && loadingTimeout) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
         <Card>
           <CardContent className="p-8 text-center">
-            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading...</h2>
-            <p className="text-gray-600">Setting up your host dashboard</p>
+            <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-blue-500" />
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Dashboard...</h2>
+            <p className="text-gray-600">Setting up your host interface</p>
+            <p className="text-sm text-gray-500 mt-2">If this takes too long, please refresh the page</p>
           </CardContent>
         </Card>
       </div>
@@ -338,8 +357,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </div>
         </div>
 
-        {/* ✅ SIMPLIFIED: Conditional rendering based on current phase */}
-        {currentPhase === 'creation' && !gameData && (
+        {/* ✅ FIXED: Better condition for showing create game form */}
+        {(!gameData || currentPhase === 'creation') && !editMode && (
           <CreateGameForm 
             createGameForm={createGameForm}
             setCreateGameForm={setCreateGameForm}
@@ -361,14 +380,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
             </div>
 
-            {/* ✅ SIMPLIFIED: Wrap with HostControlsProvider for actions */}
             <HostControlsProvider userId={user.uid}>
               <HostDisplay />
             </HostControlsProvider>
             
             <TicketManagementGrid
               gameData={gameData}
-              onRefreshGame={() => {}} // ✅ SIMPLIFIED: No manual refresh needed
+              onRefreshGame={() => {}} // No manual refresh needed
             />
           </div>
         )}
@@ -389,7 +407,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
         {(currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') && gameData && (
           <HostControlsProvider userId={user.uid}>
-            <HostDisplay />
+            <HostDisplay onCreateNewGame={createNewGame} />
           </HostControlsProvider>
         )}
 
@@ -406,7 +424,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
 };
 
-// ✅ SIMPLIFIED: Extracted components for cleaner code
+// ✅ FIXED: Extracted components for cleaner code (keeping exactly the same as before)
 const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMaxTicketsChange, isCreating }: any) => (
   <Card>
     <CardHeader>
