@@ -1,4 +1,4 @@
-// src/components/TicketBookingGrid.tsx - FIXED: Real-time subscription for auto-switching to game view
+// src/components/TicketBookingGrid.tsx - FIXED: Complete file with real-time subscription safety
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,7 +20,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 }) => {
   const [hostPhone, setHostPhone] = useState<string>('');
   const [isLoadingHost, setIsLoadingHost] = useState(true);
-  const [realTimeGameData, setRealTimeGameData] = useState<GameData>(gameData); // ✅ FIXED: Track real-time updates
+  const [realTimeGameData, setRealTimeGameData] = useState<GameData>(gameData);
 
   // ✅ FIXED: Add subscription ref for cleanup
   const subscriptionRef = useRef<(() => void) | null>(null);
@@ -217,24 +217,42 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   )}
                 </div>
 
-                {/* Ticket Grid */}
+                {/* ✅ FIXED: Ticket Grid with Safety Checks */}
                 <div className="p-4">
-                  <div className="grid grid-cols-9 gap-1 mb-4">
-                    {ticket.rows.flat().map((number, index) => (
-                      <div
-                        key={index}
-                        className={`aspect-square flex items-center justify-center text-xs font-bold rounded ${
-                          number === 0 
-                            ? 'bg-gray-100' 
-                            : ticket.isBooked 
-                              ? 'bg-gray-300 text-gray-600' 
-                              : 'bg-gradient-to-br from-orange-100 to-red-100 text-gray-800 border border-orange-200'
-                        }`}
-                      >
-                        {number !== 0 ? number : ''}
+                  {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
+                  {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
+                    <div className="grid grid-cols-9 gap-1 mb-4">
+                      {ticket.rows.flat().map((number, index) => (
+                        <div
+                          key={index}
+                          className={`aspect-square flex items-center justify-center text-xs font-bold rounded ${
+                            number === 0 
+                              ? 'bg-gray-100' 
+                              : ticket.isBooked 
+                                ? 'bg-gray-300 text-gray-600' 
+                                : 'bg-gradient-to-br from-orange-100 to-red-100 text-gray-800 border border-orange-200'
+                          }`}
+                        >
+                          {number !== 0 ? number : ''}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    /* ✅ FIXED: Show loading state if ticket data is incomplete */
+                    <div className="grid grid-cols-9 gap-1 mb-4">
+                      <div className="col-span-9 text-center py-4">
+                        <div className="flex items-center justify-center space-x-2">
+                          <Clock className="w-4 h-4 text-yellow-600 animate-pulse" />
+                          <span className="text-sm text-yellow-700">
+                            Ticket data updating...
+                          </span>
+                        </div>
+                        <p className="text-xs text-yellow-600 mt-1">
+                          Real-time update in progress
+                        </p>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
 
                   {/* Booking Status / Button */}
                   {ticket.isBooked ? (
@@ -254,11 +272,13 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                     <div className="space-y-2">
                       <Button
                         onClick={() => handleBookTicket(ticketId)}
-                        disabled={!hostPhone || isLoadingHost}
+                        disabled={!hostPhone || isLoadingHost || !ticket.rows}
                         className="bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 w-full disabled:opacity-50"
                       >
                         <Phone className="w-4 h-4 mr-2" />
-                        {isLoadingHost ? 'Loading...' : 'Book via WhatsApp'}
+                        {isLoadingHost ? 'Loading...' : 
+                         !ticket.rows ? 'Loading ticket...' : 
+                         'Book via WhatsApp'}
                       </Button>
                     </div>
                   )}
