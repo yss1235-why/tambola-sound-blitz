@@ -1,4 +1,4 @@
-// src/services/firebase.ts - FIXED: Added missing subscribeToAllActiveGames method and fixed getUserData()
+// src/services/firebase.ts - FIXED: Standardized ticket ID format to simple numeric
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -144,7 +144,7 @@ export const removeUndefinedValues = (obj: any): any => {
   return cleaned;
 };
 
-// Generate traditional Tambola ticket (3 rows x 9 columns)
+// ✅ FIXED: Generate traditional Tambola ticket with simple numeric ID
 const generateTambolaTicket = (ticketId: string): TambolaTicket => {
   const ticket: number[][] = [[], [], []];
   
@@ -188,7 +188,7 @@ const generateTambolaTicket = (ticketId: string): TambolaTicket => {
   }
   
   return {
-    ticketId,
+    ticketId, // ✅ FIXED: Use simple numeric ID as provided
     rows: ticket,
     isBooked: false
   };
@@ -234,7 +234,7 @@ class FirebaseService {
     }
   }
 
-  // ✅ FIXED: Streamlined getUserData() method - removed problematic users collection check
+  // Streamlined getUserData() method - removed problematic users collection check
   async getUserData(): Promise<AdminUser | HostUser | null> {
     try {
       const currentUser = auth.currentUser;
@@ -291,12 +291,14 @@ class FirebaseService {
     try {
       console.log(`🎮 Creating game for host ${hostId} with ${config.maxTickets} tickets`);
 
-      // Generate tickets based on selected set
+      // ✅ FIXED: Generate tickets with simple numeric IDs (1, 2, 3...)
       const tickets: { [ticketId: string]: TambolaTicket } = {};
       for (let i = 1; i <= config.maxTickets; i++) {
-        const ticketId = i.toString().padStart(3, '0');
+        const ticketId = i.toString(); // ✅ CHANGED: Simple numeric format instead of padded
         tickets[ticketId] = generateTambolaTicket(ticketId);
       }
+
+      console.log(`✅ Generated ${config.maxTickets} tickets with IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${config.maxTickets > 5 ? '...' : ''}`);
 
       // Initialize selected prizes
       const availablePrizes = {
@@ -375,6 +377,8 @@ class FirebaseService {
       await set(newGameRef, removeUndefinedValues(gameData));
       
       console.log(`✅ Game created successfully with ID: ${gameId}`);
+      console.log(`📊 Ticket ID format: Simple numeric (${Object.keys(tickets)[0]}, ${Object.keys(tickets)[1]}, ${Object.keys(tickets)[2]}...)`);
+      
       return gameData;
     } catch (error: any) {
       console.error('❌ Error creating game:', error);
@@ -473,6 +477,7 @@ class FirebaseService {
 
   // ================== TICKET MANAGEMENT ==================
 
+  // ✅ VERIFIED: This function correctly preserves existing ticket data
   async bookTicket(
     ticketId: string, 
     playerName: string, 
@@ -480,6 +485,8 @@ class FirebaseService {
     gameId: string
   ): Promise<void> {
     try {
+      console.log(`🎫 Booking ticket ${ticketId} for ${playerName} in game ${gameId}`);
+      
       const ticketData = {
         isBooked: true,
         playerName: playerName.trim(),
@@ -487,12 +494,13 @@ class FirebaseService {
         bookedAt: new Date().toISOString()
       };
 
+      // ✅ VERIFIED: Using update() preserves existing ticket data (ticketId, rows)
       await update(
         ref(database, `games/${gameId}/tickets/${ticketId}`),
         removeUndefinedValues(ticketData)
       );
       
-      console.log(`✅ Ticket ${ticketId} booked for ${playerName}`);
+      console.log(`✅ Ticket ${ticketId} booked successfully - existing data preserved`);
     } catch (error: any) {
       console.error('❌ Error booking ticket:', error);
       throw new Error(error.message || 'Failed to book ticket');
@@ -789,7 +797,7 @@ class FirebaseService {
     return () => off(gameRef, 'value', unsubscribe);
   }
 
-  // ✅ ADDED: Missing subscribeToAllActiveGames method
+  // Added missing subscribeToAllActiveGames method
   subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
     const gamesRef = ref(database, 'games');
     
