@@ -1,4 +1,4 @@
-// src/components/UserDisplay.tsx - FIXED: Added AudioManager for users
+// src/components/UserDisplay.tsx - FIXED: Safe handling of real-time ticket updates
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,8 +18,8 @@ import {
 } from 'lucide-react';
 import { useGameData } from '@/providers/GameDataProvider';
 import { NumberGrid } from './NumberGrid';
-import { AudioManager } from './AudioManager'; // ✅ FIXED: Added AudioManager
-import { AudioStatusComponent } from './AudioStatusComponent'; // ✅ FIXED: Added audio status
+import { AudioManager } from './AudioManager';
+import { AudioStatusComponent } from './AudioStatusComponent';
 import { TambolaTicket } from '@/services/firebase';
 
 interface SearchedTicket {
@@ -36,7 +36,7 @@ export const UserDisplay: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedTickets, setSearchedTickets] = useState<SearchedTicket[]>([]);
 
-  // Extract data safely
+  // ✅ FIXED: Extract data safely with null checks
   const tickets = gameData?.tickets || {};
   const calledNumbers = gameData?.gameState.calledNumbers || [];
   const currentNumber = gameData?.gameState.currentNumber;
@@ -82,11 +82,13 @@ export const UserDisplay: React.FC = () => {
       );
 
       // Add each ticket individually to the search results
-      const newSearchedTickets: SearchedTicket[] = playerTickets.map(t => ({
-        ticket: t,
-        playerName: t.playerName!,
-        uniqueId: `${t.ticketId}-${Date.now()}-${Math.random()}`
-      }));
+      const newSearchedTickets: SearchedTicket[] = playerTickets
+        .filter(t => t && t.rows) // ✅ FIXED: Only include tickets with valid rows
+        .map(t => ({
+          ticket: t,
+          playerName: t.playerName!,
+          uniqueId: `${t.ticketId}-${Date.now()}-${Math.random()}`
+        }));
 
       setSearchedTickets(prev => [...prev, ...newSearchedTickets]);
     }
@@ -99,8 +101,95 @@ export const UserDisplay: React.FC = () => {
     setSearchedTickets(prev => prev.filter(item => item.uniqueId !== uniqueId));
   };
 
-  // Helper function to render a ticket
+  // ✅ FIXED: Helper function to render a ticket with comprehensive safety checks
   const renderTicket = (ticket: TambolaTicket, showPlayerInfo: boolean = true) => {
+    // ✅ SAFETY CHECK 1: Verify ticket exists
+    if (!ticket) {
+      return (
+        <div className="bg-gray-100 p-4 rounded-lg border-2 border-gray-200">
+          <div className="text-center py-4">
+            <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+            <p className="text-sm text-gray-500">Loading ticket...</p>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ SAFETY CHECK 2: Verify ticket has rows property
+    if (!ticket.rows) {
+      return (
+        <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200">
+          <div className="text-center py-4">
+            <Clock className="w-6 h-6 text-yellow-600 mx-auto mb-2" />
+            <p className="text-sm text-yellow-700">
+              Ticket {ticket.ticketId} - Data updating...
+            </p>
+            <p className="text-xs text-yellow-600 mt-1">
+              Please wait while ticket details load
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ SAFETY CHECK 3: Verify rows is an array
+    if (!Array.isArray(ticket.rows)) {
+      return (
+        <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
+          <div className="text-center py-4">
+            <p className="text-sm text-red-700">
+              Ticket {ticket.ticketId} - Invalid data format
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ SAFETY CHECK 4: Verify each row is an array
+    const isValidStructure = ticket.rows.every(row => Array.isArray(row));
+    if (!isValidStructure) {
+      return (
+        <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
+          <div className="text-center py-4">
+            <p className="text-sm text-red-700">
+              Ticket {ticket.ticketId} - Corrupted data structure
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ SAFETY CHECK 5: Safe flattening with error handling
+    let allNumbers: number[] = [];
+    try {
+      allNumbers = ticket.rows.flat();
+    } catch (error) {
+      console.error('Error flattening ticket rows:', error, ticket);
+      return (
+        <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
+          <div className="text-center py-4">
+            <p className="text-sm text-red-700">
+              Ticket {ticket.ticketId} - Processing error
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ SAFETY CHECK 6: Verify we have valid numbers
+    if (allNumbers.length === 0) {
+      return (
+        <div className="bg-gray-100 p-4 rounded-lg border-2 border-gray-200">
+          <div className="text-center py-4">
+            <p className="text-sm text-gray-500">
+              Ticket {ticket.ticketId} - No numbers available
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    // ✅ ALL CHECKS PASSED: Render the ticket normally
     return (
       <div className="bg-white p-4 rounded-lg border-2 border-blue-200">
         {showPlayerInfo && ticket.playerName && (
@@ -110,7 +199,7 @@ export const UserDisplay: React.FC = () => {
           </div>
         )}
         <div className="grid grid-cols-9 gap-1">
-          {ticket.rows.flat().map((number, index) => {
+          {allNumbers.map((number, index) => {
             const isMarked = number !== 0 && calledNumbers.includes(number);
             const isEmpty = number === 0;
             
@@ -136,7 +225,7 @@ export const UserDisplay: React.FC = () => {
     );
   };
 
-  // Helper to render prize winner tickets
+  // ✅ FIXED: Helper to render prize winner tickets with safety checks
   const renderPrizeWinnerTickets = (prize: any) => {
     if (!prize.winners || prize.winners.length === 0) return null;
 
@@ -145,7 +234,34 @@ export const UserDisplay: React.FC = () => {
         <div className="space-y-4">
           {prize.winners.map((winner: any, idx: number) => {
             const winnerTicket = tickets[winner.ticketId];
-            return winnerTicket ? (
+            
+            // ✅ FIXED: Check if ticket exists and has valid structure
+            if (!winnerTicket || !winnerTicket.rows) {
+              return (
+                <div key={idx} className="space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <h5 className="font-medium text-gray-800">
+                      <User className="w-4 h-4 inline mr-1" />
+                      {winner.name} - Ticket {winner.ticketId}
+                    </h5>
+                    {prize.winningNumber && (
+                      <Badge variant="outline" className="text-gray-700 border-gray-300">
+                        Won on #{prize.winningNumber}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200">
+                    <div className="text-center py-2">
+                      <p className="text-sm text-yellow-700">
+                        Winner ticket data updating...
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
               <div key={idx} className="space-y-2">
                 <div className="flex items-center justify-between mb-2">
                   <h5 className="font-medium text-gray-800">
@@ -160,10 +276,6 @@ export const UserDisplay: React.FC = () => {
                 </div>
                 {renderTicket(winnerTicket, false)}
               </div>
-            ) : (
-              <div key={idx} className="text-center py-4 text-gray-500">
-                <p>Ticket {winner.ticketId} data not available</p>
-              </div>
             );
           })}
         </div>
@@ -171,14 +283,16 @@ export const UserDisplay: React.FC = () => {
     );
   };
 
-  // Group searched tickets by player
-  const groupedSearchResults = searchedTickets.reduce((acc, item) => {
-    if (!acc[item.playerName]) {
-      acc[item.playerName] = [];
-    }
-    acc[item.playerName].push(item);
-    return acc;
-  }, {} as { [playerName: string]: SearchedTicket[] });
+  // ✅ FIXED: Group searched tickets by player with safety checks
+  const groupedSearchResults = searchedTickets
+    .filter(item => item.ticket && item.ticket.rows) // Only include valid tickets
+    .reduce((acc, item) => {
+      if (!acc[item.playerName]) {
+        acc[item.playerName] = [];
+      }
+      acc[item.playerName].push(item);
+      return acc;
+    }, {} as { [playerName: string]: SearchedTicket[] });
 
   if (isLoading) {
     return (
@@ -210,7 +324,7 @@ export const UserDisplay: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* ✅ FIXED: Added Audio Status Component for Users */}
+        {/* Audio Status Component for Users */}
         <AudioStatusComponent />
 
         {/* Header */}
@@ -439,7 +553,7 @@ export const UserDisplay: React.FC = () => {
           </Card>
         )}
 
-        {/* ✅ FIXED: Added AudioManager for Users */}
+        {/* Audio Manager for Users */}
         {gameData && (
           <AudioManager
             currentNumber={gameData.gameState.currentNumber}
