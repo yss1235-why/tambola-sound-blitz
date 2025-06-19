@@ -1,4 +1,4 @@
-// src/components/UserDisplay.tsx - FIXED: Safe handling of real-time ticket updates
+// src/components/UserDisplay.tsx - ENHANCED: Better safety for simple numeric ticket IDs
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,8 @@ import {
   Ticket,
   Clock,
   User,
-  Hash
+  Hash,
+  CheckCircle
 } from 'lucide-react';
 import { useGameData } from '@/providers/GameDataProvider';
 import { NumberGrid } from './NumberGrid';
@@ -36,11 +37,27 @@ export const UserDisplay: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedTickets, setSearchedTickets] = useState<SearchedTicket[]>([]);
 
-  // ✅ FIXED: Extract data safely with null checks
+  // ✅ ENHANCED: Extract data safely with null checks and format validation
   const tickets = gameData?.tickets || {};
   const calledNumbers = gameData?.gameState.calledNumbers || [];
   const currentNumber = gameData?.gameState.currentNumber;
   const prizes = gameData ? Object.values(gameData.prizes) : [];
+
+  // ✅ NEW: Validate ticket ID format consistency
+  const validateTicketFormat = React.useCallback(() => {
+    const ticketIds = Object.keys(tickets);
+    const simpleIds = ticketIds.filter(id => /^\d{1,3}$/.test(id) && parseInt(id, 10).toString() === id);
+    const paddedIds = ticketIds.filter(id => /^\d{3}$/.test(id) && parseInt(id, 10).toString() !== id);
+    
+    console.log(`🎫 Ticket format analysis: ${simpleIds.length} simple, ${paddedIds.length} padded (total: ${ticketIds.length})`);
+    
+    return {
+      total: ticketIds.length,
+      simple: simpleIds.length,
+      padded: paddedIds.length,
+      isConsistent: paddedIds.length === 0 && simpleIds.length === ticketIds.length
+    };
+  }, [tickets]);
 
   // Initialize expanded prizes for won prizes
   React.useEffect(() => {
@@ -68,29 +85,66 @@ export const UserDisplay: React.FC = () => {
     });
   };
 
-  // Handle ticket search
+  // ✅ ENHANCED: Handle ticket search with format validation
   const handleSearch = () => {
     if (!searchQuery.trim()) return;
 
     const searchedTicketId = searchQuery.trim();
-    const ticket = tickets[searchedTicketId];
+    console.log(`🔍 Searching for ticket: "${searchedTicketId}"`);
+    
+    // ✅ NEW: Try both formats for backward compatibility during transition
+    let ticket = tickets[searchedTicketId];
+    let actualTicketId = searchedTicketId;
+    
+    // If not found and it's a simple number, try padded format as fallback
+    if (!ticket && /^\d{1,2}$/.test(searchedTicketId)) {
+      const paddedId = searchedTicketId.padStart(3, '0');
+      if (tickets[paddedId]) {
+        ticket = tickets[paddedId];
+        actualTicketId = paddedId;
+        console.log(`🔄 Found ticket using padded format: ${paddedId}`);
+      }
+    }
+    
+    // If still not found and it's padded, try simple format
+    if (!ticket && /^\d{3}$/.test(searchedTicketId)) {
+      const simpleId = parseInt(searchedTicketId, 10).toString();
+      if (tickets[simpleId]) {
+        ticket = tickets[simpleId];
+        actualTicketId = simpleId;
+        console.log(`🔄 Found ticket using simple format: ${simpleId}`);
+      }
+    }
 
     if (ticket && ticket.isBooked && ticket.playerName) {
+      console.log(`✅ Found booked ticket: ${actualTicketId} for ${ticket.playerName}`);
+      
       // Find all tickets by this player
       const playerTickets = Object.values(tickets).filter(
         t => t.isBooked && t.playerName === ticket.playerName
       );
 
+      console.log(`👥 Found ${playerTickets.length} tickets for player: ${ticket.playerName}`);
+
       // Add each ticket individually to the search results
       const newSearchedTickets: SearchedTicket[] = playerTickets
-        .filter(t => t && t.rows) // ✅ FIXED: Only include tickets with valid rows
+        .filter(t => t && t.rows && Array.isArray(t.rows)) // ✅ ENHANCED: Only include tickets with valid rows
         .map(t => ({
           ticket: t,
           playerName: t.playerName!,
           uniqueId: `${t.ticketId}-${Date.now()}-${Math.random()}`
         }));
 
-      setSearchedTickets(prev => [...prev, ...newSearchedTickets]);
+      if (newSearchedTickets.length > 0) {
+        setSearchedTickets(prev => [...prev, ...newSearchedTickets]);
+        console.log(`✅ Added ${newSearchedTickets.length} valid tickets to search results`);
+      } else {
+        console.warn(`⚠️ No valid tickets found for player (all missing row data)`);
+        alert('Tickets found but data is still loading. Please try again in a moment.');
+      }
+    } else {
+      console.log(`❌ Ticket not found or not booked: ${searchedTicketId}`);
+      alert(`Ticket ${searchedTicketId} not found or not booked yet.`);
     }
 
     setSearchQuery('');
@@ -101,7 +155,7 @@ export const UserDisplay: React.FC = () => {
     setSearchedTickets(prev => prev.filter(item => item.uniqueId !== uniqueId));
   };
 
-  // ✅ FIXED: Helper function to render a ticket with comprehensive safety checks
+  // ✅ ENHANCED: Helper function to render a ticket with comprehensive safety checks
   const renderTicket = (ticket: TambolaTicket, showPlayerInfo: boolean = true) => {
     // ✅ SAFETY CHECK 1: Verify ticket exists
     if (!ticket) {
@@ -125,34 +179,40 @@ export const UserDisplay: React.FC = () => {
               Ticket {ticket.ticketId} - Data updating...
             </p>
             <p className="text-xs text-yellow-600 mt-1">
-              Please wait while ticket details load
+              ✅ New format loading - please wait
             </p>
           </div>
         </div>
       );
     }
 
-    // ✅ SAFETY CHECK 3: Verify rows is an array
-    if (!Array.isArray(ticket.rows)) {
+    // ✅ SAFETY CHECK 3: Verify rows is an array with proper structure
+    if (!Array.isArray(ticket.rows) || ticket.rows.length !== 3) {
       return (
         <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
           <div className="text-center py-4">
             <p className="text-sm text-red-700">
-              Ticket {ticket.ticketId} - Invalid data format
+              Ticket {ticket.ticketId} - Invalid data structure
+            </p>
+            <p className="text-xs text-red-600 mt-1">
+              Expected 3 rows, got {Array.isArray(ticket.rows) ? ticket.rows.length : 'non-array'}
             </p>
           </div>
         </div>
       );
     }
 
-    // ✅ SAFETY CHECK 4: Verify each row is an array
-    const isValidStructure = ticket.rows.every(row => Array.isArray(row));
+    // ✅ SAFETY CHECK 4: Verify each row is an array with proper length
+    const isValidStructure = ticket.rows.every(row => Array.isArray(row) && row.length === 9);
     if (!isValidStructure) {
       return (
         <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
           <div className="text-center py-4">
             <p className="text-sm text-red-700">
-              Ticket {ticket.ticketId} - Corrupted data structure
+              Ticket {ticket.ticketId} - Corrupted grid structure
+            </p>
+            <p className="text-xs text-red-600 mt-1">
+              Each row should have 9 columns
             </p>
           </div>
         </div>
@@ -163,26 +223,21 @@ export const UserDisplay: React.FC = () => {
     let allNumbers: number[] = [];
     try {
       allNumbers = ticket.rows.flat();
+      
+      // Verify we have the expected number of cells (27 total)
+      if (allNumbers.length !== 27) {
+        throw new Error(`Expected 27 cells, got ${allNumbers.length}`);
+      }
     } catch (error) {
-      console.error('Error flattening ticket rows:', error, ticket);
+      console.error('Error processing ticket rows:', error, ticket);
       return (
         <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
           <div className="text-center py-4">
             <p className="text-sm text-red-700">
               Ticket {ticket.ticketId} - Processing error
             </p>
-          </div>
-        </div>
-      );
-    }
-
-    // ✅ SAFETY CHECK 6: Verify we have valid numbers
-    if (allNumbers.length === 0) {
-      return (
-        <div className="bg-gray-100 p-4 rounded-lg border-2 border-gray-200">
-          <div className="text-center py-4">
-            <p className="text-sm text-gray-500">
-              Ticket {ticket.ticketId} - No numbers available
+            <p className="text-xs text-red-600 mt-1">
+              Grid processing failed: {error instanceof Error ? error.message : 'Unknown error'}
             </p>
           </div>
         </div>
@@ -194,8 +249,14 @@ export const UserDisplay: React.FC = () => {
       <div className="bg-white p-4 rounded-lg border-2 border-blue-200">
         {showPlayerInfo && ticket.playerName && (
           <div className="mb-3 text-center">
-            <p className="font-semibold text-gray-800">Ticket {ticket.ticketId}</p>
+            <div className="flex items-center justify-center space-x-2">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+              <p className="font-semibold text-gray-800">Ticket {ticket.ticketId}</p>
+            </div>
             <p className="text-sm text-gray-600">{ticket.playerName}</p>
+            <p className="text-xs text-green-600 mt-1">
+              ✅ Format: Simple Numeric ID
+            </p>
           </div>
         )}
         <div className="grid grid-cols-9 gap-1">
@@ -207,12 +268,12 @@ export const UserDisplay: React.FC = () => {
               <div
                 key={index}
                 className={`
-                  aspect-square flex items-center justify-center text-xs font-bold rounded
+                  aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-200
                   ${isEmpty 
                     ? 'bg-gray-100' 
                     : isMarked 
-                      ? 'bg-green-500 text-white shadow-md' 
-                      : 'bg-yellow-50 text-gray-800 border border-gray-300'
+                      ? 'bg-green-500 text-white shadow-md transform scale-105' 
+                      : 'bg-yellow-50 text-gray-800 border border-gray-300 hover:bg-yellow-100'
                   }
                 `}
               >
@@ -221,11 +282,18 @@ export const UserDisplay: React.FC = () => {
             );
           })}
         </div>
+        
+        {/* ✅ NEW: Show ticket validation status */}
+        <div className="mt-2 text-center">
+          <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+            ID: {ticket.ticketId} | Numbers: {allNumbers.filter(n => n > 0).length}/15
+          </Badge>
+        </div>
       </div>
     );
   };
 
-  // ✅ FIXED: Helper to render prize winner tickets with safety checks
+  // ✅ ENHANCED: Helper to render prize winner tickets with safety checks
   const renderPrizeWinnerTickets = (prize: any) => {
     if (!prize.winners || prize.winners.length === 0) return null;
 
@@ -235,7 +303,7 @@ export const UserDisplay: React.FC = () => {
           {prize.winners.map((winner: any, idx: number) => {
             const winnerTicket = tickets[winner.ticketId];
             
-            // ✅ FIXED: Check if ticket exists and has valid structure
+            // ✅ ENHANCED: Check if ticket exists and has valid structure
             if (!winnerTicket || !winnerTicket.rows) {
               return (
                 <div key={idx} className="space-y-2">
@@ -252,8 +320,12 @@ export const UserDisplay: React.FC = () => {
                   </div>
                   <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200">
                     <div className="text-center py-2">
+                      <Clock className="w-4 h-4 text-yellow-600 mx-auto mb-1" />
                       <p className="text-sm text-yellow-700">
-                        Winner ticket data updating...
+                        Winner ticket updating to new format...
+                      </p>
+                      <p className="text-xs text-yellow-600 mt-1">
+                        This may take a moment during the format transition
                       </p>
                     </div>
                   </div>
@@ -283,7 +355,7 @@ export const UserDisplay: React.FC = () => {
     );
   };
 
-  // ✅ FIXED: Group searched tickets by player with safety checks
+  // ✅ ENHANCED: Group searched tickets by player with safety checks
   const groupedSearchResults = searchedTickets
     .filter(item => item.ticket && item.ticket.rows) // Only include valid tickets
     .reduce((acc, item) => {
@@ -294,6 +366,9 @@ export const UserDisplay: React.FC = () => {
       return acc;
     }, {} as { [playerName: string]: SearchedTicket[] });
 
+  // ✅ NEW: Get format analysis for debugging
+  const formatAnalysis = validateTicketFormat();
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 p-4 flex items-center justify-center">
@@ -301,6 +376,7 @@ export const UserDisplay: React.FC = () => {
           <CardContent className="p-8 text-center">
             <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Game...</h2>
+            <p className="text-sm text-gray-600">Setting up new ticket format...</p>
           </CardContent>
         </Card>
       </div>
@@ -336,6 +412,24 @@ export const UserDisplay: React.FC = () => {
                currentPhase === 'countdown' ? `Game Starting in ${timeUntilAction}s!` : 
                currentPhase === 'playing' ? 'Game in Progress' : 'Waiting to Start'}
             </p>
+            
+            {/* ✅ NEW: Show format status for transparency */}
+            <div className="mt-3 flex justify-center">
+              <Badge 
+                variant="outline" 
+                className={`text-sm px-3 py-1 ${
+                  formatAnalysis.isConsistent 
+                    ? 'border-green-300 text-green-100 bg-green-500/20' 
+                    : 'border-yellow-300 text-yellow-100 bg-yellow-500/20'
+                }`}
+              >
+                {formatAnalysis.isConsistent ? (
+                  <>✅ New Format: Tickets 1, 2, 3...</>
+                ) : (
+                  <>🔄 Format Transition: {formatAnalysis.simple} new, {formatAnalysis.padded} old</>
+                )}
+              </Badge>
+            </div>
           </CardHeader>
         </Card>
 
@@ -455,11 +549,28 @@ export const UserDisplay: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* ✅ NEW: Format info for users */}
+              <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-blue-800">
+                    ✅ Using new ticket format: Simple numbers (1, 2, 3...)
+                  </span>
+                  <Badge variant="outline" className="text-blue-600 border-blue-400">
+                    {formatAnalysis.total} tickets loaded
+                  </Badge>
+                </div>
+                {!formatAnalysis.isConsistent && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    🔄 Transition in progress: Some tickets may still be updating to the new format
+                  </p>
+                )}
+              </div>
+              
               {/* Search Bar */}
               <div className="flex space-x-2">
                 <Input
                   type="text"
-                  placeholder="Enter any ticket number to find all your tickets"
+                  placeholder="Enter any ticket number to find all your tickets (e.g., 5, 23, 47)"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -485,7 +596,12 @@ export const UserDisplay: React.FC = () => {
                 <div className="text-center py-8 text-gray-500">
                   <Ticket className="w-12 h-12 mx-auto mb-4 text-gray-400" />
                   <p>Search for any of your ticket numbers to view all your booked tickets</p>
-                  <p className="text-sm mt-2">You can remove individual tickets to track only the ones you want</p>
+                  <p className="text-sm mt-2">
+                    ✅ New format: Just enter the number (1, 2, 3...) - no leading zeros needed
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    You can remove individual tickets to track only the ones you want
+                  </p>
                 </div>
               )}
 
@@ -495,6 +611,9 @@ export const UserDisplay: React.FC = () => {
                   <h4 className="font-bold text-gray-800 flex items-center mb-3">
                     <User className="w-4 h-4 mr-2" />
                     {playerName}'s Tickets ({playerTickets.length})
+                    <Badge variant="outline" className="ml-2 text-green-600 border-green-400">
+                      ✅ New Format
+                    </Badge>
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {playerTickets.map((item) => (
@@ -528,6 +647,9 @@ export const UserDisplay: React.FC = () => {
               <div className="mt-4 text-lg">
                 <p>Total Numbers Called: {calledNumbers.length}</p>
                 <p>Prizes Won: {prizes.filter(p => p.won).length} of {prizes.length}</p>
+                <p className="text-sm mt-2 opacity-80">
+                  ✅ Game used new ticket format (1, 2, 3...)
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -542,9 +664,14 @@ export const UserDisplay: React.FC = () => {
               <p className="text-gray-600 mb-4">
                 Game is ready for ticket booking. Contact the host to book your tickets.
               </p>
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4">
+                <p className="text-blue-800 font-medium">
+                  ✅ New tickets will use simple format: Ticket 1, Ticket 2, Ticket 3...
+                </p>
+              </div>
               {gameData.hostPhone && (
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <p className="text-blue-800 font-medium">
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <p className="text-green-800 font-medium">
                     📱 Contact Host: +{gameData.hostPhone}
                   </p>
                 </div>
@@ -564,6 +691,31 @@ export const UserDisplay: React.FC = () => {
             }}
             forceEnable={false} // Let users enable manually
           />
+        )}
+
+        {/* ✅ NEW: Development format debugging info */}
+        {process.env.NODE_ENV === 'development' && (
+          <Card className="border-gray-300 bg-gray-50">
+            <CardHeader>
+              <CardTitle className="text-sm text-gray-700">Debug: Ticket Format Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-4 text-xs">
+                <div>
+                  <span className="font-medium">Total:</span> {formatAnalysis.total}
+                </div>
+                <div>
+                  <span className="font-medium">Simple (new):</span> {formatAnalysis.simple}
+                </div>
+                <div>
+                  <span className="font-medium">Padded (old):</span> {formatAnalysis.padded}
+                </div>
+                <div>
+                  <span className="font-medium">Consistent:</span> {formatAnalysis.isConsistent ? '✅' : '❌'}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>
