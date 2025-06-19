@@ -1,5 +1,5 @@
 // src/hooks/useLazyAuth.ts - Lazy Authentication Loading Hook
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, getCurrentUserRole, firebaseService, AdminUser, HostUser } from '@/services/firebase';
 
@@ -222,7 +222,7 @@ export const useLazyAuth = (): LazyAuthState & LazyAuthActions => {
   }, []);
 
   // Return cleanup function for external use
-  React.useEffect(() => {
+  useEffect(() => {
     return cleanup;
   }, [cleanup]);
 
