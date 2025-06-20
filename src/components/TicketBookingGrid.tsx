@@ -201,14 +201,14 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 key={ticketId}
                 className={`relative rounded-xl border-2 transition-all duration-200 ${
                   ticket.isBooked 
-                    ? 'bg-gray-100 border-gray-300' 
+                    ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
                     : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
                 }`}
               >
                 {/* Ticket Header */}
                 <div className={`text-center py-3 rounded-t-xl ${
                   ticket.isBooked 
-                    ? 'bg-gray-200 text-gray-600' 
+                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
                     : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
                 }`}>
                   <h3 className="font-bold text-lg">Ticket {ticketId}</h3>
@@ -229,7 +229,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                             number === 0 
                               ? 'bg-gray-100' 
                               : ticket.isBooked 
-                                ? 'bg-gray-300 text-gray-600' 
+                                ? 'bg-green-300 text-green-800' 
                                 : 'bg-gradient-to-br from-orange-100 to-red-100 text-gray-800 border border-orange-200'
                           }`}
                         >
