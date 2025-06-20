@@ -254,9 +254,6 @@ export const UserDisplay: React.FC = () => {
               <p className="font-semibold text-gray-800">Ticket {ticket.ticketId}</p>
             </div>
             <p className="text-sm text-gray-600">{ticket.playerName}</p>
-            <p className="text-xs text-green-600 mt-1">
-              ✅ Format: Simple Numeric ID
-            </p>
           </div>
         )}
         <div className="grid grid-cols-9 gap-1">
@@ -281,13 +278,6 @@ export const UserDisplay: React.FC = () => {
               </div>
             );
           })}
-        </div>
-        
-        {/* ✅ NEW: Show ticket validation status */}
-        <div className="mt-2 text-center">
-          <Badge variant="outline" className="text-xs text-green-600 border-green-300">
-            ID: {ticket.ticketId} | Numbers: {allNumbers.filter(n => n > 0).length}/15
-          </Badge>
         </div>
       </div>
     );
@@ -412,24 +402,6 @@ export const UserDisplay: React.FC = () => {
                currentPhase === 'countdown' ? `Game Starting in ${timeUntilAction}s!` : 
                currentPhase === 'playing' ? 'Game in Progress' : 'Waiting to Start'}
             </p>
-            
-            {/* ✅ NEW: Show format status for transparency */}
-            <div className="mt-3 flex justify-center">
-              <Badge 
-                variant="outline" 
-                className={`text-sm px-3 py-1 ${
-                  formatAnalysis.isConsistent 
-                    ? 'border-green-300 text-green-100 bg-green-500/20' 
-                    : 'border-yellow-300 text-yellow-100 bg-yellow-500/20'
-                }`}
-              >
-                {formatAnalysis.isConsistent ? (
-                  <>✅ New Format: Tickets 1, 2, 3...</>
-                ) : (
-                  <>🔄 Format Transition: {formatAnalysis.simple} new, {formatAnalysis.padded} old</>
-                )}
-              </Badge>
-            </div>
           </CardHeader>
         </Card>
 
@@ -549,23 +521,6 @@ export const UserDisplay: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* ✅ NEW: Format info for users */}
-              <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-blue-800">
-                    ✅ Using new ticket format: Simple numbers (1, 2, 3...)
-                  </span>
-                  <Badge variant="outline" className="text-blue-600 border-blue-400">
-                    {formatAnalysis.total} tickets loaded
-                  </Badge>
-                </div>
-                {!formatAnalysis.isConsistent && (
-                  <p className="text-xs text-blue-600 mt-1">
-                    🔄 Transition in progress: Some tickets may still be updating to the new format
-                  </p>
-                )}
-              </div>
-              
               {/* Search Bar */}
               <div className="flex space-x-2">
                 <Input
@@ -611,9 +566,6 @@ export const UserDisplay: React.FC = () => {
                   <h4 className="font-bold text-gray-800 flex items-center mb-3">
                     <User className="w-4 h-4 mr-2" />
                     {playerName}'s Tickets ({playerTickets.length})
-                    <Badge variant="outline" className="ml-2 text-green-600 border-green-400">
-                      ✅ New Format
-                    </Badge>
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {playerTickets.map((item) => (
@@ -647,9 +599,6 @@ export const UserDisplay: React.FC = () => {
               <div className="mt-4 text-lg">
                 <p>Total Numbers Called: {calledNumbers.length}</p>
                 <p>Prizes Won: {prizes.filter(p => p.won).length} of {prizes.length}</p>
-                <p className="text-sm mt-2 opacity-80">
-                  ✅ Game used new ticket format (1, 2, 3...)
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -664,11 +613,6 @@ export const UserDisplay: React.FC = () => {
               <p className="text-gray-600 mb-4">
                 Game is ready for ticket booking. Contact the host to book your tickets.
               </p>
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4">
-                <p className="text-blue-800 font-medium">
-                  ✅ New tickets will use simple format: Ticket 1, Ticket 2, Ticket 3...
-                </p>
-              </div>
               {gameData.hostPhone && (
                 <div className="bg-green-50 p-4 rounded-lg border border-green-200">
                   <p className="text-green-800 font-medium">
