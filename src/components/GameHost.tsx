@@ -33,11 +33,14 @@ interface GameHostProps {
   userRole: 'host';
 }
 
+// ✅ UPDATED: Added order and difficulty for prize management
 interface GamePrize {
   id: string;
   name: string;
   pattern: string;
   description: string;
+  order: number;      // ← NEW: For display ordering
+  difficulty: string; // ← NEW: For UI indicators
 }
 
 interface CreateGameForm {
@@ -72,36 +75,63 @@ const TICKET_SETS = [
   }
 ];
 
+// ✅ UPDATED: Complete prize list with new Corner and Star Corner prizes
 const AVAILABLE_PRIZES: GamePrize[] = [
   {
     id: 'quickFive',
     name: 'Quick Five',
     pattern: 'First 5 numbers',
-    description: 'First player to mark any 5 numbers'
+    description: 'First player to mark any 5 numbers',
+    order: 1,
+    difficulty: 'easy'
+  },
+  {
+    id: 'corner',
+    name: 'Corner',
+    pattern: '4 corner positions',
+    description: 'Mark all 4 corner positions of your ticket',
+    order: 2,
+    difficulty: 'medium'
   },
   {
     id: 'topLine',
     name: 'Top Line',
     pattern: 'Complete top row',
-    description: 'Complete the top row of any ticket'
+    description: 'Complete the top row of any ticket',
+    order: 3,
+    difficulty: 'medium'
   },
   {
     id: 'middleLine',
     name: 'Middle Line',
-    pattern: 'Complete middle row', 
-    description: 'Complete the middle row of any ticket'
+    pattern: 'Complete middle row',
+    description: 'Complete the middle row of any ticket',
+    order: 4,
+    difficulty: 'medium'
   },
   {
     id: 'bottomLine',
     name: 'Bottom Line',
     pattern: 'Complete bottom row',
-    description: 'Complete the bottom row of any ticket'
+    description: 'Complete the bottom row of any ticket',
+    order: 5,
+    difficulty: 'medium'
+  },
+  {
+    id: 'starCorner',
+    name: 'Star Corner',
+    pattern: '4 corners + center',
+    description: 'Mark all 4 corner positions plus center position',
+    order: 6,
+    difficulty: 'hard'
   },
   {
     id: 'fullHouse',
     name: 'Full House',
     pattern: 'All numbers',
-    description: 'Mark all numbers on the ticket'
+    description: 'Mark all numbers on the ticket',
+    order: 7,
+    difficulty: 'hardest'
   }
 ];
 
@@ -112,9 +142,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // ✅ REAL-TIME: Keep all existing real-time functionality
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
-  
-  // ✅ FIXED: Remove currentView state - let real-time data drive everything
-  // const [currentView, setCurrentView] = useState<'create' | 'booking' | 'live'>('create'); // REMOVED
   
   // ✅ NEW: Operation tracking for better UX during transitions
   const [operation, setOperation] = useState<OperationState>({
@@ -184,9 +211,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid]);
 
-  // ✅ REMOVED: Auto-detect view based on real-time data useEffect
-  // The view is now determined purely by the render logic based on gameData and currentPhase
-
   // ✅ NEW: Clear operation state when real-time data updates
   useEffect(() => {
     if (operation.inProgress) {
@@ -251,10 +275,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       
       console.log('✅ Game created successfully:', newGame.gameId);
       
-      // ✅ FIXED: Remove manual view switch - let real-time data handle it
-      // setCurrentView('booking'); // REMOVED
-      // console.log('🎯 Switched to booking view immediately'); // REMOVED
-
       // ✅ NEW: Update operation state - real-time data will trigger view change
       setOperation(prev => ({
         ...prev,
@@ -330,10 +350,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       await firebaseService.deleteGame(gameData.gameId);
       console.log('✅ Game deleted successfully');
       
-      // ✅ FIXED: Remove manual view switch - let real-time data handle it
-      // setCurrentView('create'); // REMOVED
-      // console.log('🎯 Switched to create view immediately'); // REMOVED
-
       // ✅ NEW: Update operation state - real-time data will trigger view change
       setOperation(prev => ({
         ...prev,
@@ -691,11 +707,13 @@ const CreateGameForm = ({
         </div>
       </div>
 
-      {/* Prize Selection */}
+      {/* ✅ UPDATED: Prize Selection with sorting */}
       <div>
         <Label>Select Prizes</Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-          {AVAILABLE_PRIZES.map((prize) => (
+          {AVAILABLE_PRIZES
+            .sort((a, b) => a.order - b.order) // ← NEW: Sort by order
+            .map((prize) => (
             <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
               <Checkbox
                 id={prize.id}
@@ -720,6 +738,18 @@ const CreateGameForm = ({
               <div className="flex-1">
                 <Label htmlFor={prize.id} className="font-medium cursor-pointer">
                   {prize.name}
+                  {/* ✅ NEW: Show difficulty indicator */}
+                  <Badge 
+                    variant="outline" 
+                    className={`ml-2 text-xs ${
+                      prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
+                      prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
+                      prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
+                      'text-red-600 border-red-300'
+                    }`}
+                  >
+                    {prize.difficulty}
+                  </Badge>
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
                 <p className="text-xs text-gray-500">{prize.description}</p>
@@ -851,11 +881,13 @@ const EditGameForm = ({
         </div>
       </div>
 
-      {/* Prize Selection */}
+      {/* ✅ UPDATED: Prize Selection with sorting */}
       <div>
         <Label>Select Prizes</Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-          {AVAILABLE_PRIZES.map((prize) => (
+          {AVAILABLE_PRIZES
+            .sort((a, b) => a.order - b.order) // ← NEW: Sort by order
+            .map((prize) => (
             <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
               <Checkbox
                 id={`edit-${prize.id}`}
@@ -880,6 +912,18 @@ const EditGameForm = ({
               <div className="flex-1">
                 <Label htmlFor={`edit-${prize.id}`} className="font-medium cursor-pointer">
                   {prize.name}
+                  {/* ✅ NEW: Show difficulty indicator */}
+                  <Badge 
+                    variant="outline" 
+                    className={`ml-2 text-xs ${
+                      prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
+                      prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
+                      prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
+                      'text-red-600 border-red-300'
+                    }`}
+                  >
+                    {prize.difficulty}
+                  </Badge>
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
                 <p className="text-xs text-gray-500">{prize.description}</p>
