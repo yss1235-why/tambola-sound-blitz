@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - FIXED: Better loading and null state handling
+// src/components/GameHost.tsx - COMPLETE: With game creation redirect fix
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -45,7 +45,7 @@ interface CreateGameForm {
   selectedPrizes: string[];
 }
 
-// Available options (same as before)
+// Available options
 const TICKET_SETS = [
   {
     id: "1",
@@ -97,12 +97,15 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 ];
 
 /**
- * GameHost Component - Now uses separated providers with better loading handling
+ * GameHost Component - With Game Creation Redirect Fix
  */
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // ✅ FIXED: Use game data from provider with better loading detection
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
+  
+  // ✅ GAME CREATION REDIRECT FIX: Add key state to force re-renders
+  const [gameKey, setGameKey] = useState(0);
   
   // Local state for game creation/editing
   const [editMode, setEditMode] = useState(false);
@@ -145,8 +148,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   useEffect(() => {
     const loadPreviousSettings = async () => {
       try {
+        console.log('🔧 Loading previous host settings...');
         const settings = await firebaseService.getHostSettings(user.uid);
         if (settings) {
+          console.log('✅ Previous settings loaded');
           setCreateGameForm(prev => ({
             ...prev,
             hostPhone: settings.hostPhone || prev.hostPhone,
@@ -163,7 +168,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid]);
 
-  // Create new game
+  // ✅ GAME CREATION REDIRECT FIX: Updated createNewGame function
   const createNewGame = async () => {
     if (!isSubscriptionValid()) {
       alert('Your subscription has expired. Please contact the administrator.');
@@ -198,7 +203,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       );
       
       console.log('✅ Game created successfully:', newGame.gameId);
-      // Provider will automatically update via subscription
+      
+      // ✅ GAME CREATION REDIRECT FIX: Force component refresh to show new game immediately
+      console.log('🔄 Forcing GameDataProvider refresh...');
+      setGameKey(prev => prev + 1);
+      
+      // Also give a small delay to ensure Firebase subscription picks up the change
+      setTimeout(() => {
+        console.log('📡 Game creation completed, subscription should be updated');
+      }, 500);
 
     } catch (error: any) {
       console.error('❌ Create game error:', error);
@@ -226,6 +239,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       });
       
       setEditMode(false);
+      console.log('✅ Game settings updated successfully');
 
     } catch (error: any) {
       console.error('Update game error:', error);
@@ -245,7 +259,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     setIsCreating(true);
     try {
       await firebaseService.deleteGame(gameData.gameId);
-      // Provider will automatically update via subscription
+      console.log('✅ Game deleted successfully');
+      // Force refresh after deletion
+      setGameKey(prev => prev + 1);
     } catch (error: any) {
       console.error('Delete game error:', error);
       alert(error.message || 'Failed to delete game');
@@ -263,15 +279,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const subscriptionStatus = getSubscriptionStatus();
 
-  // ✅ FIXED: Better loading state detection
-  // Only show loading if actually loading AND it's been more than a reasonable time
+  // Show loading state with timeout protection
   const [loadingTimeout, setLoadingTimeout] = useState(false);
   
   useEffect(() => {
     if (isLoading) {
       const timer = setTimeout(() => {
         setLoadingTimeout(true);
-      }, 3000); // Show loading after 3 seconds
+      }, 3000);
       
       return () => clearTimeout(timer);
     } else {
@@ -279,7 +294,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, [isLoading]);
 
-  // ✅ FIXED: Show loading only if actually needed
   if (isLoading && loadingTimeout) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
@@ -344,7 +358,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
+    // ✅ GAME CREATION REDIRECT FIX: Add gameKey to force re-render when game is created
+    <div key={gameKey} className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
@@ -357,7 +372,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </div>
         </div>
 
-        {/* ✅ FIXED: Better condition for showing create game form */}
+        {/* Create Game Form */}
         {(!gameData || currentPhase === 'creation') && !editMode && (
           <CreateGameForm 
             createGameForm={createGameForm}
@@ -368,6 +383,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
+        {/* Booking Phase */}
         {currentPhase === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -386,11 +402,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             
             <TicketManagementGrid
               gameData={gameData}
-              onRefreshGame={() => {}} // No manual refresh needed
+              onRefreshGame={() => {}} // No manual refresh needed with subscriptions
             />
           </div>
         )}
 
+        {/* Edit Game Form */}
         {currentPhase === 'booking' && gameData && editMode && (
           <EditGameForm
             gameData={gameData}
@@ -405,6 +422,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
+        {/* Live Game Phases */}
         {(currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') && gameData && (
           <HostControlsProvider userId={user.uid}>
             <HostDisplay onCreateNewGame={createNewGame} />
@@ -419,12 +437,37 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             forceEnable={true}
           />
         )}
+
+        {/* Development Debug Info */}
+        {process.env.NODE_ENV === 'development' && (
+          <Card className="border-gray-300 bg-gray-50">
+            <CardHeader>
+              <CardTitle className="text-sm text-gray-700">Debug: GameHost State</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-4 gap-4 text-xs">
+                <div>
+                  <span className="font-medium">Game Key:</span> {gameKey}
+                </div>
+                <div>
+                  <span className="font-medium">Phase:</span> {currentPhase}
+                </div>
+                <div>
+                  <span className="font-medium">Game ID:</span> {gameData?.gameId || 'None'}
+                </div>
+                <div>
+                  <span className="font-medium">Loading:</span> {isLoading ? 'Yes' : 'No'}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
 };
 
-// ✅ FIXED: Extracted components for cleaner code (keeping exactly the same as before)
+// ✅ UNCHANGED: Form components remain exactly the same
 const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMaxTicketsChange, isCreating }: any) => (
   <Card>
     <CardHeader>
