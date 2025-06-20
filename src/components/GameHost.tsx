@@ -168,7 +168,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid]);
 
-  // ✅ REMOVED: Auto-detection that conflicts with manual view switching for create/delete buttons
+  // ✅ SIMPLE FIX: Auto-detect view based on real-time data
+  useEffect(() => {
+    if (gameData) {
+      if (currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') {
+        setCurrentView('live');
+      } else if (currentPhase === 'booking') {
+        setCurrentView('booking');
+      }
+    } else {
+      setCurrentView('create');
+    }
+  }, [gameData, currentPhase]);
 
   // ✅ SIMPLE FIX: Updated createNewGame - remove hacks, add direct view switch
   const createNewGame = async () => {
@@ -399,50 +410,37 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ FIXED: Remove gameData dependency to prevent blank page */}
+        {/* ✅ SIMPLE FIX: Use currentView instead of complex conditions */}
         {/* Booking Phase */}
-        {currentView === 'booking' && !editMode && (
+        {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
-            {gameData ? (
-              <>
-                <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-bold text-gray-800">Game Ready for Booking</h2>
-                  <div className="flex space-x-2">
-                    <Button 
-                      onClick={() => setEditMode(true)} 
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit Settings
-                    </Button>
-                  </div>
-                </div>
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-800">Game Ready for Booking</h2>
+              <div className="flex space-x-2">
+                <Button 
+                  onClick={() => setEditMode(true)} 
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Settings
+                </Button>
+              </div>
+            </div>
 
-                {/* ✅ UNCHANGED: Real-time components continue working */}
-                <HostControlsProvider userId={user.uid}>
-                  <HostDisplay />
-                </HostControlsProvider>
-                
-                <TicketManagementGrid
-                  gameData={gameData}
-                  onRefreshGame={() => {}} // No manual refresh needed with subscriptions
-                />
-              </>
-            ) : (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-blue-500" />
-                  <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Game...</h2>
-                  <p className="text-gray-600">Setting up your booking interface</p>
-                </CardContent>
-              </Card>
-            )}
+            {/* ✅ UNCHANGED: Real-time components continue working */}
+            <HostControlsProvider userId={user.uid}>
+              <HostDisplay />
+            </HostControlsProvider>
+            
+            <TicketManagementGrid
+              gameData={gameData}
+              onRefreshGame={() => {}} // No manual refresh needed with subscriptions
+            />
           </div>
         )}
 
-        {/* ✅ FIXED: Remove gameData dependency and add safety check */}
-        {/* Edit Game Form */}
-        {currentView === 'booking' && editMode && gameData && (
+        {/* ✅ UNCHANGED: Edit Game Form */}
+        {currentView === 'booking' && gameData && editMode && (
           <EditGameForm
             gameData={gameData}
             createGameForm={createGameForm}
@@ -456,9 +454,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ UPDATED: Manual view switching for live game phase */}
-        {/* Live Game Phases */}
-        {(currentView === 'live' || (gameData && (currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished'))) && gameData && (
+        {/* ✅ UNCHANGED: Live Game Phases - Real-time continues working */}
+        {currentView === 'live' && gameData && (
           <HostControlsProvider userId={user.uid}>
             <HostDisplay onCreateNewGame={createNewGame} />
           </HostControlsProvider>
