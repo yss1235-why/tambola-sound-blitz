@@ -1,4 +1,4 @@
-// src/hooks/useFirebaseSubscription.ts - FIXED: Proper async handling for host subscriptions
+// src/hooks/useFirebaseSubscription.ts - FIXED: Better host subscription that watches all games
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { firebaseService } from '@/services/firebase';
 
@@ -166,107 +166,60 @@ export function useActiveGamesSubscription() {
   );
 }
 
-// ✅ FIXED: Host's current game subscription with proper async handling
+// ✅ FIXED: Complete rewrite of host subscription to watch ALL host games
 export function useHostCurrentGameSubscription(hostId: string | null) {
   return useFirebaseSubscription(
-    `host-current-${hostId}`,
+    `host-all-games-${hostId}`,
     useCallback((callback) => {
       if (!hostId) {
         console.log('🔐 No hostId provided, resolving with null');
-        // Immediately call callback to resolve loading state
         setTimeout(() => callback(null), 0);
         return () => {};
       }
       
-      console.log(`🔍 Setting up host current game subscription for: ${hostId}`);
+      console.log(`🔍 Setting up ALL GAMES subscription for host: ${hostId}`);
       
-      // State management for subscription
-      let currentGameId: string | null = null;
-      let gameUnsubscribe: (() => void) | null = null;
-      let isActive = true;
-      let hasCalledInitialCallback = false;
-      
-      // ✅ FIXED: Proper async handling with immediate callback resolution
-      const setupGameSubscription = async () => {
+      // ✅ NEW APPROACH: Subscribe to ALL games and filter for host's active game
+      const unsubscribe = firebaseService.subscribeToAllActiveGames((allGames) => {
         try {
-          console.log(`🎮 Fetching current game for host: ${hostId}`);
-          const hostGame = await firebaseService.getHostCurrentGame(hostId);
+          console.log(`📡 Received ${allGames.length} total active games`);
           
-          // Component might have unmounted during async operation
-          if (!isActive) {
-            console.log(`⚠️ Component unmounted during fetch for host: ${hostId}`);
+          // Filter games for this specific host
+          const hostGames = allGames.filter(game => game.hostId === hostId);
+          console.log(`🎮 Found ${hostGames.length} games for host: ${hostId}`);
+          
+          if (hostGames.length === 0) {
+            console.log(`ℹ️ No active games for host: ${hostId}`);
+            callback(null);
             return;
           }
           
-          if (hostGame && hostGame.gameId) {
-            console.log(`✅ Found active game: ${hostGame.gameId} for host: ${hostId}`);
-            
-            // Cleanup old subscription if exists
-            if (gameUnsubscribe) {
-              gameUnsubscribe();
-            }
-            
-            currentGameId = hostGame.gameId;
-            
-            // Subscribe to the active game
-            gameUnsubscribe = firebaseService.subscribeToGame(hostGame.gameId, (gameData) => {
-              if (isActive) {
-                console.log(`📡 Game data updated for ${hostGame.gameId}`);
-                callback(gameData);
-                hasCalledInitialCallback = true;
-              }
-            });
-          } else {
-            console.log(`ℹ️ No active game found for host: ${hostId}`);
-            
-            // ✅ CRITICAL FIX: Ensure callback is called when no game exists
-            if (isActive && !hasCalledInitialCallback) {
-              console.log(`📞 Calling callback with null for host: ${hostId}`);
-              callback(null);
-              hasCalledInitialCallback = true;
-            }
-          }
-        } catch (error: any) {
-          console.error(`❌ Error fetching host game for ${hostId}:`, error);
+          // Find the most recent non-finished game
+          const activeGames = hostGames.filter(game => !game.gameState.gameOver);
+          console.log(`✨ Found ${activeGames.length} active (non-finished) games for host: ${hostId}`);
           
-          // ✅ CRITICAL FIX: Always call callback even on error
-          if (isActive && !hasCalledInitialCallback) {
-            console.log(`📞 Calling callback with null due to error for host: ${hostId}`);
+          if (activeGames.length === 0) {
+            console.log(`ℹ️ All games completed for host: ${hostId}`);
             callback(null);
-            hasCalledInitialCallback = true;
+            return;
           }
-        }
-      };
-      
-      // ✅ FIXED: Add immediate callback for faster UI response
-      // This prevents the loading state from hanging if async operation takes too long
-      const initialCallbackTimer = setTimeout(() => {
-        if (isActive && !hasCalledInitialCallback) {
-          console.log(`⏰ Initial callback timeout for host: ${hostId}, resolving with null`);
+          
+          // Sort by creation date and get the most recent
+          const currentGame = activeGames
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+          
+          console.log(`✅ Selected current game: ${currentGame.gameId} for host: ${hostId}`);
+          console.log(`📊 Game state: isActive=${currentGame.gameState.isActive}, gameOver=${currentGame.gameState.gameOver}, calledNumbers=${currentGame.gameState.calledNumbers?.length || 0}`);
+          
+          callback(currentGame);
+          
+        } catch (error) {
+          console.error(`❌ Error processing host games for ${hostId}:`, error);
           callback(null);
-          hasCalledInitialCallback = true;
         }
-      }, 100); // Very short timeout just to ensure callback is called
+      });
       
-      // Start the async setup
-      setupGameSubscription();
-      
-      // Return cleanup function
-      return () => {
-        console.log(`🧹 Cleaning up host subscription for: ${hostId}`);
-        isActive = false;
-        
-        // Clear timeout
-        if (initialCallbackTimer) {
-          clearTimeout(initialCallbackTimer);
-        }
-        
-        // Cleanup game subscription
-        if (gameUnsubscribe) {
-          gameUnsubscribe();
-          gameUnsubscribe = null;
-        }
-      };
+      return unsubscribe;
     }, [hostId]),
     { enabled: !!hostId }
   );
