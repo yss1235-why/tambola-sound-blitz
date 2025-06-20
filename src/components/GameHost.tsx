@@ -168,18 +168,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid]);
 
-  // ✅ SIMPLE FIX: Auto-detect view based on real-time data
-  useEffect(() => {
-    if (gameData) {
-      if (currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') {
-        setCurrentView('live');
-      } else if (currentPhase === 'booking') {
-        setCurrentView('booking');
-      }
-    } else {
-      setCurrentView('create');
-    }
-  }, [gameData, currentPhase]);
+  // ✅ REMOVED: Auto-detection that conflicts with manual view switching for create/delete buttons
 
   // ✅ SIMPLE FIX: Updated createNewGame - remove hacks, add direct view switch
   const createNewGame = async () => {
@@ -467,8 +456,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ UNCHANGED: Live Game Phases - Real-time continues working */}
-        {currentView === 'live' && gameData && (
+        {/* ✅ UPDATED: Manual view switching for live game phase */}
+        {/* Live Game Phases */}
+        {(currentView === 'live' || (gameData && (currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished'))) && gameData && (
           <HostControlsProvider userId={user.uid}>
             <HostDisplay onCreateNewGame={createNewGame} />
           </HostControlsProvider>
