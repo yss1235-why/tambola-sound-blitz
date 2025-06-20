@@ -1,100 +1,102 @@
-// src/pages/Index.tsx - OPTIMIZED: Lazy authentication loading for better performance
-import React, { useState, useCallback, useEffect } from 'react';
+// src/pages/Index.tsx - COMPLETE: Updated to use simplified authentication
+import React, { useState, useCallback } from 'react';
 import { Header } from '@/components/Header';
 import { UserLandingPage } from '@/components/UserLandingPage';
 import { GameHost } from '@/components/GameHost';
 import { AdminDashboard } from '@/components/AdminDashboard';
 import { GameDataProvider } from '@/providers/GameDataProvider';
-import { useLazyAuth } from '@/hooks/useLazyAuth';
+import { useAuth } from '@/hooks/useAuth'; // ✅ CHANGED: Use simplified auth hook
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
 import { AdminUser, HostUser } from '@/services/firebase';
 
 const Index = () => {
-  // ✅ NEW: Lazy authentication - only loads when needed
-  const lazyAuth = useLazyAuth();
+  // ✅ SIMPLIFIED: Use new auth hook (same interface, better implementation)
+  const auth = useAuth();
   
-  // ✅ NEW: Load games immediately without waiting for auth
+  // ✅ UNCHANGED: Games loading works the same
   const { data: allGames, loading: gamesLoading, error: gamesError } = useActiveGamesSubscription();
   
-  // Local state for game selection
+  // ✅ UNCHANGED: Local state management
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   
-  // ✅ NEW: Auto-initialize auth for management routes
-  useEffect(() => {
-    const currentPath = window.location.pathname;
-    const needsAuth = currentPath.includes('/host') || 
-                      currentPath.includes('/admin') || 
-                      currentPath.includes('/manage');
-    
-    if (needsAuth && !lazyAuth.initialized) {
-      console.log('🔐 Management route detected, initializing auth...');
-      lazyAuth.initializeAuth();
-    }
-  }, [lazyAuth.initialized, lazyAuth.initializeAuth]);
+  // ✅ REMOVED: No need for manual auth initialization effects
+  // The old useEffect for auto-initializing auth is no longer needed
+  // Auth is always ready in the simplified version
 
-  // ✅ NEW: Handle user-requested login (replaces old handleUserLogin)
+  // ✅ SIMPLIFIED: Direct login handling - no complex initialization
   const handleUserLogin = useCallback(async (type: 'admin' | 'host', email: string, password: string) => {
     try {
+      console.log(`🔐 Handling ${type} login from Index page`);
+      
       if (type === 'admin') {
-        await lazyAuth.loginAdmin(email, password);
+        await auth.loginAdmin(email, password);
       } else {
-        await lazyAuth.loginHost(email, password);
+        await auth.loginHost(email, password);
       }
       
       // For hosts, set special identifier for their current game
       if (type === 'host') {
+        console.log('🎮 Setting host current game view');
         setSelectedGameId('HOST_CURRENT');
       }
       
+      console.log(`✅ ${type} login handled successfully`);
       return true;
-    } catch (error) {
-      // Error is handled by the lazy auth hook
+    } catch (error: any) {
+      console.error(`❌ ${type} login failed in Index:`, error);
+      // Error is handled by the auth hook
       return false;
     }
-  }, [lazyAuth]);
+  }, [auth]);
 
-  // ✅ NEW: Handle logout (replaces old handleUserLogout)
+  // ✅ SIMPLIFIED: Direct logout
   const handleUserLogout = useCallback(async () => {
     try {
-      await lazyAuth.logout();
+      console.log('🔐 Handling logout from Index page');
+      await auth.logout();
       setSelectedGameId(null);
+      console.log('✅ Logout handled successfully');
       return true;
-    } catch (error) {
-      // Error is handled by the lazy auth hook
+    } catch (error: any) {
+      console.error('❌ Logout failed in Index:', error);
       return false;
     }
-  }, [lazyAuth]);
+  }, [auth]);
 
-  // ✅ NEW: Handle game selection for public users
+  // ✅ UNCHANGED: Game selection logic for public users
   const handleGameSelection = useCallback((gameId: string) => {
+    console.log('🎯 Game selected:', gameId);
     setSelectedGameId(gameId);
   }, []);
 
-  // ✅ NEW: Trigger auth initialization for login attempts
+  // ✅ COMPATIBILITY: Keep the same interface for Header component
+  // This is now a no-op since auth is always ready
   const handleRequestLogin = useCallback(async () => {
-    if (!lazyAuth.initialized) {
-      console.log('🔐 User requested login, initializing auth...');
-      await lazyAuth.initializeAuth();
-    }
-  }, [lazyAuth.initialized, lazyAuth.initializeAuth]);
+    console.log('🔐 Login requested (no-op in simplified auth)');
+    // No-op since auth is always ready, but keep for compatibility
+    await auth.initializeAuth();
+  }, [auth]);
 
-  // ✅ OPTIMIZED: Render content based on auth state and games
+  // ✅ UNCHANGED: Render logic stays exactly the same
   const renderContent = () => {
     // Show admin dashboard if authenticated as admin
-    if (lazyAuth.user && lazyAuth.userRole === 'admin') {
-      return <AdminDashboard user={lazyAuth.user as AdminUser} />;
+    if (auth.user && auth.userRole === 'admin') {
+      console.log('🎨 Rendering admin dashboard');
+      return <AdminDashboard user={auth.user as AdminUser} />;
     }
     
     // Show host dashboard if authenticated as host
-    if (lazyAuth.user && lazyAuth.userRole === 'host') {
+    if (auth.user && auth.userRole === 'host') {
+      console.log('🎨 Rendering host dashboard');
       return (
-        <GameDataProvider userId={lazyAuth.user.uid}>
-          <GameHost user={lazyAuth.user as HostUser} userRole={lazyAuth.userRole} />
+        <GameDataProvider userId={auth.user.uid}>
+          <GameHost user={auth.user as HostUser} userRole={auth.userRole} />
         </GameDataProvider>
       );
     }
 
-    // ✅ NEW: Show public landing page with pre-loaded games (no auth required)
+    // Show public landing page
+    console.log('🎨 Rendering public landing page');
     return (
       <UserLandingPage 
         onGameSelection={handleGameSelection}
@@ -106,28 +108,37 @@ const Index = () => {
     );
   };
 
-  // ✅ NEW: Show loading only if auth is loading AND user is authenticated
-  const showAuthLoading = lazyAuth.loading && lazyAuth.user;
+  // ✅ SIMPLIFIED: Only show loading if user is authenticated AND still loading
+  // This prevents the loading screen from showing for public users
+  const showAuthLoading = auth.loading && auth.user;
+
+  console.log('🎨 Index page render:', {
+    authLoading: auth.loading,
+    authInitialized: auth.initialized,
+    user: auth.user ? `${auth.userRole}: ${auth.user.name}` : 'None',
+    selectedGameId,
+    showAuthLoading
+  });
 
   return (
     <div className="min-h-screen">
-      {/* ✅ NEW: Pass auth state and handlers to Header */}
+      {/* ✅ UNCHANGED: Header interface remains exactly the same */}
       <Header 
-        // Auth state
-        currentUser={lazyAuth.user}
-        userRole={lazyAuth.userRole}
-        authLoading={lazyAuth.loading}
-        authError={lazyAuth.error}
-        authInitialized={lazyAuth.initialized}
+        // Auth state - same interface as before
+        currentUser={auth.user}
+        userRole={auth.userRole}
+        authLoading={auth.loading}
+        authError={auth.error}
+        authInitialized={auth.initialized}
         
-        // Auth actions
+        // Auth actions - same interface as before
         onRequestLogin={handleRequestLogin}
         onUserLogin={handleUserLogin}
         onUserLogout={handleUserLogout}
-        onClearError={lazyAuth.clearError}
+        onClearError={auth.clearError}
       />
       
-      {/* ✅ NEW: Show loading overlay only for authenticated users */}
+      {/* ✅ UNCHANGED: Loading overlay logic */}
       {showAuthLoading && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 flex items-center justify-center">
           <div className="bg-white rounded-lg p-6 shadow-xl">
@@ -139,19 +150,19 @@ const Index = () => {
         </div>
       )}
 
-      {/* ✅ OPTIMIZED: Content loads immediately without auth dependency */}
+      {/* ✅ UNCHANGED: Content rendering */}
       {renderContent()}
       
-      {/* ✅ NEW: Show auth error if present */}
-      {lazyAuth.error && (
+      {/* ✅ UNCHANGED: Error display */}
+      {auth.error && (
         <div className="fixed bottom-4 right-4 bg-red-50 border border-red-200 rounded-lg p-4 shadow-lg z-50">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <div className="text-red-600">⚠️</div>
-              <p className="text-red-800 text-sm">{lazyAuth.error}</p>
+              <p className="text-red-800 text-sm">{auth.error}</p>
             </div>
             <button
-              onClick={lazyAuth.clearError}
+              onClick={auth.clearError}
               className="text-red-500 hover:text-red-700 ml-4"
             >
               ×
@@ -160,12 +171,14 @@ const Index = () => {
         </div>
       )}
       
-      {/* ✅ NEW: Development mode performance indicator */}
+      {/* ✅ UPDATED: Better development indicators */}
       {process.env.NODE_ENV === 'development' && (
         <div className="fixed bottom-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-50">
-          <div>🚀 Lazy Auth: {lazyAuth.initialized ? 'Loaded' : 'Not loaded'}</div>
+          <div>🔐 Auth: {auth.initialized ? 'Ready' : 'Initializing'}</div>
           <div>🎮 Games: {gamesLoading ? 'Loading...' : `${allGames?.length || 0} active`}</div>
-          <div>👤 User: {lazyAuth.user ? lazyAuth.userRole : 'Public'}</div>
+          <div>👤 User: {auth.user ? `${auth.userRole}: ${auth.user.name}` : 'Public'}</div>
+          <div className="text-green-400">✅ Simplified Auth Active</div>
+          {auth.error && <div className="text-red-400">❌ {auth.error}</div>}
         </div>
       )}
     </div>
