@@ -4,7 +4,7 @@ import { GameData } from '@/services/firebase';
 import { useGameSubscription, useHostCurrentGameSubscription } from '@/hooks/useFirebaseSubscription';
 
 // Game phase enum for cleaner state management
-export type GamePhase = 'creation' | 'booking' | 'countdown' | 'playing' | 'finished';
+export type GamePhase = 'creation' | 'setup' | 'booking' | 'countdown' | 'playing' | 'finished';
 
 interface GameDataContextValue {
   gameData: GameData | null;
