@@ -1,4 +1,4 @@
-// src/hooks/index.ts - Updated exports for new architecture with lazy auth
+// src/hooks/index.ts - UPDATED: Export simplified auth instead of useLazyAuth
 export { 
   useFirebaseSubscription,
   useGameSubscription,
@@ -7,6 +7,9 @@ export {
   cleanupAllSubscriptions
 } from './useFirebaseSubscription';
 
-export { useLazyAuth } from './useLazyAuth';
+// ✅ CHANGED: Export simplified auth hook instead of useLazyAuth
+export { useAuth } from './useAuth';
+
+// ✅ UNCHANGED: Other hooks remain the same
 export { useToast } from './use-toast';
 export { useIsMobile } from './use-mobile';
