@@ -139,12 +139,12 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
     );
   }
 
-  // ✅ FIXED: Show for users (default behavior) - only show if there's an issue or needs attention
-  if (!showNotification || (audioSupported && audioEnabled && !audioError)) {
+  // ✅ FIXED: CHANGE 3 - Disable user notifications
+  if (!showInGameHost) {
     return null;
   }
 
-  // Show floating notification for players when needed
+  // Show floating notification for players when needed (this code will never run due to above change)
   return (
     <div className="fixed top-4 right-4 z-50 max-w-sm animate-bounce-in">
       <Card className="border-yellow-400 bg-yellow-50 shadow-lg">
