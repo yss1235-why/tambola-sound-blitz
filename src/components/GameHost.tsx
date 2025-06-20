@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - SIMPLE FIX: Direct view switching for create/delete buttons only
+// src/components/GameHost.tsx - FIXED: Remove manual view control, add proper loading states
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,7 +17,9 @@ import {
   Save,
   Edit,
   Trash2,
-  Loader2
+  Loader2,
+  CheckCircle,
+  Clock
 } from 'lucide-react';
 import { 
   firebaseService, 
@@ -43,6 +45,13 @@ interface CreateGameForm {
   maxTickets: string;
   selectedTicketSet: string;
   selectedPrizes: string[];
+}
+
+// ✅ NEW: Operation states for better UX
+interface OperationState {
+  type: 'create' | 'delete' | null;
+  inProgress: boolean;
+  message: string;
 }
 
 // Available options
@@ -97,15 +106,22 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 ];
 
 /**
- * GameHost Component - SIMPLE FIX: Direct view control for lifecycle buttons
+ * GameHost Component - FIXED: Real-time driven view with proper loading states
  */
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // ✅ REAL-TIME: Keep all existing real-time functionality
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   
-  // ✅ NEW: Simple view state instead of complex hacks
-  const [currentView, setCurrentView] = useState<'create' | 'booking' | 'live'>('create');
+  // ✅ FIXED: Remove currentView state - let real-time data drive everything
+  // const [currentView, setCurrentView] = useState<'create' | 'booking' | 'live'>('create'); // REMOVED
+  
+  // ✅ NEW: Operation tracking for better UX during transitions
+  const [operation, setOperation] = useState<OperationState>({
+    type: null,
+    inProgress: false,
+    message: ''
+  });
   
   // ✅ UNCHANGED: All existing state
   const [editMode, setEditMode] = useState(false);
@@ -168,20 +184,32 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid]);
 
-  // ✅ SIMPLE FIX: Auto-detect view based on real-time data
-  useEffect(() => {
-    if (gameData) {
-      if (currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') {
-        setCurrentView('live');
-      } else if (currentPhase === 'booking') {
-        setCurrentView('booking');
-      }
-    } else {
-      setCurrentView('create');
-    }
-  }, [gameData, currentPhase]);
+  // ✅ REMOVED: Auto-detect view based on real-time data useEffect
+  // The view is now determined purely by the render logic based on gameData and currentPhase
 
-  // ✅ SIMPLE FIX: Updated createNewGame - remove hacks, add direct view switch
+  // ✅ NEW: Clear operation state when real-time data updates
+  useEffect(() => {
+    if (operation.inProgress) {
+      // Check if operation completed based on real-time data
+      if (operation.type === 'create' && gameData) {
+        console.log('✅ Create operation completed - game data received via real-time');
+        setOperation({ type: null, inProgress: false, message: 'Game created successfully!' });
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setOperation({ type: null, inProgress: false, message: '' });
+        }, 3000);
+      } else if (operation.type === 'delete' && !gameData) {
+        console.log('✅ Delete operation completed - game data cleared via real-time');
+        setOperation({ type: null, inProgress: false, message: 'Game deleted successfully!' });
+        // Clear success message after 3 seconds
+        setTimeout(() => {
+          setOperation({ type: null, inProgress: false, message: '' });
+        }, 3000);
+      }
+    }
+  }, [gameData, operation]);
+
+  // ✅ FIXED: Updated createNewGame - remove manual view control
   const createNewGame = async () => {
     if (!isSubscriptionValid()) {
       alert('Your subscription has expired. Please contact the administrator.');
@@ -191,6 +219,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     const maxTicketsNum = parseInt(createGameForm.maxTickets) || 100;
 
     setIsCreating(true);
+    setOperation({
+      type: 'create',
+      inProgress: true,
+      message: 'Creating game and setting up tickets...'
+    });
+
     try {
       console.log('🎮 Starting game creation process...');
       
@@ -217,12 +251,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       
       console.log('✅ Game created successfully:', newGame.gameId);
       
-      // ✅ SIMPLE FIX: Direct view switch instead of hacks
-      setCurrentView('booking');
-      console.log('🎯 Switched to booking view immediately');
+      // ✅ FIXED: Remove manual view switch - let real-time data handle it
+      // setCurrentView('booking'); // REMOVED
+      // console.log('🎯 Switched to booking view immediately'); // REMOVED
+
+      // ✅ NEW: Update operation state - real-time data will trigger view change
+      setOperation(prev => ({
+        ...prev,
+        message: 'Game created! Waiting for real-time update...'
+      }));
 
     } catch (error: any) {
       console.error('❌ Create game error:', error);
+      setOperation({ type: null, inProgress: false, message: '' });
       alert(error.message || 'Failed to create game. Please try again.');
     } finally {
       setIsCreating(false);
@@ -271,7 +312,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ✅ SIMPLE FIX: Updated deleteGame - remove hacks, add direct view switch
+  // ✅ FIXED: Updated deleteGame - remove manual view control
   const deleteGame = async () => {
     if (!gameData) return;
 
@@ -279,16 +320,29 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     if (!confirmed) return;
 
     setIsCreating(true);
+    setOperation({
+      type: 'delete',
+      inProgress: true,
+      message: 'Deleting game...'
+    });
+
     try {
       await firebaseService.deleteGame(gameData.gameId);
       console.log('✅ Game deleted successfully');
       
-      // ✅ SIMPLE FIX: Direct view switch instead of hacks
-      setCurrentView('create');
-      console.log('🎯 Switched to create view immediately');
+      // ✅ FIXED: Remove manual view switch - let real-time data handle it
+      // setCurrentView('create'); // REMOVED
+      // console.log('🎯 Switched to create view immediately'); // REMOVED
+
+      // ✅ NEW: Update operation state - real-time data will trigger view change
+      setOperation(prev => ({
+        ...prev,
+        message: 'Game deleted! Waiting for real-time update...'
+      }));
       
     } catch (error: any) {
       console.error('Delete game error:', error);
+      setOperation({ type: null, inProgress: false, message: '' });
       alert(error.message || 'Failed to delete game');
     } finally {
       setIsCreating(false);
@@ -319,6 +373,25 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       setLoadingTimeout(false);
     }
   }, [isLoading]);
+
+  // ✅ NEW: Determine current view based on real-time data (pure calculation)
+  const getCurrentView = (): 'create' | 'booking' | 'live' => {
+    if (!gameData) {
+      return 'create';
+    }
+    
+    if (currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') {
+      return 'live';
+    }
+    
+    if (currentPhase === 'booking') {
+      return 'booking';
+    }
+    
+    return 'create';
+  };
+
+  const currentView = getCurrentView();
 
   // ✅ UNCHANGED: Loading and error states
   if (isLoading && loadingTimeout) {
@@ -398,7 +471,29 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </div>
         </div>
 
-        {/* ✅ SIMPLE FIX: Use currentView instead of complex conditions */}
+        {/* ✅ NEW: Operation Status Display */}
+        {operation.message && (
+          <Alert className={operation.inProgress ? "border-blue-500 bg-blue-50" : "border-green-500 bg-green-50"}>
+            <div className="flex items-center">
+              {operation.inProgress ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
+              )}
+              <AlertDescription className={operation.inProgress ? "text-blue-800" : "text-green-800"}>
+                {operation.message}
+                {operation.inProgress && operation.type === 'create' && (
+                  <span className="block text-sm mt-1">Real-time system will automatically switch to booking view when ready.</span>
+                )}
+                {operation.inProgress && operation.type === 'delete' && (
+                  <span className="block text-sm mt-1">Real-time system will automatically switch to create view when ready.</span>
+                )}
+              </AlertDescription>
+            </div>
+          </Alert>
+        )}
+
+        {/* ✅ FIXED: Use calculated currentView instead of state */}
         {/* Create Game Form */}
         {currentView === 'create' && !editMode && (
           <CreateGameForm 
@@ -407,10 +502,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             onCreateGame={createNewGame}
             onMaxTicketsChange={handleMaxTicketsChange}
             isCreating={isCreating}
+            operationInProgress={operation.inProgress}
           />
         )}
 
-        {/* ✅ SIMPLE FIX: Use currentView instead of complex conditions */}
+        {/* ✅ FIXED: Use calculated currentView instead of state */}
         {/* Booking Phase */}
         {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
@@ -420,6 +516,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <Button 
                   onClick={() => setEditMode(true)} 
                   className="bg-blue-600 hover:bg-blue-700 text-white"
+                  disabled={operation.inProgress}
                 >
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Settings
@@ -451,10 +548,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             onMaxTicketsChange={handleMaxTicketsChange}
             bookedCount={bookedCount}
             isCreating={isCreating}
+            operationInProgress={operation.inProgress}
           />
         )}
 
-        {/* ✅ UNCHANGED: Live Game Phases - Real-time continues working */}
+        {/* ✅ FIXED: Use calculated currentView instead of state */}
+        {/* Live Game Phases - Real-time continues working */}
         {currentView === 'live' && gameData && (
           <HostControlsProvider userId={user.uid}>
             <HostDisplay onCreateNewGame={createNewGame} />
@@ -470,14 +569,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ UNCHANGED: Development Debug Info */}
+        {/* ✅ ENHANCED: Development Debug Info */}
         {process.env.NODE_ENV === 'development' && (
           <Card className="border-gray-300 bg-gray-50">
             <CardHeader>
               <CardTitle className="text-sm text-gray-700">Debug: GameHost State</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-5 gap-4 text-xs">
+              <div className="grid grid-cols-6 gap-4 text-xs">
                 <div>
                   <span className="font-medium">View:</span> {currentView}
                 </div>
@@ -493,6 +592,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                 <div>
                   <span className="font-medium">Edit:</span> {editMode ? 'Yes' : 'No'}
                 </div>
+                <div>
+                  <span className="font-medium">Operation:</span> {operation.inProgress ? operation.type : 'None'}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -502,8 +604,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
 };
 
-// ✅ UNCHANGED: CreateGameForm component
-const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMaxTicketsChange, isCreating }: any) => (
+// ✅ ENHANCED: CreateGameForm component with operation status
+const CreateGameForm = ({ 
+  createGameForm, 
+  setCreateGameForm, 
+  onCreateGame, 
+  onMaxTicketsChange, 
+  isCreating,
+  operationInProgress 
+}: any) => (
   <Card>
     <CardHeader>
       <CardTitle className="flex items-center">
@@ -522,6 +631,7 @@ const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMax
           value={createGameForm.hostPhone}
           onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
           className="border-2 border-gray-200 focus:border-blue-400"
+          disabled={operationInProgress}
         />
         <p className="text-sm text-gray-500 mt-1">Players will contact you on this number</p>
       </div>
@@ -538,6 +648,7 @@ const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMax
           value={createGameForm.maxTickets}
           onChange={onMaxTicketsChange}
           className="border-2 border-gray-200 focus:border-blue-400"
+          disabled={operationInProgress}
         />
         <p className="text-sm text-gray-500 mt-1">How many tickets can be sold for this game</p>
       </div>
@@ -553,8 +664,8 @@ const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMax
                 createGameForm.selectedTicketSet === ticketSet.id
                   ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300'
                   : 'hover:shadow-md border-gray-200'
-              } ${!ticketSet.available ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={() => ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
+              } ${!ticketSet.available || operationInProgress ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => !operationInProgress && ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
             >
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -589,7 +700,10 @@ const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMax
               <Checkbox
                 id={prize.id}
                 checked={createGameForm.selectedPrizes.includes(prize.id)}
+                disabled={operationInProgress}
                 onCheckedChange={(checked) => {
+                  if (operationInProgress) return;
+                  
                   if (checked) {
                     setCreateGameForm(prev => ({
                       ...prev,
@@ -617,7 +731,7 @@ const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMax
       
       <Button
         onClick={onCreateGame}
-        disabled={isCreating || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
+        disabled={isCreating || operationInProgress || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
         className="w-full bg-blue-600 hover:bg-blue-700"
         size="lg"
       >
@@ -630,12 +744,30 @@ const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMax
           'Create & Open Booking'
         )}
       </Button>
+      
+      {operationInProgress && (
+        <div className="text-center text-sm text-blue-600">
+          <Clock className="w-4 h-4 inline mr-1" />
+          Real-time system will automatically update the view when ready
+        </div>
+      )}
     </CardContent>
   </Card>
 );
 
-// ✅ UNCHANGED: Enhanced EditGameForm component 
-const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGame, onDeleteGame, onCancel, onMaxTicketsChange, bookedCount, isCreating }: any) => (
+// ✅ ENHANCED: EditGameForm component with operation status
+const EditGameForm = ({ 
+  gameData, 
+  createGameForm, 
+  setCreateGameForm, 
+  onUpdateGame, 
+  onDeleteGame, 
+  onCancel, 
+  onMaxTicketsChange, 
+  bookedCount, 
+  isCreating,
+  operationInProgress
+}: any) => (
   <Card>
     <CardHeader>
       <CardTitle className="flex items-center">
@@ -659,7 +791,7 @@ const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGam
           value={createGameForm.hostPhone}
           onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
           className="border-2 border-gray-200 focus:border-blue-400"
-          disabled={isCreating}
+          disabled={isCreating || operationInProgress}
         />
       </div>
 
@@ -674,7 +806,7 @@ const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGam
           value={createGameForm.maxTickets}
           onChange={onMaxTicketsChange}
           className="border-2 border-gray-200 focus:border-blue-400"
-          disabled={isCreating}
+          disabled={isCreating || operationInProgress}
         />
         <p className="text-sm text-gray-500 mt-1">
           Current bookings: {bookedCount}. Cannot set below current bookings.
@@ -692,8 +824,8 @@ const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGam
                 createGameForm.selectedTicketSet === ticketSet.id
                   ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300'
                   : 'hover:shadow-md border-gray-200'
-              } ${!ticketSet.available || isCreating ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={() => !isCreating && ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
+              } ${!ticketSet.available || isCreating || operationInProgress ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => !isCreating && !operationInProgress && ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
             >
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -728,9 +860,9 @@ const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGam
               <Checkbox
                 id={`edit-${prize.id}`}
                 checked={createGameForm.selectedPrizes.includes(prize.id)}
-                disabled={isCreating}
+                disabled={isCreating || operationInProgress}
                 onCheckedChange={(checked) => {
-                  if (isCreating) return;
+                  if (isCreating || operationInProgress) return;
                   
                   if (checked) {
                     setCreateGameForm(prev => ({
@@ -760,7 +892,7 @@ const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGam
       <div className="flex space-x-4">
         <Button
           onClick={onUpdateGame}
-          disabled={isCreating || !createGameForm.maxTickets.trim() || parseInt(createGameForm.maxTickets) < bookedCount}
+          disabled={isCreating || operationInProgress || !createGameForm.maxTickets.trim() || parseInt(createGameForm.maxTickets) < bookedCount}
           className="flex-1 bg-blue-600 hover:bg-blue-700"
         >
           {isCreating ? (
@@ -778,20 +910,27 @@ const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGam
         <Button
           onClick={onCancel}
           variant="outline"
-          disabled={isCreating}
+          disabled={isCreating || operationInProgress}
         >
           Cancel
         </Button>
         <Button
           onClick={onDeleteGame}
           variant="destructive"
-          disabled={isCreating || bookedCount > 0}
+          disabled={isCreating || operationInProgress || bookedCount > 0}
           title={bookedCount > 0 ? 'Cannot delete game with booked tickets' : 'Delete this game'}
         >
           <Trash2 className="w-4 h-4 mr-2" />
           Delete Game
         </Button>
       </div>
+      
+      {operationInProgress && (
+        <div className="text-center text-sm text-blue-600">
+          <Clock className="w-4 h-4 inline mr-1" />
+          Real-time system will automatically update the view when ready
+        </div>
+      )}
     </CardContent>
   </Card>
 );
