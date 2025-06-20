@@ -410,37 +410,50 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ SIMPLE FIX: Use currentView instead of complex conditions */}
+        {/* ✅ FIXED: Remove gameData dependency to prevent blank page */}
         {/* Booking Phase */}
-        {currentView === 'booking' && gameData && !editMode && (
+        {currentView === 'booking' && !editMode && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-800">Game Ready for Booking</h2>
-              <div className="flex space-x-2">
-                <Button 
-                  onClick={() => setEditMode(true)} 
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit Settings
-                </Button>
-              </div>
-            </div>
+            {gameData ? (
+              <>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-2xl font-bold text-gray-800">Game Ready for Booking</h2>
+                  <div className="flex space-x-2">
+                    <Button 
+                      onClick={() => setEditMode(true)} 
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit Settings
+                    </Button>
+                  </div>
+                </div>
 
-            {/* ✅ UNCHANGED: Real-time components continue working */}
-            <HostControlsProvider userId={user.uid}>
-              <HostDisplay />
-            </HostControlsProvider>
-            
-            <TicketManagementGrid
-              gameData={gameData}
-              onRefreshGame={() => {}} // No manual refresh needed with subscriptions
-            />
+                {/* ✅ UNCHANGED: Real-time components continue working */}
+                <HostControlsProvider userId={user.uid}>
+                  <HostDisplay />
+                </HostControlsProvider>
+                
+                <TicketManagementGrid
+                  gameData={gameData}
+                  onRefreshGame={() => {}} // No manual refresh needed with subscriptions
+                />
+              </>
+            ) : (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-blue-500" />
+                  <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Game...</h2>
+                  <p className="text-gray-600">Setting up your booking interface</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
-        {/* ✅ UNCHANGED: Edit Game Form */}
-        {currentView === 'booking' && gameData && editMode && (
+        {/* ✅ FIXED: Remove gameData dependency and add safety check */}
+        {/* Edit Game Form */}
+        {currentView === 'booking' && editMode && gameData && (
           <EditGameForm
             gameData={gameData}
             createGameForm={createGameForm}
