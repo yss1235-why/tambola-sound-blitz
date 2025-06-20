@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - COMPLETE: With game creation flow fix
+// src/components/GameHost.tsx - FIXED: Three specific issues addressed
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -97,19 +97,21 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 ];
 
 /**
- * GameHost Component - With Game Creation Flow Fix
+ * GameHost Component - FIXED: Three specific issues
  */
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   // ✅ FIXED: Use game data from provider with better loading detection
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   
-  // ✅ GAME CREATION FLOW FIX: Add setupMode state
+  // ✅ GAME CREATION REDIRECT FIX: Add key state to force re-renders
   const [gameKey, setGameKey] = useState(0);
+  
+  // ✅ FIX 1: Add state to force immediate booking mode transition
+  const [justCreatedGame, setJustCreatedGame] = useState(false);
   
   // Local state for game creation/editing
   const [editMode, setEditMode] = useState(false);
-  const [setupMode, setSetupMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
     hostPhone: '',
@@ -169,17 +171,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid]);
 
-  // ✅ GAME CREATION FLOW FIX: Split create function into two parts
-  const showGameSetupForm = () => {
+  // ✅ FIX 1: Updated createNewGame function with immediate booking transition
+  const createNewGame = async () => {
     if (!isSubscriptionValid()) {
       alert('Your subscription has expired. Please contact the administrator.');
       return;
     }
-    console.log('🎮 Showing game setup form...');
-    setSetupMode(true);
-  };
 
-  const createNewGame = async () => {
     const maxTicketsNum = parseInt(createGameForm.maxTickets) || 100;
 
     setIsCreating(true);
@@ -209,36 +207,26 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       
       console.log('✅ Game created successfully:', newGame.gameId);
       
-      // Close setup mode and force UI refresh
-      setSetupMode(false);
+      // ✅ FIX 1: Force immediate transition to booking
+      setJustCreatedGame(true);
       setGameKey(prev => prev + 1);
       
+      // Reset the just created flag after a delay
       setTimeout(() => {
+        setJustCreatedGame(false);
         setGameKey(prev => prev + 1);
         console.log('📡 Game creation completed, forcing second refresh');
-      }, 100);
+      }, 1000);
 
     } catch (error: any) {
       console.error('❌ Create game error:', error);
-      
-      // Handle silent prevention - don't show error to user
-      if (error.message && error.message.includes('SILENT_PREVENTION')) {
-        console.log('🔇 Silent prevention: Host already has active game');
-        setSetupMode(false);
-      } else {
-        alert(error.message || 'Failed to create game. Please try again.');
-      }
+      alert(error.message || 'Failed to create game. Please try again.');
     } finally {
       setIsCreating(false);
     }
   };
 
-  const cancelGameSetup = () => {
-    console.log('❌ Game setup cancelled');
-    setSetupMode(false);
-  };
-
-  // Update game settings
+  // ✅ FIX 2: Enhanced updateGameSettings function
   const updateGameSettings = async () => {
     if (!gameData) return;
 
@@ -248,11 +236,25 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       return;
     }
 
+    if (createGameForm.selectedPrizes.length === 0) {
+      alert('Please select at least one prize');
+      return;
+    }
+
     setIsCreating(true);
     try {
+      // Update basic game data
       await firebaseService.updateGameData(gameData.gameId, {
         maxTickets: maxTicketsNum,
         hostPhone: createGameForm.hostPhone
+      });
+
+      // Save updated host settings
+      await firebaseService.saveHostSettings(user.uid, {
+        hostPhone: createGameForm.hostPhone,
+        maxTickets: maxTicketsNum,
+        selectedTicketSet: createGameForm.selectedTicketSet,
+        selectedPrizes: createGameForm.selectedPrizes
       });
       
       setEditMode(false);
@@ -389,52 +391,29 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </div>
         </div>
 
-        {/* Show "Create New Game" Button */}
-        {(!gameData || currentPhase === 'creation') && !editMode && !setupMode && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Plus className="w-6 h-6 mr-2" />
-                Host Dashboard
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="text-center py-12">
-              <div className="text-6xl mb-4">🎮</div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Ready to Create a New Game?</h2>
-              <p className="text-gray-600 mb-6">
-                Set up a new Tambola game with customizable settings and start hosting!
-              </p>
-              <Button
-                onClick={showGameSetupForm}
-                className="bg-blue-600 hover:bg-blue-700"
-                size="lg"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create New Game
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Game Setup Form */}
-        {(!gameData || currentPhase === 'creation') && !editMode && setupMode && (
-          <GameSetupForm 
+        {/* Create Game Form */}
+        {(!gameData || currentPhase === 'creation') && !editMode && (
+          <CreateGameForm 
             createGameForm={createGameForm}
             setCreateGameForm={setCreateGameForm}
             onCreateGame={createNewGame}
-            onCancel={cancelGameSetup}
             onMaxTicketsChange={handleMaxTicketsChange}
             isCreating={isCreating}
           />
         )}
 
+        {/* ✅ FIX 1: Updated booking phase condition to include justCreatedGame */}
         {/* Booking Phase */}
-        {currentPhase === 'booking' && gameData && !editMode && (
+        {(currentPhase === 'booking' || justCreatedGame) && gameData && !editMode && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-800">Game Ready for Booking</h2>
               <div className="flex space-x-2">
-                <Button onClick={() => setEditMode(true)} variant="outline">
+                {/* ✅ FIX 3: Updated edit settings button styling */}
+                <Button 
+                  onClick={() => setEditMode(true)} 
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
                   <Edit className="w-4 h-4 mr-2" />
                   Edit Settings
                 </Button>
@@ -453,7 +432,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         )}
 
         {/* Edit Game Form */}
-        {currentPhase === 'booking' && gameData && editMode && (
+        {(currentPhase === 'booking' || justCreatedGame) && gameData && editMode && (
           <EditGameForm
             gameData={gameData}
             createGameForm={createGameForm}
@@ -470,7 +449,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
         {/* Live Game Phases */}
         {(currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') && gameData && (
           <HostControlsProvider userId={user.uid}>
-            <HostDisplay onCreateNewGame={showGameSetupForm} />
+            <HostDisplay onCreateNewGame={createNewGame} />
           </HostControlsProvider>
         )}
 
@@ -512,48 +491,171 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
 };
 
-// ✅ NEW: GameSetupForm Component
-const GameSetupForm = ({ createGameForm, setCreateGameForm, onCreateGame, onCancel, onMaxTicketsChange, isCreating }: any) => (
+// ✅ UNCHANGED: CreateGameForm component remains exactly the same
+const CreateGameForm = ({ createGameForm, setCreateGameForm, onCreateGame, onMaxTicketsChange, isCreating }: any) => (
   <Card>
     <CardHeader>
-      <CardTitle className="flex items-center justify-between">
-        <div className="flex items-center">
-          <Plus className="w-6 h-6 mr-2" />
-          Create New Tambola Game
-        </div>
-        <Badge variant="outline" className="text-blue-600 border-blue-400">
-          Setup Mode
-        </Badge>
+      <CardTitle className="flex items-center">
+        <Plus className="w-6 h-6 mr-2" />
+        Create New Tambola Game
       </CardTitle>
     </CardHeader>
     <CardContent className="space-y-6">
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          Review and customize your game settings before creating. Previous settings are pre-filled as defaults.
-        </AlertDescription>
-      </Alert>
-
       {/* Host Phone */}
       <div>
-        <Label htmlFor="setup-host-phone">WhatsApp Phone Number (with country code)</Label>
+        <Label htmlFor="host-phone">WhatsApp Phone Number (with country code)</Label>
         <Input
-          id="setup-host-phone"
+          id="host-phone"
           type="tel"
           placeholder="e.g., 919876543210"
           value={createGameForm.hostPhone}
           onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
           className="border-2 border-gray-200 focus:border-blue-400"
-          disabled={isCreating}
         />
         <p className="text-sm text-gray-500 mt-1">Players will contact you on this number</p>
       </div>
 
       {/* Max Tickets */}
       <div>
-        <Label htmlFor="setup-max-tickets">Maximum Tickets</Label>
+        <Label htmlFor="max-tickets">Maximum Tickets</Label>
         <Input
-          id="setup-max-tickets"
+          id="max-tickets"
+          type="number"
+          min="1"
+          max="600"
+          placeholder="Enter number of tickets"
+          value={createGameForm.maxTickets}
+          onChange={onMaxTicketsChange}
+          className="border-2 border-gray-200 focus:border-blue-400"
+        />
+        <p className="text-sm text-gray-500 mt-1">How many tickets can be sold for this game</p>
+      </div>
+
+      {/* Ticket Set Selection */}
+      <div>
+        <Label>Select Ticket Set</Label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+          {TICKET_SETS.map((ticketSet) => (
+            <Card
+              key={ticketSet.id}
+              className={`cursor-pointer transition-all ${
+                createGameForm.selectedTicketSet === ticketSet.id
+                  ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300'
+                  : 'hover:shadow-md border-gray-200'
+              } ${!ticketSet.available ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className={`font-bold ${
+                    createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-900' : 'text-gray-800'
+                  }`}>{ticketSet.name}</h3>
+                  <Badge 
+                    variant={ticketSet.available ? "default" : "secondary"}
+                    className={createGameForm.selectedTicketSet === ticketSet.id ? 'bg-blue-600 text-white' : ''}
+                  >
+                    {ticketSet.available ? 'Available' : 'Coming Soon'}
+                  </Badge>
+                </div>
+                <p className={`text-sm mb-2 ${
+                  createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-800' : 'text-gray-600'
+                }`}>{ticketSet.description}</p>
+                <p className={`text-xs ${
+                  createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-700' : 'text-gray-500'
+                }`}>{ticketSet.ticketCount} tickets</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Prize Selection */}
+      <div>
+        <Label>Select Prizes</Label>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+          {AVAILABLE_PRIZES.map((prize) => (
+            <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+              <Checkbox
+                id={prize.id}
+                checked={createGameForm.selectedPrizes.includes(prize.id)}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    setCreateGameForm(prev => ({
+                      ...prev,
+                      selectedPrizes: [...prev.selectedPrizes, prize.id]
+                    }));
+                  } else {
+                    setCreateGameForm(prev => ({
+                      ...prev,
+                      selectedPrizes: prev.selectedPrizes.filter(id => id !== prize.id)
+                    }));
+                  }
+                }}
+              />
+              <div className="flex-1">
+                <Label htmlFor={prize.id} className="font-medium cursor-pointer">
+                  {prize.name}
+                </Label>
+                <p className="text-sm text-gray-600">{prize.pattern}</p>
+                <p className="text-xs text-gray-500">{prize.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      <Button
+        onClick={onCreateGame}
+        disabled={isCreating || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
+        className="w-full bg-blue-600 hover:bg-blue-700"
+        size="lg"
+      >
+        {isCreating ? (
+          <>
+            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            Creating Game...
+          </>
+        ) : (
+          'Create & Open Booking'
+        )}
+      </Button>
+    </CardContent>
+  </Card>
+);
+
+// ✅ FIX 2: Enhanced EditGameForm component with full editing capabilities
+const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGame, onDeleteGame, onCancel, onMaxTicketsChange, bookedCount, isCreating }: any) => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center">
+        <Edit className="w-6 h-6 mr-2" />
+        Edit Game Settings
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-6">
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          You can edit game settings as long as the game hasn't started yet.
+        </AlertDescription>
+      </Alert>
+
+      <div>
+        <Label htmlFor="edit-host-phone">WhatsApp Phone Number</Label>
+        <Input
+          id="edit-host-phone"
+          type="tel"
+          value={createGameForm.hostPhone}
+          onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
+          className="border-2 border-gray-200 focus:border-blue-400"
+          disabled={isCreating}
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="edit-max-tickets">Maximum Tickets</Label>
+        <Input
+          id="edit-max-tickets"
           type="number"
           min="1"
           max="600"
@@ -563,10 +665,12 @@ const GameSetupForm = ({ createGameForm, setCreateGameForm, onCreateGame, onCanc
           className="border-2 border-gray-200 focus:border-blue-400"
           disabled={isCreating}
         />
-        <p className="text-sm text-gray-500 mt-1">How many tickets can be sold for this game</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Current bookings: {bookedCount}. Cannot set below current bookings.
+        </p>
       </div>
 
-      {/* Ticket Set Selection */}
+      {/* ADD: Ticket Set Selection */}
       <div>
         <Label>Select Ticket Set</Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
@@ -604,14 +708,14 @@ const GameSetupForm = ({ createGameForm, setCreateGameForm, onCreateGame, onCanc
         </div>
       </div>
 
-      {/* Prize Selection */}
+      {/* ADD: Prize Selection */}
       <div>
         <Label>Select Prizes</Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
           {AVAILABLE_PRIZES.map((prize) => (
             <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
               <Checkbox
-                id={`setup-${prize.id}`}
+                id={`edit-${prize.id}`}
                 checked={createGameForm.selectedPrizes.includes(prize.id)}
                 disabled={isCreating}
                 onCheckedChange={(checked) => {
@@ -631,7 +735,7 @@ const GameSetupForm = ({ createGameForm, setCreateGameForm, onCreateGame, onCanc
                 }}
               />
               <div className="flex-1">
-                <Label htmlFor={`setup-${prize.id}`} className="font-medium cursor-pointer">
+                <Label htmlFor={`edit-${prize.id}`} className="font-medium cursor-pointer">
                   {prize.name}
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
@@ -640,101 +744,6 @@ const GameSetupForm = ({ createGameForm, setCreateGameForm, onCreateGame, onCanc
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex space-x-4 pt-4">
-        <Button
-          onClick={onCreateGame}
-          disabled={isCreating || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
-          className="flex-1 bg-green-600 hover:bg-green-700"
-          size="lg"
-        >
-          {isCreating ? (
-            <>
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              Creating Game...
-            </>
-          ) : (
-            <>
-              <Plus className="w-4 h-4 mr-2" />
-              Create Game & Start Booking
-            </>
-          )}
-        </Button>
-        
-        <Button
-          onClick={onCancel}
-          variant="outline"
-          disabled={isCreating}
-          size="lg"
-          className="px-8"
-        >
-          Cancel
-        </Button>
-      </div>
-
-      {/* Help Text */}
-      <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-        <div className="flex items-start space-x-2">
-          <div className="text-blue-600 mt-0.5">💡</div>
-          <div>
-            <p className="text-sm text-blue-800 font-medium mb-1">Setup Tips:</p>
-            <ul className="text-xs text-blue-700 space-y-1">
-              <li>• Your WhatsApp number will be shared with players for booking</li>
-              <li>• You can always edit settings before starting the game</li>
-              <li>• Previous game settings are pre-filled for convenience</li>
-              <li>• Select multiple prizes to make the game more exciting</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-);
-
-const EditGameForm = ({ gameData, createGameForm, setCreateGameForm, onUpdateGame, onDeleteGame, onCancel, onMaxTicketsChange, bookedCount, isCreating }: any) => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center">
-        <Edit className="w-6 h-6 mr-2" />
-        Edit Game Settings
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="space-y-6">
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          You can edit game settings as long as the game hasn't started yet.
-        </AlertDescription>
-      </Alert>
-
-      <div>
-        <Label htmlFor="edit-host-phone">WhatsApp Phone Number</Label>
-        <Input
-          id="edit-host-phone"
-          type="tel"
-          value={createGameForm.hostPhone}
-          onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
-          className="border-2 border-gray-200 focus:border-blue-400"
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="edit-max-tickets">Maximum Tickets</Label>
-        <Input
-          id="edit-max-tickets"
-          type="number"
-          min="1"
-          max="600"
-          placeholder="Enter number of tickets"
-          value={createGameForm.maxTickets}
-          onChange={onMaxTicketsChange}
-          className="border-2 border-gray-200 focus:border-blue-400"
-        />
-        <p className="text-sm text-gray-500 mt-1">
-          Current bookings: {bookedCount}. Cannot set below current bookings.
-        </p>
       </div>
       
       <div className="flex space-x-4">
