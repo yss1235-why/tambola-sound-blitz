@@ -1,4 +1,4 @@
-// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration
+// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -53,6 +53,19 @@ export interface TambolaTicket {
   bookedAt?: string;
 }
 
+// ✅ NEW: Performance optimization - pre-computed ticket metadata
+interface TicketMetadata {
+  corners: number[];           // [topLeft, topRight, bottomLeft, bottomRight]
+  center: number;             // center position value
+  hasValidCorners: boolean;   // true if all 4 corners have numbers > 0
+  hasValidCenter: boolean;    // true if center has number > 0
+  allNumbers: number[];       // all non-zero numbers for quick access
+}
+
+interface OptimizedTambolaTicket extends TambolaTicket {
+  metadata?: TicketMetadata;  // cached calculations
+}
+
 export interface GameState {
   isActive: boolean;
   isCountdown: boolean;
@@ -68,6 +81,7 @@ export interface Prize {
   pattern: string;
   description: string;
   won: boolean;
+  order?: number;             // ✅ NEW: Prize ordering
   winners?: {
     name: string;
     ticketId: string;
@@ -152,7 +166,61 @@ export const removeUndefinedValues = (obj: any): any => {
   return cleaned;
 };
 
-// ✅ REMOVED: generateTambolaTicket function - replaced with pre-made ticket loading
+// ✅ NEW: Pre-compute ticket metadata for performance optimization
+const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
+  // Safety check for ticket structure
+  if (!ticket.rows || !Array.isArray(ticket.rows) || ticket.rows.length !== 3) {
+    console.warn(`Invalid ticket structure for ${ticket.ticketId}`);
+    return {
+      corners: [],
+      center: 0,
+      hasValidCorners: false,
+      hasValidCenter: false,
+      allNumbers: []
+    };
+  }
+
+  // Validate each row has 9 columns
+  for (let i = 0; i < 3; i++) {
+    if (!Array.isArray(ticket.rows[i]) || ticket.rows[i].length !== 9) {
+      console.warn(`Invalid row ${i} for ticket ${ticket.ticketId}`);
+      return {
+        corners: [],
+        center: 0,
+        hasValidCorners: false,
+        hasValidCenter: false,
+        allNumbers: []
+      };
+    }
+  }
+
+  // Extract corner positions
+  const corners = [
+    ticket.rows[0][0], // top-left (0,0)
+    ticket.rows[0][8], // top-right (0,8)
+    ticket.rows[2][0], // bottom-left (2,0)
+    ticket.rows[2][8]  // bottom-right (2,8)
+  ];
+
+  // Extract center position
+  const center = ticket.rows[1][4]; // center (1,4)
+
+  // Filter valid numbers (> 0)
+  const validCorners = corners.filter(n => n > 0);
+  const hasValidCorners = validCorners.length === 4;
+  const hasValidCenter = center > 0;
+
+  // Get all numbers for other prize validations
+  const allNumbers = ticket.rows.flat().filter(n => n > 0);
+
+  return {
+    corners: validCorners,
+    center,
+    hasValidCorners,
+    hasValidCenter,
+    allNumbers
+  };
+};
 
 // ================== FIREBASE SERVICE CLASS ==================
 
@@ -241,16 +309,7 @@ class FirebaseService {
   // ================== PRE-MADE TICKET LOADING ==================
 
   /**
-   * ✅ NEW: Load tickets from pre-made ticket sets
-   * 
-   * SetId Concept Explanation:
-   * - setId represents a "Full Sheet" containing 6 consecutive tickets
-   * - This maintains the traditional Tambola sheet structure
-   * - Future features can utilize full sheet functionality
-   * 
-   * @param ticketSetId - The ticket set to load ("1" or "2")
-   * @param maxTickets - Maximum number of tickets to load (1-600)
-   * @returns Transformed tickets object ready for game creation
+   * ✅ UPDATED: Load tickets from pre-made ticket sets with metadata computation
    */
   async loadTicketsFromSet(ticketSetId: string, maxTickets: number): Promise<{ [ticketId: string]: TambolaTicket }> {
     try {
@@ -355,6 +414,10 @@ class FirebaseService {
           isBooked: false
         };
 
+        // ✅ NEW: Pre-compute metadata for performance
+        const metadata = computeTicketMetadata(ticket);
+        (ticket as OptimizedTambolaTicket).metadata = metadata;
+
         tickets[ticketId.toString()] = ticket;
       }
 
@@ -368,6 +431,7 @@ class FirebaseService {
       console.log(`✅ Successfully created ${createdTicketCount} tickets from set ${ticketSetId}`);
       console.log(`🎫 Ticket IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${createdTicketCount > 5 ? '...' : ''}`);
       console.log(`📐 Sample ticket structure verified: ${tickets['1'] ? '3 rows × 9 columns' : 'Invalid'}`);
+      console.log(`⚡ Metadata computed for all tickets (corners, center, allNumbers)`);
 
       return tickets;
 
@@ -396,7 +460,7 @@ class FirebaseService {
   // ================== GAME MANAGEMENT ==================
 
   /**
-   * ✅ UPDATED: Create game using pre-made ticket sets
+   * ✅ UPDATED: Create game using pre-made ticket sets with new prizes
    */
   async createGame(
     config: CreateGameConfig,
@@ -413,42 +477,63 @@ class FirebaseService {
       console.log(`✅ Loaded ${Object.keys(tickets).length} pre-made tickets from set ${ticketSetId}`);
       console.log(`📊 SetId concept preserved: Each setId represents a traditional 6-ticket Tambola sheet`);
 
-      // ✅ UNCHANGED: Initialize selected prizes (same as before)
+      // ✅ UPDATED: Initialize selected prizes with new Corner and Star Corner prizes
       const availablePrizes = {
         quickFive: {
           id: 'quickFive',
           name: 'Quick Five',
           pattern: 'First 5 numbers',
           description: 'First player to mark any 5 numbers',
-          won: false
+          won: false,
+          order: 1
+        },
+        corner: {
+          id: 'corner',
+          name: 'Corner',
+          pattern: '4 corner positions',
+          description: 'Mark all 4 corner positions of your ticket',
+          won: false,
+          order: 2
         },
         topLine: {
           id: 'topLine',
           name: 'Top Line',
           pattern: 'Complete top row',
           description: 'Complete the top row of any ticket',
-          won: false
+          won: false,
+          order: 3
         },
         middleLine: {
           id: 'middleLine',
           name: 'Middle Line',
           pattern: 'Complete middle row',
           description: 'Complete the middle row of any ticket',
-          won: false
+          won: false,
+          order: 4
         },
         bottomLine: {
           id: 'bottomLine',
           name: 'Bottom Line',
           pattern: 'Complete bottom row',
           description: 'Complete the bottom row of any ticket',
-          won: false
+          won: false,
+          order: 5
+        },
+        starCorner: {
+          id: 'starCorner',
+          name: 'Star Corner',
+          pattern: '4 corners + center',
+          description: 'Mark all 4 corner positions plus center position',
+          won: false,
+          order: 6
         },
         fullHouse: {
           id: 'fullHouse',
           name: 'Full House',
           pattern: 'All numbers',
           description: 'Mark all numbers on the ticket',
-          won: false
+          won: false,
+          order: 7
         }
       };
 
@@ -491,6 +576,7 @@ class FirebaseService {
       
       console.log(`✅ Game created successfully with ID: ${gameId}`);
       console.log(`🎫 Using pre-made tickets from set ${ticketSetId} (${Object.keys(tickets).length} tickets)`);
+      console.log(`🏆 Configured prizes: ${selectedPrizes.join(', ')}`);
       
       return gameData;
     } catch (error: any) {
@@ -602,7 +688,6 @@ class FirebaseService {
   }
 
   // ================== TICKET MANAGEMENT ==================
-  // ✅ UNCHANGED: All ticket management methods remain exactly the same
 
   async bookTicket(
     ticketId: string, 
@@ -613,6 +698,9 @@ class FirebaseService {
     try {
       console.log(`🎫 Booking ticket ${ticketId} for ${playerName} in game ${gameId}`);
       
+      // ✅ NEW: Get current ticket data to preserve metadata
+      const currentTicketSnapshot = await get(ref(database, `games/${gameId}/tickets/${ticketId}`));
+      
       const ticketData = {
         isBooked: true,
         playerName: playerName.trim(),
@@ -620,12 +708,20 @@ class FirebaseService {
         bookedAt: new Date().toISOString()
       };
 
+      // ✅ NEW: Preserve metadata if it exists
+      if (currentTicketSnapshot.exists()) {
+        const currentTicket = currentTicketSnapshot.val();
+        if (currentTicket.metadata) {
+          (ticketData as any).metadata = currentTicket.metadata;
+        }
+      }
+
       await update(
         ref(database, `games/${gameId}/tickets/${ticketId}`),
         removeUndefinedValues(ticketData)
       );
       
-      console.log(`✅ Ticket ${ticketId} booked successfully - existing data preserved`);
+      console.log(`✅ Ticket ${ticketId} booked successfully - metadata preserved`);
     } catch (error: any) {
       console.error('❌ Error booking ticket:', error);
       throw new Error(error.message || 'Failed to book ticket');
@@ -668,7 +764,6 @@ class FirebaseService {
   }
 
   // ================== AUTOMATIC NUMBER CALLING ==================
-  // ✅ UNCHANGED: All number calling methods remain exactly the same
 
   async callNextNumber(gameId: string): Promise<{
     success: boolean;
@@ -825,13 +920,14 @@ class FirebaseService {
   }
 
   // ================== PRIZE VALIDATION ==================
-  // ✅ UNCHANGED: All prize validation methods remain exactly the same
 
+  // ✅ UPDATED: Optimized validation with pre-computed metadata + new Corner/Star Corner prizes
   async validateTicketsForPrizes(
     tickets: { [ticketId: string]: TambolaTicket },
     calledNumbers: number[],
     prizes: { [prizeId: string]: Prize }
   ): Promise<{ winners: { [prizeId: string]: any } }> {
+    const startTime = Date.now(); // Performance monitoring
     const winners: { [prizeId: string]: any } = {};
 
     for (const [prizeId, prize] of Object.entries(prizes)) {
@@ -843,38 +939,94 @@ class FirebaseService {
         if (!ticket.isBooked || !ticket.playerName) continue;
 
         let hasWon = false;
+        
+        // ✅ OPTIMIZATION: Use pre-computed metadata when available
+        const optimizedTicket = ticket as OptimizedTambolaTicket;
+        const metadata = optimizedTicket.metadata;
 
-        switch (prizeId) {
-          case 'quickFive': {
-            const ticketNumbers = ticket.rows.flat().filter(n => n > 0);
-            const markedCount = ticketNumbers.filter(n => calledNumbers.includes(n)).length;
-            hasWon = markedCount >= 5;
-            break;
-          }
+        try {
+          switch (prizeId) {
+            case 'quickFive': {
+              // ✅ OPTIMIZED: Use pre-computed allNumbers if available
+              const ticketNumbers = metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
+              const markedCount = ticketNumbers.filter(n => calledNumbers.includes(n)).length;
+              hasWon = markedCount >= 5;
+              break;
+            }
 
-          case 'topLine': {
-            const topLineNumbers = ticket.rows[0].filter(n => n > 0);
-            hasWon = topLineNumbers.every(n => calledNumbers.includes(n));
-            break;
-          }
+            case 'corner': {
+              // ✅ NEW + OPTIMIZED: Corner prize validation using pre-computed data
+              if (metadata?.hasValidCorners) {
+                hasWon = metadata.corners.every(n => calledNumbers.includes(n));
+              } else {
+                // ✅ FALLBACK: Compute on-the-fly if metadata missing
+                const corners = [
+                  ticket.rows[0][0], ticket.rows[0][8],
+                  ticket.rows[2][0], ticket.rows[2][8]
+                ].filter(n => n > 0);
+                
+                hasWon = corners.length === 4 && corners.every(n => calledNumbers.includes(n));
+              }
+              break;
+            }
 
-          case 'middleLine': {
-            const middleLineNumbers = ticket.rows[1].filter(n => n > 0);
-            hasWon = middleLineNumbers.every(n => calledNumbers.includes(n));
-            break;
-          }
+            case 'topLine': {
+              const topLineNumbers = ticket.rows[0].filter(n => n > 0);
+              hasWon = topLineNumbers.every(n => calledNumbers.includes(n));
+              break;
+            }
 
-          case 'bottomLine': {
-            const bottomLineNumbers = ticket.rows[2].filter(n => n > 0);
-            hasWon = bottomLineNumbers.every(n => calledNumbers.includes(n));
-            break;
-          }
+            case 'middleLine': {
+              const middleLineNumbers = ticket.rows[1].filter(n => n > 0);
+              hasWon = middleLineNumbers.every(n => calledNumbers.includes(n));
+              break;
+            }
 
-          case 'fullHouse': {
-            const allTicketNumbers = ticket.rows.flat().filter(n => n > 0);
-            hasWon = allTicketNumbers.every(n => calledNumbers.includes(n));
-            break;
+            case 'bottomLine': {
+              const bottomLineNumbers = ticket.rows[2].filter(n => n > 0);
+              hasWon = bottomLineNumbers.every(n => calledNumbers.includes(n));
+              break;
+            }
+
+            case 'starCorner': {
+              // ✅ NEW + OPTIMIZED: Star Corner prize validation using pre-computed data
+              if (metadata?.hasValidCorners && metadata?.hasValidCenter) {
+                const allStarNumbers = [...metadata.corners, metadata.center];
+                hasWon = allStarNumbers.every(n => calledNumbers.includes(n));
+              } else {
+                // ✅ FALLBACK: Compute on-the-fly if metadata missing
+                const corners = [
+                  ticket.rows[0][0], ticket.rows[0][8],
+                  ticket.rows[2][0], ticket.rows[2][8]
+                ].filter(n => n > 0);
+                
+                const center = ticket.rows[1][4];
+                
+                if (corners.length === 4 && center > 0) {
+                  const starNumbers = [...corners, center];
+                  hasWon = starNumbers.every(n => calledNumbers.includes(n));
+                }
+              }
+              break;
+            }
+
+            case 'fullHouse': {
+              // ✅ OPTIMIZED: Use pre-computed allNumbers if available
+              const allTicketNumbers = metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
+              hasWon = allTicketNumbers.every(n => calledNumbers.includes(n));
+              break;
+            }
+
+            default: {
+              // ✅ SAFETY: Handle unknown prize types gracefully
+              console.warn(`Unknown prize type: ${prizeId} - skipping validation`);
+              continue;
+            }
           }
+        } catch (error) {
+          // ✅ SAFETY: Error recovery
+          console.error(`Prize validation error for ${prizeId} on ticket ${ticketId}:`, error);
+          hasWon = false; // Fail safe - don't award prize on error
         }
 
         if (hasWon) {
@@ -894,11 +1046,16 @@ class FirebaseService {
       }
     }
 
+    // ✅ PERFORMANCE MONITORING
+    const endTime = Date.now();
+    if (process.env.NODE_ENV === 'development' && endTime - startTime > 50) {
+      console.warn(`Slow prize validation: ${endTime - startTime}ms for ${Object.keys(tickets).length} tickets`);
+    }
+
     return { winners };
   }
 
   // ================== REAL-TIME SUBSCRIPTIONS ==================
-  // ✅ UNCHANGED: All subscription methods remain exactly the same
 
   subscribeToGame(gameId: string, callback: (gameData: GameData | null) => void): () => void {
     const gameRef = ref(database, `games/${gameId}`);
@@ -944,7 +1101,6 @@ class FirebaseService {
   }
 
   // ================== ADMIN FUNCTIONS ==================
-  // ✅ UNCHANGED: All admin functions remain exactly the same
 
   async createHost(
     email: string,
