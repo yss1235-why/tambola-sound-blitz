@@ -413,7 +413,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       if (prize.won && !announcedPrizes.current.has(prize.id)) {
         announcedPrizes.current.add(prize.id);
         
-        let announcement = `🎉 Congratulations! ${prize.name} has been won`;
+        let announcement = ` Congratulations! ${prize.name} has been won`;
         
         if (prize.winners && prize.winners.length > 0) {
           if (prize.winners.length === 1) {
