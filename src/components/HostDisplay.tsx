@@ -1,4 +1,8 @@
-// src/components/HostDisplay.tsx - COMPLETE: With minimal celebration integration
+// ================================================================================
+// FILE 1: src/components/HostDisplay.tsx - SIMPLIFIED WINNER DISPLAY
+// REPLACE the entire HostDisplay component with this version
+// ================================================================================
+
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,8 +26,8 @@ import {
 } from 'lucide-react';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
 import { useHostControls } from '@/providers/HostControlsProvider';
-// ✅ NEW: Import enhanced component for host celebration
-import { RecentWinnersDisplay } from './RecentWinnersDisplay';
+// ✅ Import simplified winner component
+import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay';
 
 interface HostDisplayProps {
   onCreateNewGame?: () => void;
@@ -131,6 +135,32 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     );
   }
 
+  // ✅ NEW: SIMPLIFIED WINNER DISPLAY for finished games
+  if (currentPhase === 'finished') {
+    return (
+      <SimplifiedWinnerDisplay 
+        gameData={gameData}
+        onCreateNewGame={() => {
+          // ✅ Add confirmation before creating new game from winner display
+          const confirmed = window.confirm(
+            '🎮 Create New Game\n\n' +
+            'You are about to create a new game. The current winner information will be cleared from your dashboard.\n\n' +
+            'Make sure you have noted down any winner contact details or taken screenshots if needed.\n\n' +
+            'Continue to create a new game?'
+          );
+          
+          if (confirmed && onCreateNewGame) {
+            console.log('✅ Host confirmed new game creation from winner display');
+            onCreateNewGame();
+          } else {
+            console.log('🚫 Host cancelled new game creation from winner display');
+          }
+        }}
+      />
+    );
+  }
+
+  // ✅ EXISTING: Full interface for active games (booking, countdown, playing phases)
   return (
     <div className="space-y-6">
       {/* Game Status Header */}
@@ -281,16 +311,6 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 </Button>
               </>
             )}
-
-            {/* ✅ CHANGED: Replace simple button with celebration component */}
-            {currentPhase === 'finished' && (
-              <div className="w-full">
-                <RecentWinnersDisplay 
-                  hostMode={true} 
-                  onCreateNewGame={onCreateNewGame} 
-                />
-              </div>
-            )}
           </div>
 
           {/* Call Interval Control */}
@@ -332,15 +352,6 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
               <Timer className="h-4 w-4" />
               <AlertDescription>
                 Game is running automatically. Numbers are called every {callInterval} seconds.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {currentPhase === 'finished' && (
-            <Alert>
-              <CheckCircle className="h-4 w-4" />
-              <AlertDescription>
-                Game completed successfully! {gameData.gameState.calledNumbers?.length || 0} numbers were called automatically.
               </AlertDescription>
             </Alert>
           )}
