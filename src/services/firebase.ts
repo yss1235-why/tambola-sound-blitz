@@ -1,4 +1,4 @@
-// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes + Winner Display
+// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes + Winner Display + YOUR DYNAMIC CORNER LOGIC
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -1111,7 +1111,7 @@ class FirebaseService {
 
   // ================== PRIZE VALIDATION ==================
 
-  // ✅ UPDATED: Optimized validation with pre-computed metadata + new Corner/Star Corner prizes
+  // ✅ UPDATED: YOUR REQUESTED DYNAMIC CORNER/STAR CORNER VALIDATION
   async validateTicketsForPrizes(
     tickets: { [ticketId: string]: TambolaTicket },
     calledNumbers: number[],
@@ -1145,17 +1145,47 @@ class FirebaseService {
             }
 
             case 'corner': {
-              // ✅ NEW + OPTIMIZED: Corner prize validation using pre-computed data
-              if (metadata?.hasValidCorners) {
-                hasWon = metadata.corners.every(n => calledNumbers.includes(n));
-              } else {
-                // ✅ FALLBACK: Compute on-the-fly if metadata missing
-                const corners = [
-                  ticket.rows[0][0], ticket.rows[0][8],
-                  ticket.rows[2][0], ticket.rows[2][8]
-                ].filter(n => n > 0);
+              // 🎯 YOUR REQUESTED DYNAMIC CORNER LOGIC
+              try {
+                // Safety check: ensure proper ticket structure
+                if (!ticket.rows || ticket.rows.length !== 3) {
+                  hasWon = false;
+                  break;
+                }
                 
-                hasWon = corners.length === 4 && corners.every(n => calledNumbers.includes(n));
+                // Extract non-zero numbers from top and bottom rows
+                const topNumbers = ticket.rows[0].filter(n => n > 0);
+                const bottomNumbers = ticket.rows[2].filter(n => n > 0);
+                
+                // Validate: each row must have exactly 5 numbers
+                if (topNumbers.length === 5 && bottomNumbers.length === 5) {
+                  // Corner positions: first & last from top + first & last from bottom
+                  const cornerNumbers = [
+                    topNumbers[0],           // Top-left corner (first of top row)
+                    topNumbers[4],           // Top-right corner (last of top row)
+                    bottomNumbers[0],        // Bottom-left corner (first of bottom row)
+                    bottomNumbers[4]         // Bottom-right corner (last of bottom row)
+                  ];
+                  
+                  // Check if all corner numbers have been called
+                  hasWon = cornerNumbers.every(n => calledNumbers.includes(n));
+                  
+                  // Debug logging (remove in production)
+                  console.log(`Corner validation for ticket ${ticket.ticketId}:`, {
+                    topNumbers,
+                    bottomNumbers, 
+                    cornerNumbers,
+                    hasWon
+                  });
+                } else {
+                  // Invalid ticket structure - cannot win
+                  hasWon = false;
+                  console.warn(`Corner prize: Invalid ticket ${ticket.ticketId} - rows don't have 5 numbers each (top: ${topNumbers.length}, bottom: ${bottomNumbers.length})`);
+                }
+              } catch (error) {
+                // Error safety: don't award prize on validation error
+                hasWon = false;
+                console.error(`Corner prize validation error for ticket ${ticket.ticketId}:`, error);
               }
               break;
             }
@@ -1179,23 +1209,50 @@ class FirebaseService {
             }
 
             case 'starCorner': {
-              // ✅ NEW + OPTIMIZED: Star Corner prize validation using pre-computed data
-              if (metadata?.hasValidCorners && metadata?.hasValidCenter) {
-                const allStarNumbers = [...metadata.corners, metadata.center];
-                hasWon = allStarNumbers.every(n => calledNumbers.includes(n));
-              } else {
-                // ✅ FALLBACK: Compute on-the-fly if metadata missing
-                const corners = [
-                  ticket.rows[0][0], ticket.rows[0][8],
-                  ticket.rows[2][0], ticket.rows[2][8]
-                ].filter(n => n > 0);
-                
-                const center = ticket.rows[1][4];
-                
-                if (corners.length === 4 && center > 0) {
-                  const starNumbers = [...corners, center];
-                  hasWon = starNumbers.every(n => calledNumbers.includes(n));
+              // 🎯 YOUR REQUESTED DYNAMIC STAR CORNER LOGIC
+              try {
+                // Safety check: ensure proper ticket structure
+                if (!ticket.rows || ticket.rows.length !== 3) {
+                  hasWon = false;
+                  break;
                 }
+                
+                // Extract non-zero numbers from all rows
+                const topNumbers = ticket.rows[0].filter(n => n > 0);
+                const middleNumbers = ticket.rows[1].filter(n => n > 0);
+                const bottomNumbers = ticket.rows[2].filter(n => n > 0);
+                
+                // Validate: each row must have exactly 5 numbers
+                if (topNumbers.length === 5 && middleNumbers.length === 5 && bottomNumbers.length === 5) {
+                  // Star Corner: 4 corners + center (all dynamic)
+                  const starCornerNumbers = [
+                    topNumbers[0],           // Top-left corner (first of top row)
+                    topNumbers[4],           // Top-right corner (last of top row)
+                    middleNumbers[2],        // Center (middle of middle row - 3rd of 5)
+                    bottomNumbers[0],        // Bottom-left corner (first of bottom row)
+                    bottomNumbers[4]         // Bottom-right corner (last of bottom row)
+                  ];
+                  
+                  // Check if all star corner numbers have been called
+                  hasWon = starCornerNumbers.every(n => calledNumbers.includes(n));
+                  
+                  // Debug logging (remove in production)
+                  console.log(`Star Corner validation for ticket ${ticket.ticketId}:`, {
+                    topNumbers,
+                    middleNumbers,
+                    bottomNumbers,
+                    starCornerNumbers,
+                    hasWon
+                  });
+                } else {
+                  // Invalid ticket structure - cannot win
+                  hasWon = false;
+                  console.warn(`Star Corner prize: Invalid ticket ${ticket.ticketId} - rows don't have 5 numbers each (top: ${topNumbers.length}, middle: ${middleNumbers.length}, bottom: ${bottomNumbers.length})`);
+                }
+              } catch (error) {
+                // Error safety: don't award prize on validation error
+                hasWon = false;
+                console.error(`Star Corner prize validation error for ticket ${ticket.ticketId}:`, error);
               }
               break;
             }
