@@ -263,9 +263,21 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                         </Badge>
                       </div>
                       
-                      {/* Winners List - Mobile Optimized */}
+                      {/* Winners List - Mobile Optimized with Multiple Winner Support */}
                       {prize.winners && prize.winners.length > 0 && (
                         <div className="space-y-1">
+                          {/* Multiple Winners Header */}
+                          {prize.winners.length > 1 && (
+                            <div className="text-xs bg-green-100 border border-green-300 rounded p-2 mb-2">
+                              <p className="text-green-800 font-medium">
+                                🎉 Multiple Winners ({prize.winners.length} players won this prize!)
+                              </p>
+                              <p className="text-green-700 text-xs mt-1">
+                                Each winner's ticket is shown separately below
+                              </p>
+                            </div>
+                          )}
+                          
                           {prize.winners.map((winner, idx) => {
                             const winnerId = `${prize.id}-${idx}`;
                             const isExpanded = expandedWinners.has(winnerId);
@@ -287,6 +299,12 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                       <p className="font-medium text-gray-800 text-xs sm:text-sm truncate flex items-center">
                                         <User className="w-3 h-3 mr-1 flex-shrink-0" />
                                         {winner.name}
+                                        {/* Winner number indicator for multiple winners */}
+                                        {prize.winners.length > 1 && (
+                                          <Badge variant="outline" className="ml-2 text-xs border-green-400 text-green-700">
+                                            Winner #{idx + 1}
+                                          </Badge>
+                                        )}
                                       </p>
                                       <div className="flex items-center space-x-2 text-xs text-gray-600">
                                         <span>Ticket {winner.ticketId}</span>
@@ -301,7 +319,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                   </div>
                                   <div className="flex items-center flex-shrink-0 ml-2">
                                     <span className="text-xs text-gray-500 mr-1 hidden sm:inline">
-                                      {isExpanded ? 'Hide' : 'Show'}
+                                      {isExpanded ? 'Hide' : 'Show'} Ticket
                                     </span>
                                     {isExpanded ? 
                                       <ChevronUp className="w-4 h-4 text-green-600" /> : 
@@ -316,7 +334,10 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                     <div className="flex items-center justify-between mb-2 pt-2">
                                       <h5 className="font-medium text-gray-800 flex items-center text-xs sm:text-sm">
                                         <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-green-600" />
-                                        Winning Ticket {winner.ticketId}
+                                        {winner.name}'s Winning Ticket {winner.ticketId}
+                                        {prize.winners.length > 1 && (
+                                          <span className="ml-2 text-green-600">(#{idx + 1})</span>
+                                        )}
                                       </h5>
                                       <Badge variant="outline" className="text-xs border-green-400 text-green-700">
                                         {prize.name} Winner
