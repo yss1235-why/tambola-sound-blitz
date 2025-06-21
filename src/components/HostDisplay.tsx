@@ -1,4 +1,4 @@
-// src/components/HostDisplay.tsx - COMPLETE: Using new simplified architecture
+// src/components/HostDisplay.tsx - COMPLETE: With minimal celebration integration
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
 import { useHostControls } from '@/providers/HostControlsProvider';
+// ✅ NEW: Import enhanced component for host celebration
+import { RecentWinnersDisplay } from './RecentWinnersDisplay';
 
 interface HostDisplayProps {
   onCreateNewGame?: () => void;
@@ -280,11 +282,14 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
               </>
             )}
 
-            {currentPhase === 'finished' && onCreateNewGame && (
-              <Button onClick={onCreateNewGame} className="flex-1 bg-blue-600 hover:bg-blue-700" size="lg">
-                <Play className="w-4 h-4 mr-2" />
-                Create New Game
-              </Button>
+            {/* ✅ CHANGED: Replace simple button with celebration component */}
+            {currentPhase === 'finished' && (
+              <div className="w-full">
+                <RecentWinnersDisplay 
+                  hostMode={true} 
+                  onCreateNewGame={onCreateNewGame} 
+                />
+              </div>
             )}
           </div>
 
