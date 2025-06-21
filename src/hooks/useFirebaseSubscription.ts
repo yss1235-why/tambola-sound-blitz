@@ -1,4 +1,4 @@
-// src/hooks/useFirebaseSubscription.ts - FIXED: Better host subscription that watches all games
+// src/hooks/useFirebaseSubscription.ts - COMPLETE FILE with Host Winner Display Fix
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { firebaseService } from '@/services/firebase';
 
@@ -166,7 +166,7 @@ export function useActiveGamesSubscription() {
   );
 }
 
-// ✅ FIXED: Complete rewrite of host subscription to watch ALL host games
+// ✅ FIXED: Host subscription with winner display support
 export function useHostCurrentGameSubscription(hostId: string | null) {
   return useFirebaseSubscription(
     `host-all-games-${hostId}`,
@@ -179,7 +179,7 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
       
       console.log(`🔍 Setting up ALL GAMES subscription for host: ${hostId}`);
       
-      // ✅ NEW APPROACH: Subscribe to ALL games and filter for host's active game
+      // ✅ NEW APPROACH: Subscribe to ALL games and filter for host's active/completed games
       const unsubscribe = firebaseService.subscribeToAllActiveGames((allGames) => {
         try {
           console.log(`📡 Received ${allGames.length} total active games`);
@@ -189,29 +189,52 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
           console.log(`🎮 Found ${hostGames.length} games for host: ${hostId}`);
           
           if (hostGames.length === 0) {
-            console.log(`ℹ️ No active games for host: ${hostId}`);
+            console.log(`ℹ️ No games found for host: ${hostId}`);
             callback(null);
             return;
           }
           
-          // Find the most recent non-finished game
-          const activeGames = hostGames.filter(game => !game.gameState.gameOver);
-          console.log(`✨ Found ${activeGames.length} active (non-finished) games for host: ${hostId}`);
+          // ✅ PRIORITY 1: Active game (not finished)
+          const activeGames = hostGames.filter(game => 
+            !game.gameState.gameOver && 
+            game.gameState // Additional safety check
+          );
           
-          if (activeGames.length === 0) {
-            console.log(`ℹ️ All games completed for host: ${hostId}`);
-            callback(null);
+          if (activeGames.length > 0) {
+            // Sort by creation date and get the most recent active game
+            const currentGame = activeGames
+              .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+            
+            console.log(`✅ Selected active game: ${currentGame.gameId} for host: ${hostId}`);
+            console.log(`📊 Game state: isActive=${currentGame.gameState.isActive}, gameOver=${currentGame.gameState.gameOver}, calledNumbers=${currentGame.gameState.calledNumbers?.length || 0}`);
+            
+            callback(currentGame);
             return;
           }
           
-          // Sort by creation date and get the most recent
-          const currentGame = activeGames
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+          // ✅ PRIORITY 2: Most recent completed game (NEW LOGIC FOR HOST WINNER DISPLAY)
+          console.log(`🏁 No active games found. Checking for recent completed games for host: ${hostId}...`);
+          const completedGames = hostGames
+            .filter(game => {
+              // ✅ SAFETY: Ensure game is properly completed
+              return game.gameState && 
+                     game.gameState.gameOver && 
+                     game.createdAt; // Must have creation timestamp
+            })
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
           
-          console.log(`✅ Selected current game: ${currentGame.gameId} for host: ${hostId}`);
-          console.log(`📊 Game state: isActive=${currentGame.gameState.isActive}, gameOver=${currentGame.gameState.gameOver}, calledNumbers=${currentGame.gameState.calledNumbers?.length || 0}`);
+          if (completedGames.length > 0) {
+            const recentCompleted = completedGames[0];
+            console.log(`🏆 Selected recent completed game: ${recentCompleted.gameId} for host: ${hostId}`);
+            console.log(`📊 Completed game state: gameOver=${recentCompleted.gameState.gameOver}, winners=${Object.values(recentCompleted.prizes).filter(p => p.won).length}`);
+            
+            callback(recentCompleted);
+            return;
+          }
           
-          callback(currentGame);
+          // ✅ PRIORITY 3: No games at all
+          console.log(`ℹ️ No games (active or completed) found for host: ${hostId}`);
+          callback(null);
           
         } catch (error) {
           console.error(`❌ Error processing host games for ${hostId}:`, error);
