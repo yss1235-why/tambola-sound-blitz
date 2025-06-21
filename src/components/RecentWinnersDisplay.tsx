@@ -1,4 +1,4 @@
-// src/components/RecentWinnersDisplay.tsx - NEW: Complete winner display component
+// src/components/RecentWinnersDisplay.tsx - ENHANCED: Add clean host celebration mode
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,12 +15,22 @@ import {
   Phone,
   Hash,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Play,
+  Star
 } from 'lucide-react';
 import { useGameData } from '@/providers/GameDataProvider';
 import { TambolaTicket } from '@/services/firebase';
 
-export const RecentWinnersDisplay: React.FC = () => {
+interface RecentWinnersDisplayProps {
+  hostMode?: boolean; // NEW: Enable clean celebration mode
+  onCreateNewGame?: () => void; // NEW: For host control
+}
+
+export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({ 
+  hostMode = false,
+  onCreateNewGame 
+}) => {
   const { gameData, isLoading, error } = useGameData();
   const [expandedWinners, setExpandedWinners] = useState<Set<string>>(new Set());
   
@@ -50,9 +60,9 @@ export const RecentWinnersDisplay: React.FC = () => {
     });
   };
   
-  // Calculate game duration
-  const gameDuration = useMemo(() => {
-    if (!gameData) return '';
+  // Calculate game statistics
+  const gameStats = useMemo(() => {
+    if (!gameData) return null;
     
     const startTime = new Date(gameData.createdAt);
     const endTime = new Date(gameData.lastWinnerAt || gameData.createdAt);
@@ -60,80 +70,43 @@ export const RecentWinnersDisplay: React.FC = () => {
     
     const minutes = Math.floor(durationMs / (1000 * 60));
     const hours = Math.floor(minutes / 60);
+    const duration = hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`;
     
-    if (hours > 0) {
-      return `${hours}h ${minutes % 60}m`;
-    }
-    return `${minutes}m`;
+    const totalPlayers = Object.values(gameData.tickets || {}).filter(t => t.isBooked).length;
+    const numbersCalledCount = gameData.gameState.calledNumbers?.length || 0;
+    
+    return {
+      duration,
+      totalPlayers,
+      numbersCalledCount,
+      endTime
+    };
   }, [gameData]);
 
   // ✅ SAFETY: Comprehensive ticket rendering with error recovery
   const renderWinningTicket = (ticket: TambolaTicket, calledNumbers: number[]) => {
-    // Safety check 1: Verify ticket exists
-    if (!ticket) {
-      return (
-        <div className="bg-gray-100 p-4 rounded-lg border-2 border-gray-200">
-          <div className="text-center py-4">
-            <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-            <p className="text-sm text-gray-500">Loading ticket...</p>
-          </div>
-        </div>
-      );
-    }
-
-    // Safety check 2: Verify ticket has rows property
-    if (!ticket.rows) {
+    if (!ticket || !ticket.rows) {
       return (
         <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200">
-          <div className="text-center py-4">
-            <Clock className="w-6 h-6 text-yellow-600 mx-auto mb-2" />
-            <p className="text-sm text-yellow-700">
-              Ticket {ticket.ticketId} - Data updating...
-            </p>
-            <p className="text-xs text-yellow-600 mt-1">
-              Please wait while ticket data loads
-            </p>
+          <div className="text-center py-2">
+            <Clock className="w-4 h-4 text-yellow-600 mx-auto mb-1" />
+            <p className="text-sm text-yellow-700">Ticket data loading...</p>
           </div>
         </div>
       );
     }
 
-    // Safety check 3: Verify rows is an array with proper structure
     if (!Array.isArray(ticket.rows) || ticket.rows.length !== 3) {
       return (
         <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
-          <div className="text-center py-4">
-            <AlertCircle className="w-6 h-6 text-red-600 mx-auto mb-2" />
-            <p className="text-sm text-red-700">
-              Ticket {ticket.ticketId} - Invalid data structure
-            </p>
-            <p className="text-xs text-red-600 mt-1">
-              Expected 3 rows, got {Array.isArray(ticket.rows) ? ticket.rows.length : 'non-array'}
-            </p>
+          <div className="text-center py-2">
+            <AlertCircle className="w-4 h-4 text-red-600 mx-auto mb-1" />
+            <p className="text-sm text-red-700">Invalid ticket structure</p>
           </div>
         </div>
       );
     }
 
-    // Safety check 4: Verify each row is an array with proper length
-    const isValidStructure = ticket.rows.every(row => Array.isArray(row) && row.length === 9);
-    if (!isValidStructure) {
-      return (
-        <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
-          <div className="text-center py-4">
-            <AlertCircle className="w-6 h-6 text-red-600 mx-auto mb-2" />
-            <p className="text-sm text-red-700">
-              Ticket {ticket.ticketId} - Corrupted grid structure
-            </p>
-            <p className="text-xs text-red-600 mt-1">
-              Each row should have 9 columns
-            </p>
-          </div>
-        </div>
-      );
-    }
-
-    // Safety check 5: Safe flattening with error handling
     let allNumbers: number[] = [];
     try {
       allNumbers = ticket.rows.flat();
@@ -141,25 +114,18 @@ export const RecentWinnersDisplay: React.FC = () => {
         throw new Error(`Expected 27 cells, got ${allNumbers.length}`);
       }
     } catch (error) {
-      console.error('Error processing ticket rows:', error, ticket);
       return (
         <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
-          <div className="text-center py-4">
-            <AlertCircle className="w-6 h-6 text-red-600 mx-auto mb-2" />
-            <p className="text-sm text-red-700">
-              Ticket {ticket.ticketId} - Processing error
-            </p>
-            <p className="text-xs text-red-600 mt-1">
-              Grid processing failed: {error instanceof Error ? error.message : 'Unknown error'}
-            </p>
+          <div className="text-center py-2">
+            <AlertCircle className="w-4 h-4 text-red-600 mx-auto mb-1" />
+            <p className="text-sm text-red-700">Ticket processing error</p>
           </div>
         </div>
       );
     }
 
-    // ✅ ALL CHECKS PASSED: Render the winning ticket with highlighted numbers
     return (
-      <div className="bg-white p-4 rounded-lg border-2 border-green-200">
+      <div className="bg-white p-3 rounded-lg border-2 border-green-200">
         <div className="grid grid-cols-9 gap-1">
           {allNumbers.map((number, index) => {
             const isMarked = number !== 0 && calledNumbers.includes(number);
@@ -173,7 +139,7 @@ export const RecentWinnersDisplay: React.FC = () => {
                   ${isEmpty 
                     ? 'bg-gray-100' 
                     : isMarked 
-                      ? 'bg-green-500 text-white shadow-md transform scale-105 ring-2 ring-green-300' 
+                      ? 'bg-green-500 text-white shadow-md transform scale-105' 
                       : 'bg-yellow-50 text-gray-800 border border-gray-300'
                   }
                 `}
@@ -183,9 +149,11 @@ export const RecentWinnersDisplay: React.FC = () => {
             );
           })}
         </div>
-        <p className="text-xs text-gray-600 mt-2 text-center">
-          ✅ Green numbers were called and marked for this prize
-        </p>
+        {!hostMode && (
+          <p className="text-xs text-gray-600 mt-2 text-center">
+            ✅ Green numbers were called and marked
+          </p>
+        )}
       </div>
     );
   };
@@ -193,14 +161,9 @@ export const RecentWinnersDisplay: React.FC = () => {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 flex items-center justify-center">
-        <Card>
-          <CardContent className="p-8 text-center">
-            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Winners...</h2>
-            <p className="text-sm text-gray-600">Fetching game results</p>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center py-8">
+        <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="ml-3 text-gray-600">Loading game results...</p>
       </div>
     );
   }
@@ -208,55 +171,211 @@ export const RecentWinnersDisplay: React.FC = () => {
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 flex items-center justify-center">
-        <Card className="border-red-300">
-          <CardContent className="p-8 text-center">
-            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-red-800 mb-2">Error Loading Game</h2>
-            <p className="text-red-600 mb-4">{error}</p>
-            <Button onClick={() => window.location.reload()}>
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="border-red-300">
+        <CardContent className="p-6 text-center">
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Results</h3>
+          <p className="text-red-600">{error}</p>
+        </CardContent>
+      </Card>
     );
   }
 
-  // Game not found or not completed
-  if (!gameData) {
+  if (!gameData || !gameData.gameState.gameOver) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 flex items-center justify-center">
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Trophy className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Game Not Found</h2>
-            <p className="text-gray-600">This game doesn't exist or is no longer available.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Not a completed game
-  if (!gameData.gameState.gameOver) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 flex items-center justify-center">
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Trophy className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Game Not Completed</h2>
-            <p className="text-gray-600">This game hasn't finished yet. Winners will appear here once the game ends.</p>
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardContent className="p-6 text-center">
+          <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Game Not Completed</h3>
+          <p className="text-gray-600">Results will appear when the game ends.</p>
+        </CardContent>
+      </Card>
     );
   }
   
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
-  const gameEndTime = new Date(gameData.lastWinnerAt || gameData.createdAt);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
   
+  // 🎯 NEW: HOST CELEBRATION MODE - Clean, screenshot-worthy design
+  if (hostMode) {
+    return (
+      <div className="space-y-6">
+        {/* Celebration Header */}
+        <Card className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
+          <CardContent className="text-center py-8">
+            <Trophy className="w-16 h-16 mx-auto mb-4 animate-bounce" />
+            <h1 className="text-4xl font-bold mb-2">🎉 Game Completed! 🎉</h1>
+            <p className="text-xl opacity-90">
+              Congratulations to all {totalWinners} winner{totalWinners !== 1 ? 's' : ''}!
+            </p>
+            {gameStats && (
+              <p className="text-sm opacity-75 mt-2">
+                Completed on {gameStats.endTime.toLocaleDateString()} at {gameStats.endTime.toLocaleTimeString()}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Game Statistics */}
+        {gameStats && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Hash className="w-5 h-5 mr-2" />
+                Game Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <Hash className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+                  <div className="text-2xl font-bold text-blue-800">{gameStats.numbersCalledCount}/90</div>
+                  <div className="text-sm text-blue-700">Numbers Called</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                  <Clock className="w-6 h-6 mx-auto mb-2 text-green-600" />
+                  <div className="text-2xl font-bold text-green-800">{gameStats.duration}</div>
+                  <div className="text-sm text-green-700">Duration</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <Users className="w-6 h-6 mx-auto mb-2 text-purple-600" />
+                  <div className="text-2xl font-bold text-purple-800">{gameStats.totalPlayers}</div>
+                  <div className="text-sm text-purple-700">Players</div>
+                </div>
+                <div className="text-center p-4 bg-orange-50 rounded-lg border border-orange-200">
+                  <Trophy className="w-6 h-6 mx-auto mb-2 text-orange-600" />
+                  <div className="text-2xl font-bold text-orange-800">{wonPrizes.length}</div>
+                  <div className="text-sm text-orange-700">Prizes Won</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Winners Display */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Trophy className="w-5 h-5 mr-2 text-yellow-600" />
+              🏆 Prize Winners
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {wonPrizes.length === 0 ? (
+              <div className="text-center py-6">
+                <Trophy className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600">No prizes were won in this game.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {wonPrizes
+                  .sort((a, b) => (a.order || 0) - (b.order || 0))
+                  .map((prize) => (
+                  <Card 
+                    key={prize.id} 
+                    className={`${
+                      prize.id === 'fullHouse' 
+                        ? 'bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-400 border-2' 
+                        : 'bg-green-50 border-green-200'
+                    }`}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center">
+                          <div className={`p-2 rounded-full ${
+                            prize.id === 'fullHouse' ? 'bg-yellow-400' : 'bg-green-500'
+                          }`}>
+                            {prize.id === 'fullHouse' ? (
+                              <Star className="w-5 h-5 text-white" />
+                            ) : (
+                              <Trophy className="w-5 h-5 text-white" />
+                            )}
+                          </div>
+                          <div className="ml-3">
+                            <h3 className={`text-lg font-bold ${
+                              prize.id === 'fullHouse' ? 'text-yellow-800' : 'text-green-800'
+                            }`}>
+                              {prize.name}
+                              {prize.id === 'fullHouse' && ' ⭐ FINAL WINNER!'}
+                            </h3>
+                            <p className={`text-sm ${
+                              prize.id === 'fullHouse' ? 'text-yellow-700' : 'text-green-600'
+                            }`}>
+                              {prize.pattern}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <Badge className={
+                            prize.id === 'fullHouse' 
+                              ? 'bg-yellow-500 text-white' 
+                              : 'bg-green-600 text-white'
+                          }>
+                            {prize.winners?.length || 0} winner{(prize.winners?.length || 0) !== 1 ? 's' : ''}
+                          </Badge>
+                          {prize.winningNumber && (
+                            <p className="text-xs text-gray-600 mt-1">
+                              Won on #{prize.winningNumber}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Winners List - Clean Format */}
+                      {prize.winners && prize.winners.length > 0 && (
+                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {prize.winners.map((winner, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                <div className="flex items-center">
+                                  <User className="w-4 h-4 text-gray-600 mr-2" />
+                                  <span className="font-medium text-gray-800">{winner.name}</span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-sm text-gray-600">Ticket {winner.ticketId}</span>
+                                  {winner.phone && (
+                                    <p className="text-xs text-gray-500 flex items-center">
+                                      <Phone className="w-3 h-3 mr-1" />
+                                      {winner.phone}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Create New Game Button */}
+        {onCreateNewGame && (
+          <Card>
+            <CardContent className="p-6 text-center">
+              <Button 
+                onClick={onCreateNewGame} 
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-3 text-lg"
+                size="lg"
+              >
+                <Play className="w-5 h-5 mr-2" />
+                Create New Game
+              </Button>
+              <p className="text-sm text-gray-600 mt-3">
+                Start a fresh game when you're ready
+              </p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  }
+
+  // 🔄 EXISTING: Original detailed view for public users (unchanged)
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -269,52 +388,56 @@ export const RecentWinnersDisplay: React.FC = () => {
             </CardTitle>
             <div className="text-lg opacity-90 mt-2">
               <p>Congratulations to all {totalWinners} winners!</p>
-              <p className="text-sm opacity-75 mt-1">
-                Game completed on {gameEndTime.toLocaleDateString()} at {gameEndTime.toLocaleTimeString()}
-              </p>
+              {gameStats && (
+                <p className="text-sm opacity-75 mt-1">
+                  Game completed on {gameStats.endTime.toLocaleDateString()} at {gameStats.endTime.toLocaleTimeString()}
+                </p>
+              )}
             </div>
           </CardHeader>
         </Card>
 
         {/* Game Timeline */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Clock className="w-5 h-5 mr-2" />
-              Game Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <Calendar className="w-6 h-6 mx-auto mb-2 text-blue-600" />
-                <div className="text-sm text-blue-700">Completed At</div>
-                <div className="font-bold text-blue-800 text-xs">
-                  {gameEndTime.toLocaleString()}
+        {gameStats && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Clock className="w-5 h-5 mr-2" />
+                Game Summary
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <Calendar className="w-6 h-6 mx-auto mb-2 text-blue-600" />
+                  <div className="text-sm text-blue-700">Completed At</div>
+                  <div className="font-bold text-blue-800 text-xs">
+                    {gameStats.endTime.toLocaleString()}
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                  <Clock className="w-6 h-6 mx-auto mb-2 text-green-600" />
+                  <div className="text-sm text-green-700">Duration</div>
+                  <div className="font-bold text-green-800">{gameStats.duration}</div>
+                </div>
+                <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                  <Hash className="w-6 h-6 mx-auto mb-2 text-purple-600" />
+                  <div className="text-sm text-purple-700">Numbers Called</div>
+                  <div className="font-bold text-purple-800">
+                    {gameStats.numbersCalledCount}/90
+                  </div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
+                  <Users className="w-6 h-6 mx-auto mb-2 text-orange-600" />
+                  <div className="text-sm text-orange-700">Total Winners</div>
+                  <div className="font-bold text-orange-800">{totalWinners}</div>
                 </div>
               </div>
-              <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-                <Clock className="w-6 h-6 mx-auto mb-2 text-green-600" />
-                <div className="text-sm text-green-700">Duration</div>
-                <div className="font-bold text-green-800">{gameDuration}</div>
-              </div>
-              <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                <Hash className="w-6 h-6 mx-auto mb-2 text-purple-600" />
-                <div className="text-sm text-purple-700">Numbers Called</div>
-                <div className="font-bold text-purple-800">
-                  {gameData.gameState.calledNumbers?.length || 0}/90
-                </div>
-              </div>
-              <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-                <Users className="w-6 h-6 mx-auto mb-2 text-orange-600" />
-                <div className="text-sm text-orange-700">Total Winners</div>
-                <div className="font-bold text-orange-800">{totalWinners}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Prize Winners Display */}
+        {/* Prize Winners Display - Detailed for Public */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
@@ -330,7 +453,7 @@ export const RecentWinnersDisplay: React.FC = () => {
           <CardContent>
             <div className="space-y-4">
               {wonPrizes
-                .sort((a, b) => (a.order || 0) - (b.order || 0)) // Sort by prize order
+                .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map((prize) => (
                 <Card key={prize.id} className="bg-green-50 border-green-200">
                   <CardContent className="p-4">
@@ -421,9 +544,6 @@ export const RecentWinnersDisplay: React.FC = () => {
                                     <div className="text-center py-4 text-gray-500">
                                       <Ticket className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                                       <p className="text-sm">Ticket data not available</p>
-                                      <p className="text-xs text-gray-400 mt-1">
-                                        This may happen if the game data was cleaned up
-                                      </p>
                                     </div>
                                   )}
                                 </div>
@@ -449,44 +569,6 @@ export const RecentWinnersDisplay: React.FC = () => {
                 </p>
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Game Statistics */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Hash className="w-5 h-5 mr-2" />
-              Final Statistics
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="text-center p-3 bg-gray-50 rounded-lg">
-                <div className="text-2xl font-bold text-gray-800">
-                  {Object.keys(gameData.tickets || {}).length}
-                </div>
-                <div className="text-sm text-gray-600">Total Tickets</div>
-              </div>
-              <div className="text-center p-3 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">
-                  {Object.values(gameData.tickets || {}).filter(t => t.isBooked).length}
-                </div>
-                <div className="text-sm text-blue-700">Players</div>
-              </div>
-              <div className="text-center p-3 bg-purple-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">
-                  {Object.keys(gameData.prizes).length}
-                </div>
-                <div className="text-sm text-purple-700">Total Prizes</div>
-              </div>
-              <div className="text-center p-3 bg-green-50 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">
-                  {Math.round(((gameData.gameState.calledNumbers?.length || 0) / 90) * 100)}%
-                </div>
-                <div className="text-sm text-green-700">Numbers Called</div>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </div>
