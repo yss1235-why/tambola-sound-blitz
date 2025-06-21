@@ -1,10 +1,11 @@
-// src/components/UserLandingPage.tsx - OPTIMIZED: Uses pre-loaded games for instant display
+// src/components/UserLandingPage.tsx - UPDATED: Enhanced with winner display support
 import React, { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { TicketBookingGrid } from './TicketBookingGrid';
 import { UserDisplay } from './UserDisplay';
+import { RecentWinnersDisplay } from './RecentWinnersDisplay';
 import { GameDataProvider } from '@/providers/GameDataProvider';
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
 import { firebaseService, GameData } from '@/services/firebase';
@@ -17,19 +18,20 @@ import {
   RefreshCw,
   Activity,
   Clock,
-  Zap
+  Zap,
+  CheckCircle
 } from 'lucide-react';
 
 interface UserLandingPageProps {
   onGameSelection?: (gameId: string) => void;
   selectedGameId?: string | null;
-  // ✅ NEW: Accept pre-loaded games for instant display
+  // ✅ UNCHANGED: Accept pre-loaded games for instant display
   preloadedGames?: GameData[];
   gamesLoading?: boolean;
   gamesError?: string | null;
 }
 
-// Simplified game summary for list view
+// 🔧 MODIFIED: Enhanced game summary interface with winner information
 interface GameSummary {
   gameId: string;
   name: string;
@@ -38,8 +40,13 @@ interface GameSummary {
   isActive: boolean;
   isCountdown: boolean;
   hasStarted: boolean;
+  gameOver: boolean; // 🆕 NEW: Track if game is completed
   bookedTickets: number;
   createdAt: string;
+  // 🆕 NEW: Winner information for completed games
+  winnerCount?: number;
+  prizesWon?: number;
+  totalPrizes?: number;
 }
 
 export const UserLandingPage: React.FC<UserLandingPageProps> = ({ 
@@ -49,14 +56,13 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
   gamesLoading = false,
   gamesError = null
 }) => {
-  const [currentView, setCurrentView] = useState<'list' | 'booking' | 'game'>('list');
+  const [currentView, setCurrentView] = useState<'list' | 'booking' | 'game' | 'winners'>('list'); // 🆕 NEW: Add winners view
   
-  // ✅ NEW: Use pre-loaded games with fallback subscription
-  // Only subscribe if pre-loaded games aren't available
+  // ✅ UNCHANGED: Use pre-loaded games with fallback subscription (now includes completed games)
   const fallbackSubscription = useActiveGamesSubscription();
   const shouldUseFallback = preloadedGames.length === 0 && !gamesLoading && !gamesError;
   
-  // ✅ OPTIMIZED: Choose data source (preloaded vs subscription)
+  // ✅ UNCHANGED: Choose data source (preloaded vs subscription)
   const gameDataSource = useMemo(() => {
     if (preloadedGames.length > 0 || gamesLoading || gamesError) {
       // Use pre-loaded data (faster path)
@@ -77,13 +83,26 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     }
   }, [preloadedGames, gamesLoading, gamesError, fallbackSubscription]);
 
-  // Convert to summaries for list view
+  // 🔧 MODIFIED: Enhanced game summaries with winner information
   const gameSummaries: GameSummary[] = useMemo(() => {
     if (!gameDataSource.games) return [];
     
     return gameDataSource.games.map(game => {
       const bookedTickets = game.tickets ? 
         Object.values(game.tickets).filter(t => t.isBooked).length : 0;
+      
+      // 🆕 NEW: Calculate winner statistics for completed games
+      let winnerCount = 0;
+      let prizesWon = 0;
+      const totalPrizes = Object.keys(game.prizes).length;
+      
+      if (game.gameState.gameOver) {
+        const wonPrizes = Object.values(game.prizes).filter(p => p.won);
+        prizesWon = wonPrizes.length;
+        winnerCount = wonPrizes.reduce((total, prize) => 
+          total + (prize.winners?.length || 0), 0
+        );
+      }
       
       return {
         gameId: game.gameId,
@@ -93,13 +112,18 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
         isActive: game.gameState.isActive,
         isCountdown: game.gameState.isCountdown,
         hasStarted: (game.gameState.calledNumbers?.length || 0) > 0,
+        gameOver: game.gameState.gameOver, // 🆕 NEW
         bookedTickets,
-        createdAt: game.createdAt
+        createdAt: game.createdAt,
+        // 🆕 NEW: Winner statistics
+        winnerCount,
+        prizesWon,
+        totalPrizes
       };
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [gameDataSource.games]);
 
-  // Handle game selection
+  // 🔧 MODIFIED: Handle completed game selection
   const selectGame = useCallback((gameId: string) => {
     console.log('🎯 Selecting game:', gameId);
     
@@ -107,19 +131,25 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
       onGameSelection(gameId);
     }
     
-    // Determine view based on selected game state
     const selectedGame = gameDataSource.games?.find(g => g.gameId === gameId);
     if (selectedGame) {
+      // 🆕 NEW: Handle completed games
+      if (selectedGame.gameState.gameOver) {
+        console.log('🏆 Selected completed game - showing winners');
+        setCurrentView('winners');
+        return;
+      }
+      
+      // ✅ UNCHANGED: Existing active game logic
       const hasStarted = (selectedGame.gameState.calledNumbers?.length || 0) > 0 || 
                         selectedGame.gameState.isActive || 
-                        selectedGame.gameState.isCountdown ||
-                        selectedGame.gameState.gameOver;
+                        selectedGame.gameState.isCountdown;
       
       setCurrentView(hasStarted ? 'game' : 'booking');
     }
   }, [onGameSelection, gameDataSource.games]);
 
-  // Handle booking a ticket
+  // ✅ UNCHANGED: All existing handler functions
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
     const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
     if (!selectedGame) return;
@@ -139,7 +169,23 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     }
   }, [onGameSelection]);
 
-  // Show game view with provider
+  // 🆕 NEW: Winners view rendering
+  if (currentView === 'winners' && selectedGameId) {
+    return (
+      <GameDataProvider gameId={selectedGameId}>
+        <div className="space-y-4">
+          <div className="p-4 bg-white">
+            <Button onClick={handleBackToList} variant="outline">
+              ← Back to Games
+            </Button>
+          </div>
+          <RecentWinnersDisplay />
+        </div>
+      </GameDataProvider>
+    );
+  }
+
+  // ✅ UNCHANGED: All existing view rendering logic (game, booking, loading, error)
   if (currentView === 'game' && selectedGameId) {
     return (
       <GameDataProvider gameId={selectedGameId}>
@@ -155,7 +201,6 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     );
   }
 
-  // Show booking view
   if (currentView === 'booking' && selectedGameId) {
     const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
     
@@ -213,7 +258,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     );
   }
 
-  // ✅ NEW: Show immediate loading only if no games available
+  // ✅ UNCHANGED: Loading and error states
   if (gameDataSource.loading && gameSummaries.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 flex items-center justify-center">
@@ -223,14 +268,13 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
             {gameDataSource.source === 'preloaded' ? 'Loading games...' : 'Connecting to game server...'}
           </p>
           <p className="text-sm text-gray-500 mt-2">
-            {gameDataSource.source === 'preloaded' ? 'Fast loading enabled' : 'Fallback mode active'}
+            {gameDataSource.source === 'preloaded' ? 'Fast loading enabled' : 'Enhanced view with winners'}
           </p>
         </div>
       </div>
     );
   }
 
-  // Error state
   if (gameDataSource.error && gameSummaries.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
@@ -248,11 +292,11 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     );
   }
 
-  // ✅ OPTIMIZED: Games list view with performance indicators
+  // 🔧 MODIFIED: Enhanced games list with completed game indicators
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* Welcome Header */}
+        {/* ✅ UNCHANGED: Welcome Header */}
         <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
@@ -262,7 +306,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               Join the excitement! Book your tickets and play live Tambola games.
             </p>
             <div className="flex justify-center items-center space-x-4 mt-4 text-sm">
-              {/* ✅ NEW: Performance indicators */}
+              {/* ✅ UPDATED: Performance indicators */}
               <Badge variant="default" className="flex items-center bg-green-600">
                 {gameDataSource.source === 'preloaded' ? (
                   <>
@@ -272,7 +316,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                 ) : (
                   <>
                     <Activity className="w-3 h-3 mr-1" />
-                    Real-time
+                    Live View
                   </>
                 )}
               </Badge>
@@ -290,14 +334,14 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
           </CardHeader>
         </Card>
 
-        {/* Games List */}
+        {/* 🔧 MODIFIED: Enhanced Games List */}
         {gameSummaries.length === 0 ? (
           <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
             <CardContent className="p-8 text-center">
               <div className="text-6xl mb-4">🎯</div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">No Active Games</h2>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">No Games Available</h2>
               <p className="text-gray-600 mb-4">
-                There are currently no active Tambola games. Check back soon!
+                There are currently no active or recent Tambola games. Check back soon!
               </p>
               <Button 
                 onClick={() => window.location.reload()}
@@ -315,15 +359,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                 Available Games ({gameSummaries.length})
               </CardTitle>
               <p className="text-center text-gray-600">
-                {gameDataSource.source === 'preloaded' ? (
-                  <>
-                    ⚡ Fast loaded • Real-time updates active
-                  </>
-                ) : (
-                  <>
-                    🔴 Live updates • Auto-refresh enabled
-                  </>
-                )}
+                🔴 Live games • 🏆 Recent winners • ⚪ Booking open
                 {gameDataSource.loading && (
                   <span className="text-orange-600"> • Updating...</span>
                 )}
@@ -336,7 +372,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                     key={game.gameId}
                     className={`cursor-pointer transition-all duration-200 border-gray-200 hover:border-orange-300 hover:shadow-lg ${
                       index === 0 ? 'ring-2 ring-blue-200' : ''
-                    }`}
+                    } ${game.gameOver ? 'bg-gradient-to-br from-yellow-50 to-orange-50' : ''}`}
                     onClick={() => selectGame(game.gameId)}
                   >
                     <CardContent className="p-6">
@@ -344,34 +380,75 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                         <div className="flex-1">
                           <h3 className="font-bold text-gray-800 text-lg">{game.name}</h3>
                           {index === 0 && (
-                            <p className="text-xs text-blue-600 font-medium">← Newest Game</p>
+                            <p className="text-xs text-blue-600 font-medium">← Most Recent</p>
                           )}
                         </div>
                         <Badge 
                           variant={
                             game.isActive ? "default" :
                             game.isCountdown ? "secondary" :
-                            game.hasStarted ? "destructive" :
+                            game.hasStarted && !game.gameOver ? "destructive" :
+                            game.gameOver ? "outline" : // 🆕 NEW: Completed games
                             "outline"
                           }
+                          className={game.gameOver ? "border-yellow-500 text-yellow-700 bg-yellow-100" : ""}
                         >
                           {game.isActive ? '🔴 Live' : 
                            game.isCountdown ? '🟡 Starting' : 
-                           game.hasStarted ? '🏁 Finished' :
+                           game.hasStarted && !game.gameOver ? '🎮 Playing' :
+                           game.gameOver ? '🏆 Completed' : // 🆕 NEW
                            '⚪ Booking'}
                         </Badge>
                       </div>
                       
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <Ticket className="w-4 h-4 mr-2 text-blue-600" />
-                            <span className="text-sm text-gray-600">Tickets</span>
-                          </div>
-                          <span className="font-semibold text-blue-600">
-                            {game.bookedTickets}/{game.maxTickets}
-                          </span>
-                        </div>
+                        {!game.gameOver ? (
+                          // ✅ UNCHANGED: Active game display
+                          <>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <Ticket className="w-4 h-4 mr-2 text-blue-600" />
+                                <span className="text-sm text-gray-600">Tickets</span>
+                              </div>
+                              <span className="font-semibold text-blue-600">
+                                {game.bookedTickets}/{game.maxTickets}
+                              </span>
+                            </div>
+                            
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <Trophy className="w-4 h-4 mr-2 text-purple-600" />
+                                <span className="text-sm text-gray-600">Available</span>
+                              </div>
+                              <span className="font-semibold text-purple-600">
+                                {game.maxTickets - game.bookedTickets} tickets
+                              </span>
+                            </div>
+                          </>
+                        ) : (
+                          // 🆕 NEW: Completed game display
+                          <>
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <Trophy className="w-4 h-4 mr-2 text-yellow-600" />
+                                <span className="text-sm text-gray-600">Winners</span>
+                              </div>
+                              <span className="font-semibold text-yellow-600">
+                                {game.winnerCount || 0} players
+                              </span>
+                            </div>
+                            
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center">
+                                <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
+                                <span className="text-sm text-gray-600">Prizes Won</span>
+                              </div>
+                              <span className="font-semibold text-green-600">
+                                {game.prizesWon || 0}/{game.totalPrizes || 0}
+                              </span>
+                            </div>
+                          </>
+                        )}
                         
                         {game.hostPhone && (
                           <div className="flex items-center">
@@ -379,27 +456,26 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                             <span className="text-sm text-gray-600">+{game.hostPhone}</span>
                           </div>
                         )}
-                        
-                        <div className="flex items-center justify-between pt-2">
-                          <div className="flex items-center">
-                            <Trophy className="w-4 h-4 mr-2 text-purple-600" />
-                            <span className="text-sm text-gray-600">Available</span>
-                          </div>
-                          <span className="font-semibold text-purple-600">
-                            {game.maxTickets - game.bookedTickets} tickets
-                          </span>
-                        </div>
                       </div>
                       
                       <div className="mt-4 pt-3 border-t">
                         <Button 
-                          className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                          className={`w-full ${
+                            game.gameOver 
+                              ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600' 
+                              : 'bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600'
+                          } text-white`}
                           onClick={(e) => {
                             e.stopPropagation();
                             selectGame(game.gameId);
                           }}
                         >
-                          {game.hasStarted ? (
+                          {game.gameOver ? (
+                            <>
+                              <Trophy className="w-4 h-4 mr-2" />
+                              View Winners
+                            </>
+                          ) : game.hasStarted ? (
                             <>
                               <Gamepad2 className="w-4 h-4 mr-2" />
                               Watch Game
@@ -417,7 +493,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                 ))}
               </div>
               
-              {/* ✅ NEW: Performance info */}
+              {/* ✅ UPDATED: Performance info */}
               <div className="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                 <div className="flex items-center justify-center space-x-4 text-sm text-gray-600">
                   <div className="flex items-center">
@@ -429,7 +505,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                     <span>
                       {gameDataSource.source === 'preloaded' 
                         ? 'Fast loading active - Games loaded instantly' 
-                        : 'Real-time mode - Games updating live'
+                        : 'Live view - Active games + recent winners available'
                       }
                     </span>
                   </div>
