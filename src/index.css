@@ -1,4 +1,4 @@
-/* src/index.css - Fixed contrast and visibility issues */
+/* src/index.css - Fixed contrast and visibility issues + NEW pattern highlighting */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -128,6 +128,12 @@
   .ticket-cell.booked {
     @apply bg-gradient-to-br from-gray-300 to-gray-400 text-gray-800 
            border-gray-400 font-medium;
+  }
+
+  /* ✅ NEW: Pattern highlighting for winning patterns */
+  .pattern-highlight {
+    border: 2px solid #fbbf24 !important; /* Yellow border for pattern positions */
+    background-color: #fffbeb !important; /* Light yellow background */
   }
 
   /* Enhanced game control styles */
