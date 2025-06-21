@@ -1,4 +1,4 @@
-// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes
+// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes + Winner Display
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -225,6 +225,8 @@ const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
 // ================== FIREBASE SERVICE CLASS ==================
 
 class FirebaseService {
+  // ✅ NEW: Race condition protection for cleanup operations
+  private cleanupInProgress = new Set<string>();
   
   // ================== AUTHENTICATION ==================
   
@@ -470,6 +472,7 @@ class FirebaseService {
   ): Promise<GameData> {
     try {
       console.log(`🎮 Creating game for host ${hostId} with ${config.maxTickets} tickets from set ${ticketSetId}`);
+      console.log(`ℹ️ Previous completed games will be cleaned when this game starts playing`);
 
       // ✅ NEW: Load tickets from pre-made set instead of auto-generation
       const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
@@ -585,7 +588,6 @@ class FirebaseService {
     }
   }
 
-  // ✅ UNCHANGED: All other game management methods remain exactly the same
   async getGameData(gameId: string): Promise<GameData | null> {
     try {
       const gameSnapshot = await get(ref(database, `games/${gameId}`));
@@ -607,11 +609,34 @@ class FirebaseService {
     }
   }
 
+  // 🔧 MODIFIED: Add cleanup trigger to existing updateGameState method
   async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void> {
     try {
       const cleanUpdates = removeUndefinedValues(updates);
       await update(ref(database, `games/${gameId}/gameState`), cleanUpdates);
-      console.log(`✅ Game state updated successfully`);
+
+      // ✅ SAFETY: Get game data for cleanup decisions
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) {
+        console.warn(`⚠️ Could not load game data for cleanup check: ${gameId}`);
+        return;
+      }
+
+      // 🆕 NEW: Trigger cleanup when new game starts playing
+      // This is the safe moment - players are engaged with new game
+      const isGameStarting = updates.isActive === true || updates.isCountdown === true;
+      const isNewGame = (gameData.gameState.calledNumbers?.length || 0) === 0;
+      
+      if (isGameStarting && isNewGame) {
+        console.log(`🎮 Game ${gameId} is starting - triggering cleanup for host: ${gameData.hostId}`);
+        
+        // ✅ ASYNC: Don't wait for cleanup to complete - run in background
+        this.cleanupOldCompletedGames(gameData.hostId, gameId).catch(error => {
+          console.error(`❌ Background cleanup failed for host ${gameData.hostId}:`, error);
+        });
+      }
+
+      console.log(`✅ Game state updated successfully for: ${gameId}`);
     } catch (error: any) {
       console.error('❌ Error updating game state:', error);
       throw new Error(error.message || 'Failed to update game state');
@@ -658,22 +683,187 @@ class FirebaseService {
     }
   }
 
+  // 🔧 MODIFIED: Enhanced getAllActiveGames to include recent completed games
   async getAllActiveGames(): Promise<GameData[]> {
     try {
+      console.log('🔍 Fetching active games with recent completed games');
       const gamesSnapshot = await get(ref(database, 'games'));
       
       if (!gamesSnapshot.exists()) {
+        console.log('📭 No games found in database');
         return [];
       }
 
       const allGames = Object.values(gamesSnapshot.val()) as GameData[];
+      console.log(`📊 Found ${allGames.length} total games in database`);
       
-      return allGames
-        .filter(game => !game.gameState.gameOver)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      // ✅ SAFETY: Validate game data structure
+      const validGames = allGames.filter(game => {
+        if (!game.hostId || !game.gameId || !game.gameState) {
+          console.warn(`⚠️ Invalid game structure found: ${game.gameId || 'unknown'}`);
+          return false;
+        }
+        return true;
+      });
+
+      if (validGames.length !== allGames.length) {
+        console.warn(`⚠️ Filtered out ${allGames.length - validGames.length} invalid games`);
+      }
+
+      // Group games by host
+      const gamesByHost = new Map<string, GameData[]>();
+      validGames.forEach(game => {
+        if (!gamesByHost.has(game.hostId)) {
+          gamesByHost.set(game.hostId, []);
+        }
+        gamesByHost.get(game.hostId)!.push(game);
+      });
+
+      console.log(`👥 Processing games for ${gamesByHost.size} hosts`);
+
+      const publicGames: GameData[] = [];
+      
+      // Process each host's games
+      gamesByHost.forEach((hostGames, hostId) => {
+        console.log(`🔍 Processing ${hostGames.length} games for host: ${hostId}`);
+        
+        // ✅ PRIORITY 1: Active game (not finished)
+        const activeGame = hostGames.find(game => 
+          !game.gameState.gameOver && 
+          game.gameState // Additional safety check
+        );
+        
+        if (activeGame) {
+          publicGames.push(activeGame);
+          console.log(`✅ Added active game: ${activeGame.gameId} for host: ${hostId}`);
+          return; // Skip completed games if there's an active one
+        }
+        
+        // ✅ PRIORITY 2: Most recent completed game (if no active game)
+        const completedGames = hostGames
+          .filter(game => {
+            // ✅ SAFETY: Ensure game is properly completed
+            return game.gameState && 
+                   game.gameState.gameOver && 
+                   game.createdAt; // Must have creation timestamp
+          })
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+        if (completedGames.length > 0) {
+          const recentCompleted = completedGames[0];
+          publicGames.push(recentCompleted);
+          console.log(`🏆 Added recent completed game: ${recentCompleted.gameId} for host: ${hostId}`);
+        } else {
+          console.log(`ℹ️ No games to show for host: ${hostId}`);
+        }
+      });
+
+      // Sort all public games by creation date (newest first)
+      const sortedGames = publicGames.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      console.log(`✅ Returning ${sortedGames.length} public games`);
+      console.log(`📋 Games: ${sortedGames.map(g => `${g.gameId}(${g.gameState.gameOver ? 'completed' : 'active'})`).join(', ')}`);
+      
+      return sortedGames;
     } catch (error) {
-      console.error('Error fetching active games:', error);
+      console.error('❌ Error fetching active games:', error);
       return [];
+    }
+  }
+
+  // 🆕 NEW: Helper method to get all games for a specific host
+  private async getAllGamesByHost(hostId: string): Promise<GameData[]> {
+    try {
+      console.log(`🔍 Fetching all games for host: ${hostId}`);
+      
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('hostId'),
+        equalTo(hostId)
+      );
+      
+      const gamesSnapshot = await get(gamesQuery);
+      
+      if (!gamesSnapshot.exists()) {
+        console.log(`📭 No games found for host: ${hostId}`);
+        return [];
+      }
+
+      const hostGames = Object.values(gamesSnapshot.val()) as GameData[];
+      console.log(`📊 Found ${hostGames.length} games for host: ${hostId}`);
+      
+      return hostGames;
+    } catch (error: any) {
+      console.error(`❌ Error fetching games for host ${hostId}:`, error);
+      return [];
+    }
+  }
+
+  // 🆕 NEW: Cleanup old completed games, keeping only the most recent one
+  private async cleanupOldCompletedGames(hostId: string, currentGameId: string): Promise<void> {
+    // ✅ NEW: Race condition protection
+    if (this.cleanupInProgress.has(hostId)) {
+      console.log(`🔄 Cleanup already running for host: ${hostId}`);
+      return;
+    }
+
+    this.cleanupInProgress.add(hostId);
+    
+    try {
+      console.log(`🧹 Starting cleanup for host: ${hostId}, excluding: ${currentGameId}`);
+      
+      const allHostGames = await this.getAllGamesByHost(hostId);
+      
+      if (allHostGames.length === 0) {
+        console.log(`ℹ️ No games found for cleanup for host: ${hostId}`);
+        return;
+      }
+
+      // Get all completed games except the current one
+      const completedGames = allHostGames
+        .filter(game => 
+          game.gameState.gameOver && 
+          game.gameId !== currentGameId
+        )
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      console.log(`🔍 Found ${completedGames.length} completed games for host: ${hostId}`);
+
+      if (completedGames.length <= 1) {
+        console.log(`ℹ️ Keeping ${completedGames.length} completed game(s) for host: ${hostId} - no cleanup needed`);
+        return;
+      }
+
+      // Keep the most recent completed game, delete the rest
+      const gamesToDelete = completedGames.slice(1); // Skip the first (most recent)
+      console.log(`🗑️ Will delete ${gamesToDelete.length} old games for host: ${hostId}`);
+
+      // ✅ SAFETY: Delete games one by one with error handling
+      let deletedCount = 0;
+      for (const game of gamesToDelete) {
+        try {
+          await remove(ref(database, `games/${game.gameId}`));
+          deletedCount++;
+          console.log(`✅ Deleted old game: ${game.gameId} (${game.name}) for host: ${hostId}`);
+        } catch (deleteError: any) {
+          console.error(`❌ Failed to delete game ${game.gameId}:`, deleteError);
+          // Continue with other deletions even if one fails
+        }
+      }
+
+      console.log(`🧹 Cleanup completed for host: ${hostId} - deleted ${deletedCount}/${gamesToDelete.length} old games`);
+      
+      if (deletedCount < gamesToDelete.length) {
+        console.warn(`⚠️ Some games could not be deleted for host: ${hostId}`);
+      }
+
+    } catch (error: any) {
+      console.error(`❌ Error during cleanup for host ${hostId}:`, error);
+      // ✅ SAFETY: Don't throw - cleanup errors shouldn't break game flow
+    } finally {
+      this.cleanupInProgress.delete(hostId);
     }
   }
 
@@ -1080,11 +1270,48 @@ class FirebaseService {
     
     const unsubscribe = onValue(gamesRef, (snapshot) => {
       if (snapshot.exists()) {
+        // ✅ NEW: Use the enhanced getAllActiveGames logic for real-time subscriptions
         const allGames = Object.values(snapshot.val()) as GameData[];
-        const activeGames = allGames
-          .filter(game => !game.gameState.gameOver)
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        callback(activeGames);
+        
+        // Apply the same logic as getAllActiveGames but synchronously
+        const validGames = allGames.filter(game => 
+          game.hostId && game.gameId && game.gameState
+        );
+
+        const gamesByHost = new Map<string, GameData[]>();
+        validGames.forEach(game => {
+          if (!gamesByHost.has(game.hostId)) {
+            gamesByHost.set(game.hostId, []);
+          }
+          gamesByHost.get(game.hostId)!.push(game);
+        });
+
+        const publicGames: GameData[] = [];
+        
+        gamesByHost.forEach((hostGames) => {
+          // Priority 1: Active game
+          const activeGame = hostGames.find(game => !game.gameState.gameOver);
+          
+          if (activeGame) {
+            publicGames.push(activeGame);
+            return;
+          }
+          
+          // Priority 2: Most recent completed game
+          const completedGames = hostGames
+            .filter(game => game.gameState.gameOver && game.createdAt)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          
+          if (completedGames.length > 0) {
+            publicGames.push(completedGames[0]);
+          }
+        });
+
+        const sortedGames = publicGames.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        
+        callback(sortedGames);
       } else {
         callback([]);
       }
