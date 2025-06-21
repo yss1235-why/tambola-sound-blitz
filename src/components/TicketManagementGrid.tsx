@@ -446,7 +446,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 placeholder="Enter player's name"
                 value={bookingForm.playerName}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-                className="border-2 border-gray-200 focus:border-blue-400"
+                className="border-2 border-gray-200 focus:border-blue-400 text-white"
                 disabled={isBooking}
               />
             </div>
@@ -458,7 +458,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 placeholder="Enter player's phone number"
                 value={bookingForm.playerPhone}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                className="border-2 border-gray-200 focus:border-blue-400"
+                className="border-2 border-gray-200 focus:border-blue-400 text-white"
                 disabled={isBooking}
               />
             </div>
