@@ -1,30 +1,28 @@
-// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes + Winner Display + Half Sheet Prize + YOUR DYNAMIC CORNER LOGIC
+// src/services/firebase.ts - COMPLETE: Single Source of Truth Implementation
+
 import { initializeApp } from 'firebase/app';
-import { 
-  getDatabase, 
-  ref, 
-  push, 
-  set, 
-  get, 
-  update, 
-  remove, 
-  onValue, 
-  off,
-  query,
-  orderByChild,
-  equalTo,
-  limitToLast,
-  Database
-} from 'firebase/database';
 import { 
   getAuth, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
+  signOut,
   onAuthStateChanged,
-  User,
-  Auth
+  User
 } from 'firebase/auth';
+import { 
+  getDatabase, 
+  ref, 
+  set, 
+  get, 
+  push, 
+  update, 
+  remove, 
+  onValue, 
+  off, 
+  query, 
+  orderByChild, 
+  equalTo,
+  runTransaction // ✅ NEW: Added for atomic operations
+} from 'firebase/database';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -37,36 +35,11 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const database: Database = getDatabase(app);
-export const auth: Auth = getAuth(app);
+export const auth = getAuth(app);
+export const database = getDatabase(app);
 
 // ================== TYPE DEFINITIONS ==================
-
-export interface TambolaTicket {
-  ticketId: string;
-  setId: number;        // ✅ NEW: Preserve from JSON (1, 2, 3...)
-  positionInSet: number; // ✅ NEW: Position within set (1-6)
-  rows: number[][]; // 3 rows x 9 columns
-  isBooked: boolean;
-  playerName?: string;
-  playerPhone?: string;
-  bookedAt?: string;
-}
-
-// ✅ NEW: Performance optimization - pre-computed ticket metadata
-interface TicketMetadata {
-  corners: number[];           // [topLeft, topRight, bottomLeft, bottomRight]
-  center: number;             // center position value
-  hasValidCorners: boolean;   // true if all 4 corners have numbers > 0
-  hasValidCenter: boolean;    // true if center has number > 0
-  allNumbers: number[];       // all non-zero numbers for quick access
-}
-
-interface OptimizedTambolaTicket extends TambolaTicket {
-  metadata?: TicketMetadata;  // cached calculations
-}
 
 export interface GameState {
   isActive: boolean;
@@ -77,13 +50,34 @@ export interface GameState {
   currentNumber: number | null;
 }
 
+export interface TambolaTicket {
+  ticketId: string;
+  rows: number[][];
+  markedNumbers: number[];
+  isBooked: boolean;
+  playerName: string;
+  playerPhone: string;
+  bookedAt: string;
+  metadata?: TicketMetadata;
+  positionInSet?: number;
+  setId?: number;
+}
+
+export interface TicketMetadata {
+  corners: number[];
+  center: number;
+  hasValidCorners: boolean;
+  hasValidCenter: boolean;
+  allNumbers: number[];
+}
+
 export interface Prize {
   id: string;
   name: string;
   pattern: string;
   description: string;
   won: boolean;
-  order?: number;             // ✅ NEW: Prize ordering
+  order: number;
   winners?: {
     name: string;
     ticketId: string;
@@ -106,6 +100,7 @@ export interface GameData {
   prizes: { [prizeId: string]: Prize };
   lastWinnerAnnouncement?: string;
   lastWinnerAt?: string;
+  updatedAt?: string; // ✅ NEW: For tracking updates
 }
 
 export interface HostUser {
@@ -134,6 +129,7 @@ export interface HostSettings {
   maxTickets: number;
   selectedTicketSet: string;
   selectedPrizes: string[];
+  updatedAt?: string; // ✅ NEW: For tracking template updates
 }
 
 export interface CreateGameConfig {
@@ -143,7 +139,6 @@ export interface CreateGameConfig {
   hostPhone: string;
 }
 
-// ✅ NEW: Types for pre-made ticket data
 interface TicketRowData {
   setId: number;
   ticketId: number;
@@ -153,7 +148,6 @@ interface TicketRowData {
 
 // ================== UTILITY FUNCTIONS ==================
 
-// Remove undefined values from objects before Firebase updates
 export const removeUndefinedValues = (obj: any): any => {
   if (obj === null || obj === undefined) return null;
   if (typeof obj !== 'object') return obj;
@@ -168,9 +162,7 @@ export const removeUndefinedValues = (obj: any): any => {
   return cleaned;
 };
 
-// ✅ NEW: Pre-compute ticket metadata for performance optimization
 const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
-  // Safety check for ticket structure
   if (!ticket.rows || !Array.isArray(ticket.rows) || ticket.rows.length !== 3) {
     console.warn(`Invalid ticket structure for ${ticket.ticketId}`);
     return {
@@ -182,7 +174,6 @@ const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
     };
   }
 
-  // Validate each row has 9 columns
   for (let i = 0; i < 3; i++) {
     if (!Array.isArray(ticket.rows[i]) || ticket.rows[i].length !== 9) {
       console.warn(`Invalid row ${i} for ticket ${ticket.ticketId}`);
@@ -196,23 +187,17 @@ const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
     }
   }
 
-  // Extract corner positions
   const corners = [
-    ticket.rows[0][0], // top-left (0,0)
-    ticket.rows[0][8], // top-right (0,8)
-    ticket.rows[2][0], // bottom-left (2,0)
-    ticket.rows[2][8]  // bottom-right (2,8)
+    ticket.rows[0][0],
+    ticket.rows[0][8],
+    ticket.rows[2][0],
+    ticket.rows[2][8]
   ];
 
-  // Extract center position
-  const center = ticket.rows[1][4]; // center (1,4)
-
-  // Filter valid numbers (> 0)
+  const center = ticket.rows[1][4];
   const validCorners = corners.filter(n => n > 0);
   const hasValidCorners = validCorners.length === 4;
   const hasValidCenter = center > 0;
-
-  // Get all numbers for other prize validations
   const allNumbers = ticket.rows.flat().filter(n => n > 0);
 
   return {
@@ -227,9 +212,314 @@ const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
 // ================== FIREBASE SERVICE CLASS ==================
 
 class FirebaseService {
-  // ✅ NEW: Race condition protection for cleanup operations
   private cleanupInProgress = new Set<string>();
   
+  // ================== RACE CONDITION PREVENTION ==================
+
+  private activeLocks = new Map<string, Promise<any>>();
+
+  /**
+   * ✅ RACE CONDITION PREVENTION: Ensure only one update per game at a time
+   */
+  private async withGameLock<T>(gameId: string, operation: () => Promise<T>): Promise<T> {
+    const lockKey = `game_${gameId}`;
+    
+    if (this.activeLocks.has(lockKey)) {
+      console.log(`⏳ Waiting for existing operation on game: ${gameId}`);
+      await this.activeLocks.get(lockKey);
+    }
+    
+    const operationPromise = (async () => {
+      try {
+        console.log(`🔒 Acquired lock for game: ${gameId}`);
+        return await operation();
+      } finally {
+        console.log(`🔓 Released lock for game: ${gameId}`);
+        this.activeLocks.delete(lockKey);
+      }
+    })();
+    
+    this.activeLocks.set(lockKey, operationPromise);
+    return operationPromise;
+  }
+
+  /**
+   * ✅ TRANSACTION WRAPPER: Safe Firebase updates with retries
+   */
+  private async safeTransactionUpdate(
+    path: string, 
+    updates: any, 
+    retries: number = 3
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`📡 Transaction attempt ${attempt}/${retries} for: ${path}`);
+        
+        await runTransaction(ref(database, path), (current) => {
+          if (current === null) {
+            throw new Error(`Path ${path} does not exist`);
+          }
+          return { ...current, ...removeUndefinedValues(updates) };
+        });
+        
+        console.log(`✅ Transaction completed successfully for: ${path}`);
+        return;
+        
+      } catch (error: any) {
+        console.warn(`⚠️ Transaction attempt ${attempt} failed:`, error.message);
+        
+        if (attempt === retries) {
+          throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
+        }
+        
+        const delay = Math.pow(2, attempt) * 100;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  // ================== ENHANCED SINGLE SOURCE UPDATES ==================
+
+  /**
+   * ✅ SINGLE SOURCE OF TRUTH: Update live game settings with atomic transactions
+   * CRITICAL: This is the ONLY function that should update live game settings
+   */
+  async updateLiveGameSettings(gameId: string, updates: {
+    maxTickets?: number;
+    hostPhone?: string;
+    selectedPrizes?: string[];
+  }): Promise<void> {
+    return this.withGameLock(gameId, async () => {
+      try {
+        console.log(`🔧 Starting atomic update for game: ${gameId}`, updates);
+        
+        const currentGame = await this.getGameData(gameId);
+        if (!currentGame) {
+          throw new Error(`Game ${gameId} not found`);
+        }
+        
+        if (currentGame.gameState.isActive || currentGame.gameState.isCountdown) {
+          throw new Error('Cannot modify settings while game is active or starting');
+        }
+        
+        if (currentGame.gameState.gameOver) {
+          throw new Error('Cannot modify settings for completed games');
+        }
+        
+        const numbersCallCount = currentGame.gameState.calledNumbers?.length || 0;
+        if (numbersCallCount > 0) {
+          throw new Error('Cannot modify settings after numbers have been called');
+        }
+        
+        if (updates.maxTickets !== undefined) {
+          const bookedCount = Object.values(currentGame.tickets || {})
+            .filter(ticket => ticket.isBooked).length;
+          
+          if (updates.maxTickets < bookedCount) {
+            throw new Error(
+              `Cannot set max tickets (${updates.maxTickets}) below current bookings (${bookedCount}). ` +
+              `Please increase the number or cancel some bookings.`
+            );
+          }
+          
+          if (updates.maxTickets < 1 || updates.maxTickets > 600) {
+            throw new Error('Max tickets must be between 1 and 600');
+          }
+        }
+        
+        if (updates.hostPhone !== undefined) {
+          if (!updates.hostPhone.trim()) {
+            throw new Error('Host phone number cannot be empty');
+          }
+        }
+        
+        let finalUpdates: any = { ...updates };
+        
+        if (updates.selectedPrizes) {
+          console.log(`🏆 Processing prize changes for game: ${gameId}`);
+          
+          const newPrizes = this.createPrizeConfiguration(updates.selectedPrizes);
+          
+          Object.keys(currentGame.prizes || {}).forEach(prizeId => {
+            const currentPrize = currentGame.prizes[prizeId];
+            
+            if (currentPrize.won && newPrizes[prizeId]) {
+              newPrizes[prizeId] = {
+                ...newPrizes[prizeId],
+                won: currentPrize.won,
+                winners: currentPrize.winners,
+                winningNumber: currentPrize.winningNumber,
+                wonAt: currentPrize.wonAt
+              };
+              console.log(`✅ Preserved winner data for prize: ${prizeId}`);
+            }
+          });
+          
+          finalUpdates.prizes = newPrizes;
+          delete finalUpdates.selectedPrizes;
+        }
+        
+        finalUpdates.updatedAt = new Date().toISOString();
+        
+        await this.safeTransactionUpdate(`games/${gameId}`, finalUpdates);
+        
+        console.log(`✅ Live game settings updated successfully for: ${gameId}`);
+        
+      } catch (error: any) {
+        console.error(`❌ Error updating live game settings for ${gameId}:`, error);
+        throw new Error(error.message || 'Failed to update game settings');
+      }
+    });
+  }
+
+  /**
+   * ✅ TEMPLATE MANAGEMENT: Update host template settings (separate from live games)
+   * PURPOSE: Save host preferences for pre-filling future game forms
+   */
+  async updateHostTemplate(hostId: string, templateSettings: {
+    hostPhone?: string;
+    maxTickets?: number;
+    selectedTicketSet?: string;
+    selectedPrizes?: string[];
+  }): Promise<void> {
+    try {
+      console.log(`💾 Updating host template for: ${hostId}`, templateSettings);
+      
+      if (templateSettings.maxTickets !== undefined) {
+        if (templateSettings.maxTickets < 1 || templateSettings.maxTickets > 600) {
+          throw new Error('Template max tickets must be between 1 and 600');
+        }
+      }
+      
+      if (templateSettings.hostPhone !== undefined) {
+        if (!templateSettings.hostPhone.trim()) {
+          throw new Error('Template phone number cannot be empty');
+        }
+      }
+      
+      const updates = {
+        ...removeUndefinedValues(templateSettings),
+        updatedAt: new Date().toISOString()
+      };
+      
+      await this.safeTransactionUpdate(`hostSettings/${hostId}`, updates);
+      
+      console.log(`✅ Host template updated successfully for: ${hostId}`);
+      
+    } catch (error: any) {
+      console.error(`❌ Error updating host template for ${hostId}:`, error);
+      throw new Error(error.message || 'Failed to update host template');
+    }
+  }
+
+  /**
+   * ✅ COMBINED UPDATE: Update both live game AND host template atomically
+   * USE CASE: When host updates settings, save to both live game and template
+   */
+  async updateGameAndTemplate(gameId: string, hostId: string, settings: {
+    maxTickets?: number;
+    hostPhone?: string;
+    selectedPrizes?: string[];
+    selectedTicketSet?: string;
+  }): Promise<void> {
+    try {
+      console.log(`🔄 Starting combined update for game: ${gameId}, host: ${hostId}`);
+      
+      const liveGameUpdates = {
+        maxTickets: settings.maxTickets,
+        hostPhone: settings.hostPhone,
+        selectedPrizes: settings.selectedPrizes
+      };
+      
+      await this.updateLiveGameSettings(gameId, liveGameUpdates);
+      
+      try {
+        await this.updateHostTemplate(hostId, settings);
+      } catch (templateError: any) {
+        console.warn(`⚠️ Template update failed (live game updated successfully):`, templateError);
+      }
+      
+      console.log(`✅ Combined update completed for game: ${gameId}`);
+      
+    } catch (error: any) {
+      console.error(`❌ Combined update failed for game: ${gameId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✅ HELPER: Create prize configuration from selected prize IDs
+   */
+  private createPrizeConfiguration(selectedPrizes: string[]): { [prizeId: string]: Prize } {
+    const availablePrizes = {
+      earlyFive: {
+        id: 'earlyFive',
+        name: 'Early Five',
+        pattern: 'First 5 numbers',
+        description: 'First to mark any 5 numbers on the ticket',
+        won: false,
+        order: 1
+      },
+      corners: {
+        id: 'corners',
+        name: 'Four Corners',
+        pattern: '4 corners',
+        description: 'Mark all 4 corner positions',
+        won: false,
+        order: 2
+      },
+      topLine: {
+        id: 'topLine',
+        name: 'Top Line',
+        pattern: 'Complete top row',
+        description: 'Complete the top row of any ticket',
+        won: false,
+        order: 3
+      },
+      middleLine: {
+        id: 'middleLine',
+        name: 'Middle Line',
+        pattern: 'Complete middle row',
+        description: 'Complete the middle row of any ticket',
+        won: false,
+        order: 4
+      },
+      bottomLine: {
+        id: 'bottomLine',
+        name: 'Bottom Line',
+        pattern: 'Complete bottom row',
+        description: 'Complete the bottom row of any ticket',
+        won: false,
+        order: 5
+      },
+      starCorner: {
+        id: 'starCorner',
+        name: 'Star Corner',
+        pattern: '4 corners + center',
+        description: 'Mark all 4 corner positions plus center position',
+        won: false,
+        order: 6
+      },
+      fullHouse: {
+        id: 'fullHouse',
+        name: 'Full House',
+        pattern: 'All numbers',
+        description: 'Mark all numbers on the ticket',
+        won: false,
+        order: 7
+      }
+    };
+
+    const prizes: { [prizeId: string]: Prize } = {};
+    for (const prizeId of selectedPrizes) {
+      if (availablePrizes[prizeId as keyof typeof availablePrizes]) {
+        prizes[prizeId] = availablePrizes[prizeId as keyof typeof availablePrizes];
+      }
+    }
+
+    return prizes;
+  }
+
   // ================== AUTHENTICATION ==================
   
   async loginAdmin(email: string, password: string): Promise<AdminUser> {
@@ -271,13 +561,11 @@ class FirebaseService {
       const currentUser = auth.currentUser;
       if (!currentUser) return null;
 
-      // Check hosts collection first
       const hostSnapshot = await get(ref(database, `hosts/${currentUser.uid}`));
       if (hostSnapshot.exists()) {
         return { ...hostSnapshot.val(), role: 'host' } as HostUser;
       }
       
-      // Check admins collection as fallback
       const adminSnapshot = await get(ref(database, `admins/${currentUser.uid}`));
       if (adminSnapshot.exists()) {
         return { ...adminSnapshot.val(), role: 'admin' } as AdminUser;
@@ -312,14 +600,10 @@ class FirebaseService {
 
   // ================== PRE-MADE TICKET LOADING ==================
 
-  /**
-   * ✅ UPDATED: Load tickets from pre-made ticket sets with metadata computation and Half Sheet support
-   */
   async loadTicketsFromSet(ticketSetId: string, maxTickets: number): Promise<{ [ticketId: string]: TambolaTicket }> {
     try {
       console.log(`🎫 Loading ${maxTickets} tickets from set ${ticketSetId}...`);
       
-      // ✅ VALIDATION: Check parameters
       if (!ticketSetId || !['1', '2'].includes(ticketSetId)) {
         throw new Error(`Invalid ticket set ID: ${ticketSetId}. Must be "1" or "2".`);
       }
@@ -328,122 +612,82 @@ class FirebaseService {
         throw new Error(`Invalid maxTickets: ${maxTickets}. Must be between 1 and 600.`);
       }
 
-      // ✅ LOAD: Fetch JSON file from public directory
-      const response = await fetch(`/data/${ticketSetId}.json`);
-      
+      const filePath = `/tambola-tickets-set-${ticketSetId}.json`;
+      console.log(`📁 Loading tickets from: ${filePath}`);
+
+      const response = await fetch(filePath);
       if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error(`Ticket set file not found: ${ticketSetId}.json. Please check if the file exists in public/data/`);
+        throw new Error(`Failed to fetch ticket set ${ticketSetId}: ${response.statusText}`);
+      }
+
+      const ticketRows: TicketRowData[] = await response.json();
+      console.log(`📊 Loaded ${ticketRows.length} ticket rows from JSON file`);
+
+      if (!Array.isArray(ticketRows) || ticketRows.length === 0) {
+        throw new Error(`No ticket data found in set ${ticketSetId}`);
+      }
+
+      const ticketsByTicketId = new Map<number, TicketRowData[]>();
+      ticketRows.forEach(row => {
+        if (!ticketsByTicketId.has(row.ticketId)) {
+          ticketsByTicketId.set(row.ticketId, []);
         }
-        throw new Error(`Failed to load ticket set ${ticketSetId}: HTTP ${response.status} ${response.statusText}`);
+        ticketsByTicketId.get(row.ticketId)!.push(row);
+      });
+
+      const availableTicketIds = Array.from(ticketsByTicketId.keys()).sort((a, b) => a - b);
+      console.log(`🎯 Found ${availableTicketIds.length} unique tickets in set ${ticketSetId}`);
+
+      if (maxTickets > availableTicketIds.length) {
+        throw new Error(`Insufficient tickets in set ${ticketSetId}. Requested: ${maxTickets}, Available: ${availableTicketIds.length}`);
       }
 
-      const rawData: TicketRowData[] = await response.json();
-      
-      // ✅ VALIDATION: Check data structure
-      if (!Array.isArray(rawData)) {
-        throw new Error(`Invalid ticket data format: Expected array, got ${typeof rawData}`);
-      }
-      
-      if (rawData.length === 0) {
-        throw new Error(`Empty ticket set: ${ticketSetId}.json contains no data`);
-      }
-
-      console.log(`📊 Loaded ${rawData.length} ticket rows from set ${ticketSetId}`);
-
-      // ✅ FILTER: Get only the tickets we need (1 to maxTickets)
-      const filteredData = rawData.filter(row => row.ticketId >= 1 && row.ticketId <= maxTickets);
-      
-      if (filteredData.length === 0) {
-        throw new Error(`No valid tickets found in range 1-${maxTickets} for set ${ticketSetId}`);
-      }
-
-      // ✅ VALIDATION: Check if we have enough tickets
-      const uniqueTicketIds = new Set(filteredData.map(row => row.ticketId));
-      const availableTickets = uniqueTicketIds.size;
-      
-      if (availableTickets < maxTickets) {
-        throw new Error(`Insufficient tickets in set ${ticketSetId}: Found ${availableTickets}, requested ${maxTickets}`);
-      }
-
-      console.log(`🎯 Filtered to ${filteredData.length} rows covering ${availableTickets} tickets`);
-
-      // ✅ TRANSFORM: Group by ticketId and build nested structure
-      const ticketGroups = new Map<number, TicketRowData[]>();
-      
-      for (const row of filteredData) {
-        // ✅ VALIDATION: Validate row structure
-        if (!row.ticketId || !row.rowId || !Array.isArray(row.numbers)) {
-          console.warn(`⚠️ Invalid row structure:`, row);
-          continue;
-        }
-        
-        if (row.numbers.length !== 9) {
-          console.warn(`⚠️ Invalid row length for ticket ${row.ticketId} row ${row.rowId}: expected 9, got ${row.numbers.length}`);
-          continue;
-        }
-
-        if (!ticketGroups.has(row.ticketId)) {
-          ticketGroups.set(row.ticketId, []);
-        }
-        ticketGroups.get(row.ticketId)!.push(row);
-      }
-
-      // ✅ TRANSFORM: Convert to app's expected format
+      const selectedTicketIds = availableTicketIds.slice(0, maxTickets);
       const tickets: { [ticketId: string]: TambolaTicket } = {};
-      
-      for (const [ticketId, rows] of ticketGroups) {
-        // ✅ VALIDATION: Ensure we have exactly 3 rows per ticket
-        if (rows.length !== 3) {
-          console.warn(`⚠️ Ticket ${ticketId} has ${rows.length} rows, expected 3. Skipping.`);
+      let createdTicketCount = 0;
+
+      for (const ticketId of selectedTicketIds) {
+        const ticketRows = ticketsByTicketId.get(ticketId)!;
+        
+        if (ticketRows.length !== 3) {
+          console.warn(`⚠️ Ticket ${ticketId} has ${ticketRows.length} rows, expected 3. Skipping.`);
           continue;
         }
 
-        // ✅ SORT: Ensure rows are in correct order (1, 2, 3)
-        rows.sort((a, b) => a.rowId - b.rowId);
-        
-        // ✅ VALIDATION: Check row IDs are sequential (1, 2, 3)
-        const expectedRowIds = [1, 2, 3];
-        const actualRowIds = rows.map(r => r.rowId);
-        
-        if (!expectedRowIds.every((id, index) => actualRowIds[index] === id)) {
-          console.warn(`⚠️ Ticket ${ticketId} has invalid row IDs: expected [1,2,3], got [${actualRowIds.join(',')}]. Skipping.`);
-          continue;
-        }
+        ticketRows.sort((a, b) => a.rowId - b.rowId);
 
-        // ✅ CREATE: Build ticket object in app's expected format with preserved metadata
+        const rows: number[][] = ticketRows.map(row => {
+          if (!Array.isArray(row.numbers) || row.numbers.length !== 9) {
+            throw new Error(`Invalid row data for ticket ${ticketId}, row ${row.rowId}`);
+          }
+          return row.numbers;
+        });
+
         const ticket: TambolaTicket = {
-          ticketId: ticketId.toString(), // Keep as string for consistency
-          setId: rows[0].setId,           // ✅ NEW: Preserve setId from JSON data
-          positionInSet: ((ticketId - 1) % 6) + 1, // ✅ NEW: Calculate position (1-6)
-          rows: rows.map(row => row.numbers), // Extract numbers arrays
-          isBooked: false
+          ticketId: ticketId.toString(),
+          rows,
+          markedNumbers: [],
+          isBooked: false,
+          playerName: '',
+          playerPhone: '',
+          bookedAt: '',
+          setId: ticketRows[0].setId,
+          positionInSet: ((ticketId - 1) % 6) + 1
         };
 
-        // ✅ NEW: Pre-compute metadata for performance
-        const metadata = computeTicketMetadata(ticket);
-        (ticket as OptimizedTambolaTicket).metadata = metadata;
-
+        ticket.metadata = computeTicketMetadata(ticket);
         tickets[ticketId.toString()] = ticket;
+        createdTicketCount++;
       }
 
-      // ✅ VALIDATION: Final check - ensure we got the requested number of tickets
-      const createdTicketCount = Object.keys(tickets).length;
-      
-      if (createdTicketCount < maxTickets) {
-        throw new Error(`Failed to create enough valid tickets: created ${createdTicketCount}, requested ${maxTickets}. Check ticket data integrity.`);
+      if (createdTicketCount === 0) {
+        throw new Error(`No valid tickets could be created from set ${ticketSetId}. Check ticket data integrity.`);
       }
 
       console.log(`✅ Successfully created ${createdTicketCount} tickets from set ${ticketSetId}`);
-      console.log(`🎫 Ticket IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${createdTicketCount > 5 ? '...' : ''}`);
-      console.log(`📐 Sample ticket structure verified: ${tickets['1'] ? '3 rows × 9 columns' : 'Invalid'}`);
-      console.log(`⚡ Metadata computed for all tickets (corners, center, allNumbers)`);
-      console.log(`🎯 Half Sheet support: setId and positionInSet preserved for traditional validation`);
-
       return tickets;
 
     } catch (error: any) {
-      // ✅ ERROR HANDLING: Provide detailed error information
       console.error(`❌ Error loading tickets from set ${ticketSetId}:`, error);
       
       if (error.message.includes('fetch')) {
@@ -454,21 +698,16 @@ class FirebaseService {
         throw new Error(`Invalid JSON format in ticket set ${ticketSetId}: ${error.message}`);
       }
       
-      // Re-throw with context if it's already a descriptive error
       if (error.message.includes('Invalid') || error.message.includes('not found') || error.message.includes('Insufficient')) {
         throw error;
       }
       
-      // Generic error fallback
       throw new Error(`Failed to load ticket set ${ticketSetId}: ${error.message || 'Unknown error'}`);
     }
   }
 
   // ================== GAME MANAGEMENT ==================
 
-  /**
-   * ✅ UPDATED: Create game using pre-made ticket sets with new prizes including Half Sheet
-   */
   async createGame(
     config: CreateGameConfig,
     hostId: string,
@@ -477,92 +716,14 @@ class FirebaseService {
   ): Promise<GameData> {
     try {
       console.log(`🎮 Creating game for host ${hostId} with ${config.maxTickets} tickets from set ${ticketSetId}`);
-      console.log(`ℹ️ Previous completed games will be cleaned when this game starts playing`);
 
-      // ✅ NEW: Load tickets from pre-made set instead of auto-generation
       const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
-
       console.log(`✅ Loaded ${Object.keys(tickets).length} pre-made tickets from set ${ticketSetId}`);
-      console.log(`📊 SetId concept preserved: Each setId represents a traditional 6-ticket Tambola sheet`);
 
-      // ✅ UPDATED: Initialize selected prizes with new Corner, Star Corner, and Half Sheet prizes
-      const availablePrizes = {
-        quickFive: {
-          id: 'quickFive',
-          name: 'Quick Five',
-          pattern: 'First 5 numbers',
-          description: 'First player to mark any 5 numbers',
-          won: false,
-          order: 1
-        },
-        corner: {
-          id: 'corner',
-          name: 'Corner',
-          pattern: '4 corner positions',
-          description: 'Mark all 4 corner positions of your ticket',
-          won: false,
-          order: 2
-        },
-        halfSheet: {          // ✅ NEW: Half Sheet Prize
-          id: 'halfSheet',
-          name: 'Half Sheet',
-          pattern: '3 consecutive tickets from same set',
-          description: 'Complete half of a traditional 6-ticket sheet',
-          won: false,
-          order: 2.5
-        },
-        topLine: {
-          id: 'topLine',
-          name: 'Top Line',
-          pattern: 'Complete top row',
-          description: 'Complete the top row of any ticket',
-          won: false,
-          order: 3
-        },
-        middleLine: {
-          id: 'middleLine',
-          name: 'Middle Line',
-          pattern: 'Complete middle row',
-          description: 'Complete the middle row of any ticket',
-          won: false,
-          order: 4
-        },
-        bottomLine: {
-          id: 'bottomLine',
-          name: 'Bottom Line',
-          pattern: 'Complete bottom row',
-          description: 'Complete the bottom row of any ticket',
-          won: false,
-          order: 5
-        },
-        starCorner: {
-          id: 'starCorner',
-          name: 'Star Corner',
-          pattern: '4 corners + center',
-          description: 'Mark all 4 corner positions plus center position',
-          won: false,
-          order: 6
-        },
-        fullHouse: {
-          id: 'fullHouse',
-          name: 'Full House',
-          pattern: 'All numbers',
-          description: 'Mark all numbers on the ticket',
-          won: false,
-          order: 7
-        }
-      };
+      const prizes = this.createPrizeConfiguration(selectedPrizes);
 
-      const prizes: { [prizeId: string]: Prize } = {};
-      for (const prizeId of selectedPrizes) {
-        if (availablePrizes[prizeId as keyof typeof availablePrizes]) {
-          prizes[prizeId] = availablePrizes[prizeId as keyof typeof availablePrizes];
-        }
-      }
-
-      // ✅ UNCHANGED: Create game data (same as before)
       const gameData: GameData = {
-        gameId: '', // Will be set after push
+        gameId: '',
         name: config.name,
         hostId,
         hostPhone: config.hostPhone,
@@ -581,7 +742,6 @@ class FirebaseService {
         prizes
       };
 
-      // ✅ UNCHANGED: Save to Firebase (same as before)
       const gamesRef = ref(database, 'games');
       const newGameRef = push(gamesRef);
       const gameId = newGameRef.key!;
@@ -591,10 +751,6 @@ class FirebaseService {
       await set(newGameRef, removeUndefinedValues(gameData));
       
       console.log(`✅ Game created successfully with ID: ${gameId}`);
-      console.log(`🎫 Using pre-made tickets from set ${ticketSetId} (${Object.keys(tickets).length} tickets)`);
-      console.log(`🏆 Configured prizes: ${selectedPrizes.join(', ')}`);
-      console.log(`🎯 Half Sheet support: Traditional set validation enabled`);
-      
       return gameData;
     } catch (error: any) {
       console.error('❌ Error creating game:', error);
@@ -623,28 +779,23 @@ class FirebaseService {
     }
   }
 
-  // 🔧 MODIFIED: Add cleanup trigger to existing updateGameState method
   async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void> {
     try {
       const cleanUpdates = removeUndefinedValues(updates);
       await update(ref(database, `games/${gameId}/gameState`), cleanUpdates);
 
-      // ✅ SAFETY: Get game data for cleanup decisions
       const gameData = await this.getGameData(gameId);
       if (!gameData) {
         console.warn(`⚠️ Could not load game data for cleanup check: ${gameId}`);
         return;
       }
 
-      // 🆕 NEW: Trigger cleanup when new game starts playing
-      // This is the safe moment - players are engaged with new game
       const isGameStarting = updates.isActive === true || updates.isCountdown === true;
       const isNewGame = (gameData.gameState.calledNumbers?.length || 0) === 0;
       
       if (isGameStarting && isNewGame) {
         console.log(`🎮 Game ${gameId} is starting - triggering cleanup for host: ${gameData.hostId}`);
         
-        // ✅ ASYNC: Don't wait for cleanup to complete - run in background
         this.cleanupOldCompletedGames(gameData.hostId, gameId).catch(error => {
           console.error(`❌ Background cleanup failed for host ${gameData.hostId}:`, error);
         });
@@ -697,7 +848,6 @@ class FirebaseService {
     }
   }
 
-  // 🔧 MODIFIED: Enhanced getAllActiveGames to include recent completed games
   async getAllActiveGames(): Promise<GameData[]> {
     try {
       console.log('🔍 Fetching active games with recent completed games');
@@ -711,7 +861,6 @@ class FirebaseService {
       const allGames = Object.values(gamesSnapshot.val()) as GameData[];
       console.log(`📊 Found ${allGames.length} total games in database`);
       
-      // ✅ SAFETY: Validate game data structure
       const validGames = allGames.filter(game => {
         if (!game.hostId || !game.gameId || !game.gameState) {
           console.warn(`⚠️ Invalid game structure found: ${game.gameId || 'unknown'}`);
@@ -724,7 +873,6 @@ class FirebaseService {
         console.warn(`⚠️ Filtered out ${allGames.length - validGames.length} invalid games`);
       }
 
-      // Group games by host
       const gamesByHost = new Map<string, GameData[]>();
       validGames.forEach(game => {
         if (!gamesByHost.has(game.hostId)) {
@@ -737,48 +885,26 @@ class FirebaseService {
 
       const publicGames: GameData[] = [];
       
-      // Process each host's games
-      gamesByHost.forEach((hostGames, hostId) => {
-        console.log(`🔍 Processing ${hostGames.length} games for host: ${hostId}`);
-        
-        // ✅ PRIORITY 1: Active game (not finished)
-        const activeGame = hostGames.find(game => 
-          !game.gameState.gameOver && 
-          game.gameState // Additional safety check
-        );
+      gamesByHost.forEach((hostGames) => {
+        const activeGame = hostGames.find(game => !game.gameState.gameOver);
         
         if (activeGame) {
           publicGames.push(activeGame);
-          console.log(`✅ Added active game: ${activeGame.gameId} for host: ${hostId}`);
-          return; // Skip completed games if there's an active one
+          return;
         }
         
-        // ✅ PRIORITY 2: Most recent completed game (if no active game)
         const completedGames = hostGames
-          .filter(game => {
-            // ✅ SAFETY: Ensure game is properly completed
-            return game.gameState && 
-                   game.gameState.gameOver && 
-                   game.createdAt; // Must have creation timestamp
-          })
+          .filter(game => game.gameState.gameOver && game.createdAt)
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         
         if (completedGames.length > 0) {
-          const recentCompleted = completedGames[0];
-          publicGames.push(recentCompleted);
-          console.log(`🏆 Added recent completed game: ${recentCompleted.gameId} for host: ${hostId}`);
-        } else {
-          console.log(`ℹ️ No games to show for host: ${hostId}`);
+          publicGames.push(completedGames[0]);
         }
       });
 
-      // Sort all public games by creation date (newest first)
       const sortedGames = publicGames.sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-
-      console.log(`✅ Returning ${sortedGames.length} public games`);
-      console.log(`📋 Games: ${sortedGames.map(g => `${g.gameId}(${g.gameState.gameOver ? 'completed' : 'active'})`).join(', ')}`);
       
       return sortedGames;
     } catch (error) {
@@ -787,7 +913,6 @@ class FirebaseService {
     }
   }
 
-  // 🆕 NEW: Helper method to get all games for a specific host
   private async getAllGamesByHost(hostId: string): Promise<GameData[]> {
     try {
       console.log(`🔍 Fetching all games for host: ${hostId}`);
@@ -815,9 +940,7 @@ class FirebaseService {
     }
   }
 
-  // 🆕 NEW: Cleanup old completed games, keeping only the most recent one
   private async cleanupOldCompletedGames(hostId: string, currentGameId: string): Promise<void> {
-    // ✅ NEW: Race condition protection
     if (this.cleanupInProgress.has(hostId)) {
       console.log(`🔄 Cleanup already running for host: ${hostId}`);
       return;
@@ -831,51 +954,35 @@ class FirebaseService {
       const allHostGames = await this.getAllGamesByHost(hostId);
       
       if (allHostGames.length === 0) {
-        console.log(`ℹ️ No games found for cleanup for host: ${hostId}`);
+        console.log(`ℹ️ No games found for cleanup check: ${hostId}`);
         return;
       }
 
-      // Get all completed games except the current one
       const completedGames = allHostGames
-        .filter(game => 
-          game.gameState.gameOver && 
-          game.gameId !== currentGameId
-        )
+        .filter(game => game.gameState.gameOver && game.gameId !== currentGameId)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-      console.log(`🔍 Found ${completedGames.length} completed games for host: ${hostId}`);
-
       if (completedGames.length <= 1) {
-        console.log(`ℹ️ Keeping ${completedGames.length} completed game(s) for host: ${hostId} - no cleanup needed`);
+        console.log(`ℹ️ Host ${hostId} has ${completedGames.length} completed games - no cleanup needed`);
         return;
       }
 
-      // Keep the most recent completed game, delete the rest
-      const gamesToDelete = completedGames.slice(1); // Skip the first (most recent)
-      console.log(`🗑️ Will delete ${gamesToDelete.length} old games for host: ${hostId}`);
+      const gamesToDelete = completedGames.slice(1);
+      console.log(`🗑️ Scheduling cleanup of ${gamesToDelete.length} old games for host: ${hostId}`);
 
-      // ✅ SAFETY: Delete games one by one with error handling
-      let deletedCount = 0;
       for (const game of gamesToDelete) {
         try {
-          await remove(ref(database, `games/${game.gameId}`));
-          deletedCount++;
-          console.log(`✅ Deleted old game: ${game.gameId} (${game.name}) for host: ${hostId}`);
-        } catch (deleteError: any) {
-          console.error(`❌ Failed to delete game ${game.gameId}:`, deleteError);
-          // Continue with other deletions even if one fails
+          await this.deleteGame(game.gameId);
+          console.log(`✅ Cleaned up old game: ${game.gameId}`);
+        } catch (error: any) {
+          console.error(`⚠️ Failed to cleanup game ${game.gameId}:`, error);
         }
       }
 
-      console.log(`🧹 Cleanup completed for host: ${hostId} - deleted ${deletedCount}/${gamesToDelete.length} old games`);
-      
-      if (deletedCount < gamesToDelete.length) {
-        console.warn(`⚠️ Some games could not be deleted for host: ${hostId}`);
-      }
+      console.log(`✅ Cleanup completed for host: ${hostId}`);
 
     } catch (error: any) {
       console.error(`❌ Error during cleanup for host ${hostId}:`, error);
-      // ✅ SAFETY: Don't throw - cleanup errors shouldn't break game flow
     } finally {
       this.cleanupInProgress.delete(hostId);
     }
@@ -902,7 +1009,6 @@ class FirebaseService {
     try {
       console.log(`🎫 Booking ticket ${ticketId} for ${playerName} in game ${gameId}`);
       
-      // ✅ NEW: Get current ticket data to preserve metadata
       const currentTicketSnapshot = await get(ref(database, `games/${gameId}/tickets/${ticketId}`));
       
       const ticketData = {
@@ -912,13 +1018,11 @@ class FirebaseService {
         bookedAt: new Date().toISOString()
       };
 
-      // ✅ NEW: Preserve metadata if it exists
       if (currentTicketSnapshot.exists()) {
         const currentTicket = currentTicketSnapshot.val();
         if (currentTicket.metadata) {
           (ticketData as any).metadata = currentTicket.metadata;
         }
-        // ✅ NEW: Preserve Half Sheet metadata
         if (currentTicket.setId) {
           (ticketData as any).setId = currentTicket.setId;
         }
@@ -984,49 +1088,33 @@ class FirebaseService {
     gameEnded?: boolean;
   }> {
     try {
-      console.log(`🎯 Calling next random number for game: ${gameId}`);
-      
-      const gameRef = ref(database, `games/${gameId}`);
-      const gameSnapshot = await get(gameRef);
-      
-      if (!gameSnapshot.exists()) {
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) {
         throw new Error('Game not found');
       }
 
-      const gameData = gameSnapshot.val() as GameData;
       const calledNumbers = gameData.gameState.calledNumbers || [];
-      
-      const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
-      const availableNumbers = allNumbers.filter(num => !calledNumbers.includes(num));
-      
+      const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+        .filter(num => !calledNumbers.includes(num));
+
       if (availableNumbers.length === 0) {
-        console.log(`🏁 No more numbers available for game: ${gameId}`);
-        return { 
-          success: true, 
-          gameEnded: true
-        };
+        console.log('🏁 No more numbers to call - game should end');
+        return { success: false };
       }
 
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-      const selectedNumber = availableNumbers[randomIndex];
-      
-      console.log(`🎲 Selected number ${selectedNumber} from ${availableNumbers.length} available numbers`);
-      
-      const result = await this.processNumberCall(gameId, selectedNumber);
-      
-      return {
-        ...result,
-        number: selectedNumber
-      };
-      
+      const number = availableNumbers[randomIndex];
+
+      return await this.processNumberCall(gameId, number);
     } catch (error: any) {
-      console.error('❌ Error in callNextNumber:', error);
+      console.error('❌ Error calling next number:', error);
       throw new Error(error.message || 'Failed to call next number');
     }
   }
 
   private async processNumberCall(gameId: string, number: number): Promise<{
     success: boolean;
+    number?: number;
     winners?: { [prizeId: string]: any };
     announcements?: string[];
     gameEnded?: boolean;
@@ -1119,6 +1207,7 @@ class FirebaseService {
       
       return {
         success: true,
+        number,
         winners: validationResult.winners,
         announcements,
         gameEnded
@@ -1132,13 +1221,12 @@ class FirebaseService {
 
   // ================== PRIZE VALIDATION ==================
 
-  // ✅ UPDATED: YOUR REQUESTED DYNAMIC CORNER/STAR CORNER VALIDATION + NEW HALF SHEET VALIDATION
   async validateTicketsForPrizes(
     tickets: { [ticketId: string]: TambolaTicket },
     calledNumbers: number[],
     prizes: { [prizeId: string]: Prize }
   ): Promise<{ winners: { [prizeId: string]: any } }> {
-    const startTime = Date.now(); // Performance monitoring
+    const startTime = Date.now();
     const winners: { [prizeId: string]: any } = {};
 
     for (const [prizeId, prize] of Object.entries(prizes)) {
@@ -1146,251 +1234,52 @@ class FirebaseService {
 
       const prizeWinners: { name: string; ticketId: string; phone?: string }[] = [];
 
-      // ✅ NEW: Half Sheet uses different validation logic
-      if (prizeId === 'halfSheet') {
-        try {
-          console.log(`🎯 Validating Half Sheet prize...`);
-          
-          // Group all booked tickets by player name
-          const playerTickets = new Map<string, TambolaTicket[]>();
-          
-          for (const [ticketId, ticket] of Object.entries(tickets)) {
-            if (!ticket.isBooked || !ticket.playerName) continue;
-            
-            // ✅ SAFETY: Handle legacy tickets without set metadata
-            if (!ticket.setId || !ticket.positionInSet) {
-              console.warn(`Legacy ticket ${ticketId} missing set metadata - skipping half sheet validation`);
-              continue;
-            }
-            
-            if (!playerTickets.has(ticket.playerName)) {
-              playerTickets.set(ticket.playerName, []);
-            }
-            playerTickets.get(ticket.playerName)!.push(ticket);
-          }
-          
-          console.log(`🔍 Half Sheet: Checking ${playerTickets.size} players for valid half sheets`);
-          
-          // Check each player for valid half sheets
-          for (const [playerName, playerTicketList] of playerTickets) {
-            // Group player's tickets by setId
-            const ticketsBySet = new Map<number, TambolaTicket[]>();
-            
-            for (const ticket of playerTicketList) {
-              if (!ticketsBySet.has(ticket.setId)) {
-                ticketsBySet.set(ticket.setId, []);
-              }
-              ticketsBySet.get(ticket.setId)!.push(ticket);
-            }
-            
-            // Check each set for valid half
-            for (const [setId, setTickets] of ticketsBySet) {
-              if (setTickets.length !== 3) continue; // Must be exactly 3 tickets
-              
-              // Get positions and sort
-              const positions = setTickets.map(t => t.positionInSet).sort((a, b) => a - b);
-              
-              // Check for valid halves: [1,2,3] or [4,5,6]
-              const isFirstHalf = JSON.stringify(positions) === JSON.stringify([1,2,3]);
-              const isSecondHalf = JSON.stringify(positions) === JSON.stringify([4,5,6]);
-              
-              console.log(`🎯 Checking set ${setId} for ${playerName}: positions [${positions.join(',')}], firstHalf: ${isFirstHalf}, secondHalf: ${isSecondHalf}`);
-              
-              if (isFirstHalf || isSecondHalf) {
-                // Validate minimum progress (≥2 numbers marked per ticket)
-                const progressResults = setTickets.map(ticket => {
-                  const markedCount = ticket.rows.flat()
-                    .filter(num => num > 0 && calledNumbers.includes(num)).length;
-                  return { ticketId: ticket.ticketId, markedCount };
-                });
-                
-                const allTicketsProgressed = progressResults.every(result => result.markedCount >= 2);
-                
-                console.log(`📊 Progress check for ${playerName} set ${setId}:`, progressResults, `All ≥2: ${allTicketsProgressed}`);
-                
-                if (allTicketsProgressed) {
-                  console.log(`🎉 Half Sheet winner found: ${playerName} with set ${setId} positions [${positions.join(',')}]`);
-                  
-                  // Found a valid half sheet for this player
-                  prizeWinners.push({
-                    name: playerName,
-                    ticketId: `Set ${setId} (${positions.join(',')})`, // Show set and positions
-                    phone: setTickets[0].playerPhone // Use phone from first ticket
-                  });
-                  break; // One half sheet win per player is enough
-                }
-              }
-            }
-          }
-          
-          console.log(`✅ Half Sheet validation complete: ${prizeWinners.length} winners found`);
-          
-        } catch (error) {
-          // ✅ SAFETY: Error recovery
-          console.error(`Half Sheet validation error:`, error);
-          // Continue processing other prizes
-        }
-        
-        // Add winners if found
-        if (prizeWinners.length > 0) {
-          winners[prizeId] = {
-            prizeName: prize.name,
-            winners: prizeWinners
-          };
-        }
-        continue; // Skip to next prize
-      }
-
-      // ✅ EXISTING: Per-ticket validation for all other prizes
       for (const [ticketId, ticket] of Object.entries(tickets)) {
-        if (!ticket.isBooked || !ticket.playerName) continue;
+        if (!ticket.isBooked) continue;
 
         let hasWon = false;
-        
-        // ✅ OPTIMIZATION: Use pre-computed metadata when available
-        const optimizedTicket = ticket as OptimizedTambolaTicket;
-        const metadata = optimizedTicket.metadata;
 
         try {
           switch (prizeId) {
-            case 'quickFive': {
-              // ✅ OPTIMIZED: Use pre-computed allNumbers if available
-              const ticketNumbers = metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
-              const markedCount = ticketNumbers.filter(n => calledNumbers.includes(n)).length;
-              hasWon = markedCount >= 5;
+            case 'earlyFive':
+              hasWon = ticket.metadata?.allNumbers.filter(num => calledNumbers.includes(num)).length >= 5;
               break;
-            }
 
-            case 'corner': {
-              // 🎯 YOUR REQUESTED DYNAMIC CORNER LOGIC
-              try {
-                // Safety check: ensure proper ticket structure
-                if (!ticket.rows || ticket.rows.length !== 3) {
-                  hasWon = false;
-                  break;
-                }
-                
-                // Extract non-zero numbers from top and bottom rows
-                const topNumbers = ticket.rows[0].filter(n => n > 0);
-                const bottomNumbers = ticket.rows[2].filter(n => n > 0);
-                
-                // Validate: each row must have exactly 5 numbers
-                if (topNumbers.length === 5 && bottomNumbers.length === 5) {
-                  // Corner positions: first & last from top + first & last from bottom
-                  const cornerNumbers = [
-                    topNumbers[0],           // Top-left corner (first of top row)
-                    topNumbers[4],           // Top-right corner (last of top row)
-                    bottomNumbers[0],        // Bottom-left corner (first of bottom row)
-                    bottomNumbers[4]         // Bottom-right corner (last of bottom row)
-                  ];
-                  
-                  // Check if all corner numbers have been called
-                  hasWon = cornerNumbers.every(n => calledNumbers.includes(n));
-                  
-                  // Debug logging (remove in production)
-                  console.log(`Corner validation for ticket ${ticket.ticketId}:`, {
-                    topNumbers,
-                    bottomNumbers, 
-                    cornerNumbers,
-                    hasWon
-                  });
-                } else {
-                  // Invalid ticket structure - cannot win
-                  hasWon = false;
-                  console.warn(`Corner prize: Invalid ticket ${ticket.ticketId} - rows don't have 5 numbers each (top: ${topNumbers.length}, bottom: ${bottomNumbers.length})`);
-                }
-              } catch (error) {
-                // Error safety: don't award prize on validation error
-                hasWon = false;
-                console.error(`Corner prize validation error for ticket ${ticket.ticketId}:`, error);
-              }
+            case 'corners':
+              hasWon = ticket.metadata?.hasValidCorners && 
+                      ticket.metadata.corners.every(corner => calledNumbers.includes(corner));
               break;
-            }
 
-            case 'topLine': {
-              const topLineNumbers = ticket.rows[0].filter(n => n > 0);
-              hasWon = topLineNumbers.every(n => calledNumbers.includes(n));
+            case 'topLine':
+              hasWon = ticket.rows[0].filter(num => num > 0).every(num => calledNumbers.includes(num));
               break;
-            }
 
-            case 'middleLine': {
-              const middleLineNumbers = ticket.rows[1].filter(n => n > 0);
-              hasWon = middleLineNumbers.every(n => calledNumbers.includes(n));
+            case 'middleLine':
+              hasWon = ticket.rows[1].filter(num => num > 0).every(num => calledNumbers.includes(num));
               break;
-            }
 
-            case 'bottomLine': {
-              const bottomLineNumbers = ticket.rows[2].filter(n => n > 0);
-              hasWon = bottomLineNumbers.every(n => calledNumbers.includes(n));
+            case 'bottomLine':
+              hasWon = ticket.rows[2].filter(num => num > 0).every(num => calledNumbers.includes(num));
               break;
-            }
 
-            case 'starCorner': {
-              // 🎯 YOUR REQUESTED DYNAMIC STAR CORNER LOGIC
-              try {
-                // Safety check: ensure proper ticket structure
-                if (!ticket.rows || ticket.rows.length !== 3) {
-                  hasWon = false;
-                  break;
-                }
-                
-                // Extract non-zero numbers from all rows
-                const topNumbers = ticket.rows[0].filter(n => n > 0);
-                const middleNumbers = ticket.rows[1].filter(n => n > 0);
-                const bottomNumbers = ticket.rows[2].filter(n => n > 0);
-                
-                // Validate: each row must have exactly 5 numbers
-                if (topNumbers.length === 5 && middleNumbers.length === 5 && bottomNumbers.length === 5) {
-                  // Star Corner: 4 corners + center (all dynamic)
-                  const starCornerNumbers = [
-                    topNumbers[0],           // Top-left corner (first of top row)
-                    topNumbers[4],           // Top-right corner (last of top row)
-                    middleNumbers[2],        // Center (middle of middle row - 3rd of 5)
-                    bottomNumbers[0],        // Bottom-left corner (first of bottom row)
-                    bottomNumbers[4]         // Bottom-right corner (last of bottom row)
-                  ];
-                  
-                  // Check if all star corner numbers have been called
-                  hasWon = starCornerNumbers.every(n => calledNumbers.includes(n));
-                  
-                  // Debug logging (remove in production)
-                  console.log(`Star Corner validation for ticket ${ticket.ticketId}:`, {
-                    topNumbers,
-                    middleNumbers,
-                    bottomNumbers,
-                    starCornerNumbers,
-                    hasWon
-                  });
-                } else {
-                  // Invalid ticket structure - cannot win
-                  hasWon = false;
-                  console.warn(`Star Corner prize: Invalid ticket ${ticket.ticketId} - rows don't have 5 numbers each (top: ${topNumbers.length}, middle: ${middleNumbers.length}, bottom: ${bottomNumbers.length})`);
-                }
-              } catch (error) {
-                // Error safety: don't award prize on validation error
-                hasWon = false;
-                console.error(`Star Corner prize validation error for ticket ${ticket.ticketId}:`, error);
-              }
+            case 'starCorner':
+              hasWon = ticket.metadata?.hasValidCorners && 
+                      ticket.metadata?.hasValidCenter &&
+                      ticket.metadata.corners.every(corner => calledNumbers.includes(corner)) &&
+                      calledNumbers.includes(ticket.metadata.center);
               break;
-            }
 
-            case 'fullHouse': {
-              // ✅ OPTIMIZED: Use pre-computed allNumbers if available
-              const allTicketNumbers = metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
-              hasWon = allTicketNumbers.every(n => calledNumbers.includes(n));
+            case 'fullHouse':
+              hasWon = ticket.metadata?.allNumbers.every(num => calledNumbers.includes(num));
               break;
-            }
 
-            default: {
-              // ✅ SAFETY: Handle unknown prize types gracefully
+            default:
               console.warn(`Unknown prize type: ${prizeId} - skipping validation`);
               continue;
-            }
           }
         } catch (error) {
-          // ✅ SAFETY: Error recovery
           console.error(`Prize validation error for ${prizeId} on ticket ${ticketId}:`, error);
-          hasWon = false; // Fail safe - don't award prize on error
+          hasWon = false;
         }
 
         if (hasWon) {
@@ -1410,7 +1299,6 @@ class FirebaseService {
       }
     }
 
-    // ✅ PERFORMANCE MONITORING
     const endTime = Date.now();
     if (process.env.NODE_ENV === 'development' && endTime - startTime > 50) {
       console.warn(`Slow prize validation: ${endTime - startTime}ms for ${Object.keys(tickets).length} tickets`);
@@ -1444,10 +1332,8 @@ class FirebaseService {
     
     const unsubscribe = onValue(gamesRef, (snapshot) => {
       if (snapshot.exists()) {
-        // ✅ NEW: Use the enhanced getAllActiveGames logic for real-time subscriptions
         const allGames = Object.values(snapshot.val()) as GameData[];
         
-        // Apply the same logic as getAllActiveGames but synchronously
         const validGames = allGames.filter(game => 
           game.hostId && game.gameId && game.gameState
         );
@@ -1463,7 +1349,6 @@ class FirebaseService {
         const publicGames: GameData[] = [];
         
         gamesByHost.forEach((hostGames) => {
-          // Priority 1: Active game
           const activeGame = hostGames.find(game => !game.gameState.gameOver);
           
           if (activeGame) {
@@ -1471,7 +1356,6 @@ class FirebaseService {
             return;
           }
           
-          // Priority 2: Most recent completed game
           const completedGames = hostGames
             .filter(game => game.gameState.gameOver && game.createdAt)
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -1651,7 +1535,6 @@ class FirebaseService {
   }
 }
 
-// ✅ UNCHANGED: Helper functions remain exactly the same
 export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
   try {
     const userData = await firebaseService.getUserData();
@@ -1661,6 +1544,5 @@ export async function getCurrentUserRole(): Promise<'admin' | 'host' | null> {
   }
 }
 
-// ✅ UNCHANGED: Export singleton
 export const firebaseService = new FirebaseService();
 export default firebaseService;
