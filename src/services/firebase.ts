@@ -620,79 +620,107 @@ class FirebaseService {
         throw new Error(`Invalid maxTickets: ${maxTickets}. Must be between 1 and 600.`);
       }
 
-      const filePath = `/tambola-tickets-set-${ticketSetId}.json`;
-      console.log(`📁 Loading tickets from: ${filePath}`);
-
-      const response = await fetch(filePath);
+      const response = await fetch(`/data/${ticketSetId}.json`);
+      
       if (!response.ok) {
-        throw new Error(`Failed to fetch ticket set ${ticketSetId}: ${response.statusText}`);
-      }
-
-      const ticketRows: TicketRowData[] = await response.json();
-      console.log(`📊 Loaded ${ticketRows.length} ticket rows from JSON file`);
-
-      if (!Array.isArray(ticketRows) || ticketRows.length === 0) {
-        throw new Error(`No ticket data found in set ${ticketSetId}`);
-      }
-
-      const ticketsByTicketId = new Map<number, TicketRowData[]>();
-      ticketRows.forEach(row => {
-        if (!ticketsByTicketId.has(row.ticketId)) {
-          ticketsByTicketId.set(row.ticketId, []);
+        if (response.status === 404) {
+          throw new Error(`Ticket set file not found: ${ticketSetId}.json. Please check if the file exists in public/data/`);
         }
-        ticketsByTicketId.get(row.ticketId)!.push(row);
-      });
-
-      const availableTicketIds = Array.from(ticketsByTicketId.keys()).sort((a, b) => a - b);
-      console.log(`🎯 Found ${availableTicketIds.length} unique tickets in set ${ticketSetId}`);
-
-      if (maxTickets > availableTicketIds.length) {
-        throw new Error(`Insufficient tickets in set ${ticketSetId}. Requested: ${maxTickets}, Available: ${availableTicketIds.length}`);
+        throw new Error(`Failed to load ticket set ${ticketSetId}: HTTP ${response.status} ${response.statusText}`);
       }
 
-      const selectedTicketIds = availableTicketIds.slice(0, maxTickets);
-      const tickets: { [ticketId: string]: TambolaTicket } = {};
-      let createdTicketCount = 0;
+      const rawData: TicketRowData[] = await response.json();
+      
+      if (!Array.isArray(rawData)) {
+        throw new Error(`Invalid ticket data format: Expected array, got ${typeof rawData}`);
+      }
+      
+      if (rawData.length === 0) {
+        throw new Error(`Empty ticket set: ${ticketSetId}.json contains no data`);
+      }
 
-      for (const ticketId of selectedTicketIds) {
-        const ticketRows = ticketsByTicketId.get(ticketId)!;
+      console.log(`📊 Loaded ${rawData.length} ticket rows from set ${ticketSetId}`);
+
+      const filteredData = rawData.filter(row => row.ticketId >= 1 && row.ticketId <= maxTickets);
+      
+      if (filteredData.length === 0) {
+        throw new Error(`No valid tickets found in range 1-${maxTickets} for set ${ticketSetId}`);
+      }
+
+      const uniqueTicketIds = new Set(filteredData.map(row => row.ticketId));
+      const availableTickets = uniqueTicketIds.size;
+      
+      if (availableTickets < maxTickets) {
+        throw new Error(`Insufficient tickets in set ${ticketSetId}: Found ${availableTickets}, requested ${maxTickets}`);
+      }
+
+      console.log(`🎯 Filtered to ${filteredData.length} rows covering ${availableTickets} tickets`);
+
+      const ticketGroups = new Map<number, TicketRowData[]>();
+      
+      for (const row of filteredData) {
+        if (!row.ticketId || !row.rowId || !Array.isArray(row.numbers)) {
+          console.warn(`⚠️ Invalid row structure:`, row);
+          continue;
+        }
         
-        if (ticketRows.length !== 3) {
-          console.warn(`⚠️ Ticket ${ticketId} has ${ticketRows.length} rows, expected 3. Skipping.`);
+        if (row.numbers.length !== 9) {
+          console.warn(`⚠️ Invalid row length for ticket ${row.ticketId} row ${row.rowId}: expected 9, got ${row.numbers.length}`);
           continue;
         }
 
-        ticketRows.sort((a, b) => a.rowId - b.rowId);
+        if (!ticketGroups.has(row.ticketId)) {
+          ticketGroups.set(row.ticketId, []);
+        }
+        ticketGroups.get(row.ticketId)!.push(row);
+      }
 
-        const rows: number[][] = ticketRows.map(row => {
-          if (!Array.isArray(row.numbers) || row.numbers.length !== 9) {
-            throw new Error(`Invalid row data for ticket ${ticketId}, row ${row.rowId}`);
-          }
-          return row.numbers;
-        });
+      const tickets: { [ticketId: string]: TambolaTicket } = {};
+      
+      for (const [ticketId, rows] of ticketGroups) {
+        if (rows.length !== 3) {
+          console.warn(`⚠️ Ticket ${ticketId} has ${rows.length} rows, expected 3. Skipping.`);
+          continue;
+        }
+
+        rows.sort((a, b) => a.rowId - b.rowId);
+        
+        const expectedRowIds = [1, 2, 3];
+        const actualRowIds = rows.map(r => r.rowId);
+        
+        if (!expectedRowIds.every((id, index) => actualRowIds[index] === id)) {
+          console.warn(`⚠️ Ticket ${ticketId} has invalid row IDs: expected [1,2,3], got [${actualRowIds.join(',')}]. Skipping.`);
+          continue;
+        }
 
         const ticket: TambolaTicket = {
           ticketId: ticketId.toString(),
-          rows,
+          setId: rows[0].setId,
+          positionInSet: ((ticketId - 1) % 6) + 1,
+          rows: rows.map(row => row.numbers),
           markedNumbers: [],
           isBooked: false,
           playerName: '',
           playerPhone: '',
-          bookedAt: '',
-          setId: ticketRows[0].setId,
-          positionInSet: ((ticketId - 1) % 6) + 1
+          bookedAt: ''
         };
 
         ticket.metadata = computeTicketMetadata(ticket);
         tickets[ticketId.toString()] = ticket;
-        createdTicketCount++;
       }
 
-      if (createdTicketCount === 0) {
-        throw new Error(`No valid tickets could be created from set ${ticketSetId}. Check ticket data integrity.`);
+      const createdTicketCount = Object.keys(tickets).length;
+      
+      if (createdTicketCount < maxTickets) {
+        throw new Error(`Failed to create enough valid tickets: created ${createdTicketCount}, requested ${maxTickets}. Check ticket data integrity.`);
       }
 
       console.log(`✅ Successfully created ${createdTicketCount} tickets from set ${ticketSetId}`);
+      console.log(`🎫 Ticket IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${createdTicketCount > 5 ? '...' : ''}`);
+      console.log(`📐 Sample ticket structure verified: ${tickets['1'] ? '3 rows × 9 columns' : 'Invalid'}`);
+      console.log(`⚡ Metadata computed for all tickets (corners, center, allNumbers)`);
+      console.log(`🎯 Half Sheet support: setId and positionInSet preserved for traditional validation`);
+
       return tickets;
 
     } catch (error: any) {
