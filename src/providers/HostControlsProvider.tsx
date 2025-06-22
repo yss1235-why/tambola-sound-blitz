@@ -15,6 +15,10 @@ interface HostControlsContextValue {
   
   // Status
   isProcessing: boolean;
+  
+  // 🔧 NEW: Export pause state so other components can check it
+  isPaused: boolean;
+  pauseRequestedRef: React.RefObject<boolean>;
 }
 
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
@@ -48,7 +52,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   
   // 🛡️ NEW: Ref for immediate access in timer callbacks (eliminates race condition)
   const pauseRequestedRef = useRef(false);
-  const timerGenerationRef = useRef(0);
 
   // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
   useEffect(() => {
@@ -85,62 +88,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     }
     gameActiveRef.current = false;
   }, []);
-
-  // Automatic number calling loop
-  const startNumberCallingLoop = useCallback(() => {
-    if (!gameData) return;
-    
-    // Capture current generation when starting the loop
-    const loopGeneration = timerGenerationRef.current;
-    
-    const scheduleNextCall = () => {
-      // Check if this timer generation is still valid
-      if (timerGenerationRef.current !== loopGeneration) {
-        console.log(`🚫 Timer generation ${loopGeneration} invalidated, stopping`);
-        return;
-      }
-      
-      // Existing checks
-      if (!gameActiveRef.current || pauseRequestedRef.current) return;
-      
-      gameTimerRef.current = setTimeout(async () => {
-        // 🔧 CRITICAL: Check timer generation FIRST in callback
-        if (timerGenerationRef.current !== loopGeneration) {
-          console.log(`🚫 Timer callback generation ${loopGeneration} invalidated, aborting`);
-          return;
-        }
-        
-        // Then existing checks
-        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) return;
-        
-        try {
-          console.log(`🎯 Auto-calling next number for game ${gameData.gameId} (gen: ${loopGeneration})`);
-          const result = await firebaseService.callNextNumber(gameData.gameId);
-          
-          // Check generation again after async operation
-          if (timerGenerationRef.current !== loopGeneration) {
-            console.log(`🚫 Timer generation changed during async call, stopping`);
-            return;
-          }
-          
-          if (result.success && !result.gameEnded && gameActiveRef.current && !pauseRequestedRef.current) {
-            scheduleNextCall(); // Continue with same generation
-          } else {
-            clearAllTimers();
-          }
-        } catch (error) {
-          console.error('❌ Auto-call error:', error);
-          
-          // Check generation before retrying
-          if (timerGenerationRef.current === loopGeneration && gameActiveRef.current && !pauseRequestedRef.current) {
-            scheduleNextCall();
-          }
-        }
-      }, callInterval * 1000);
-    };
-
-    scheduleNextCall();
-  }, [gameData, callInterval, clearAllTimers]);
 
   // Start game with countdown
   const startGame = useCallback(async () => {
@@ -184,7 +131,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
           });
           
           gameActiveRef.current = true;
-          startNumberCallingLoop();
         }
       }, 1000);
       
@@ -194,7 +140,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
+  }, [gameData, isProcessing, clearAllTimers]);
 
   // 🛡️ ENHANCED: Pause game with immediate state lock
   const pauseGame = useCallback(async () => {
@@ -204,15 +150,11 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`⏸️ Pausing game: ${gameData.gameId}`);
       
-      // 🔧 CRITICAL: Increment timer generation to invalidate all queued callbacks
-      timerGenerationRef.current++;
-      const currentGeneration = timerGenerationRef.current;
-      console.log(`🔄 Timer generation incremented to: ${currentGeneration}`);
-      
-      // Set pause state immediately
+      // 🔧 CRITICAL: Set pause state FIRST - this stops all timers instantly
       setPauseRequested(true);
       pauseRequestedRef.current = true;
       gameActiveRef.current = false;
+      console.log(`🛡️ Pause flags set - all timers should stop now`);
       
       // Clear existing timers
       clearAllTimers();
@@ -234,14 +176,13 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       
       if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
         gameActiveRef.current = true;
-        startNumberCallingLoop();
       }
       
       throw new Error(error.message || 'Failed to pause game');
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
+  }, [gameData, isProcessing, clearAllTimers]);
 
   // 🛡️ ENHANCED: Resume game
   const resumeGame = useCallback(async () => {
@@ -256,18 +197,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isActive: true,
         isCountdown: false
       });
-      
-      // Increment generation for new timer loop
-      timerGenerationRef.current++;
-      console.log(`🔄 New timer generation for resume: ${timerGenerationRef.current}`);
 
       // 🛡️ STEP 2: Clear pause lock and activate locally
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       gameActiveRef.current = true;
-      
-      // 🛡️ STEP 3: Restart the calling loop
-      startNumberCallingLoop();
+      console.log(`🔄 Pause flags cleared - timers can resume`);
       
       console.log(`✅ Game resumed successfully: ${gameData.gameId}`);
       
@@ -277,7 +212,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, startNumberCallingLoop]);
+  }, [gameData, isProcessing]);
 
   // End game
   const endGame = useCallback(async () => {
@@ -327,7 +262,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     resumeGame,
     endGame,
     updateCallInterval,
-    isProcessing
+    isProcessing,
+    isPaused: pauseRequested,
+    pauseRequestedRef
   };
 
   return (
