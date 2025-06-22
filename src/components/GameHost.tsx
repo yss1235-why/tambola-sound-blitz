@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - UPDATED: Component-level winner display management
+// src/components/GameHost.tsx - UPDATED: Component-level winner display management + Half Sheet Prize
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -78,6 +78,7 @@ const TICKET_SETS = [
   }
 ];
 
+// ✅ UPDATED: Added Half Sheet Prize with correct order and difficulty
 const AVAILABLE_PRIZES: GamePrize[] = [
   {
     id: 'quickFive',
@@ -94,6 +95,14 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     description: 'Mark all 4 corner positions of your ticket',
     order: 2,
     difficulty: 'medium'
+  },
+  {                           // ✅ NEW: Half Sheet Prize
+    id: 'halfSheet',
+    name: 'Half Sheet',
+    pattern: '3 consecutive tickets from same set',
+    description: 'Complete half of a traditional 6-ticket sheet (positions 1,2,3 or 4,5,6)',
+    order: 2.5,
+    difficulty: 'hard'
   },
   {
     id: 'topLine',
@@ -150,11 +159,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   });
   const [editMode, setEditMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  // ✅ UPDATED: Added halfSheet to default selected prizes
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
     hostPhone: '',
     maxTickets: '100',
     selectedTicketSet: '1',
-    selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fullHouse']
+    selectedPrizes: ['quickFive', 'halfSheet', 'topLine', 'middleLine', 'bottomLine', 'fullHouse'] // ✅ Added halfSheet
   });
 
   // ✅ NEW: Component-level state for winner display management
@@ -319,6 +329,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       );
       
       console.log('✅ Game created successfully:', newGame.gameId);
+      console.log('🎯 Half Sheet prize:', createGameForm.selectedPrizes.includes('halfSheet') ? 'Enabled' : 'Disabled');
       
       // ✅ NEW: Reset UI state to calculated (let real-time data drive the view)
       setUIState('calculated');
@@ -815,6 +826,12 @@ const CreateGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
+                  {/* ✅ NEW: Special indicator for Half Sheet */}
+                  {prize.id === 'halfSheet' && (
+                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                      Traditional
+                    </Badge>
+                  )}
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
                 <p className="text-xs text-gray-500">{prize.description}</p>
@@ -844,6 +861,18 @@ const CreateGameForm = ({
         <div className="text-center text-sm text-blue-600">
           <Clock className="w-4 h-4 inline mr-1" />
           Real-time system will automatically update the view when ready
+        </div>
+      )}
+      
+      {/* ✅ NEW: Half Sheet info */}
+      {createGameForm.selectedPrizes.includes('halfSheet') && (
+        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+          <p className="text-sm text-purple-800 font-medium">
+            🎯 Half Sheet Prize Enabled
+          </p>
+          <p className="text-xs text-purple-600 mt-1">
+            Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
+          </p>
         </div>
       )}
     </CardContent>
@@ -988,6 +1017,12 @@ const EditGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
+                  {/* ✅ NEW: Special indicator for Half Sheet */}
+                  {prize.id === 'halfSheet' && (
+                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                      Traditional
+                    </Badge>
+                  )}
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
                 <p className="text-xs text-gray-500">{prize.description}</p>
@@ -1037,6 +1072,18 @@ const EditGameForm = ({
         <div className="text-center text-sm text-blue-600">
           <Clock className="w-4 h-4 inline mr-1" />
           Real-time system will automatically update the view when ready
+        </div>
+      )}
+      
+      {/* ✅ NEW: Half Sheet info in edit mode */}
+      {createGameForm.selectedPrizes.includes('halfSheet') && (
+        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+          <p className="text-sm text-purple-800 font-medium">
+            🎯 Half Sheet Prize Enabled
+          </p>
+          <p className="text-xs text-purple-600 mt-1">
+            Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
+          </p>
         </div>
       )}
     </CardContent>
