@@ -1,4 +1,5 @@
-// src/components/GameHost.tsx - UPDATED: Component-level winner display management + Half Sheet Prize
+// src/components/GameHost.tsx - COMPLETE: Single Source of Truth Implementation
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { HostDisplay } from './HostDisplay';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { AudioManager } from './AudioManager';
-import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay'; // ✅ NEW: Import winner display
+import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay';
 import { 
   Plus,
   AlertCircle,
@@ -20,12 +21,18 @@ import {
   Trash2,
   Loader2,
   CheckCircle,
-  Clock
+  Clock,
+  Users,
+  Phone,
+  Ticket,
+  Settings,
+  Crown,
+  Timer
 } from 'lucide-react';
 import { 
   firebaseService, 
   HostUser,
-  GameData // ✅ NEW: Import GameData type
+  GameData
 } from '@/services/firebase';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
 import { HostControlsProvider } from '@/providers/HostControlsProvider';
@@ -51,7 +58,6 @@ interface CreateGameForm {
   selectedPrizes: string[];
 }
 
-// ✅ NEW: UI state type for component-level management
 type UIState = 'calculated' | 'winners' | 'setup';
 
 interface OperationState {
@@ -60,7 +66,7 @@ interface OperationState {
   message: string;
 }
 
-// Available options (unchanged)
+// Available ticket sets
 const TICKET_SETS = [
   {
     id: "1",
@@ -70,7 +76,7 @@ const TICKET_SETS = [
     description: "Traditional ticket set with balanced number distribution"
   },
   {
-    id: "2", 
+    id: "2",
     name: "Premium Set",
     available: true,
     ticketCount: 600,
@@ -78,31 +84,23 @@ const TICKET_SETS = [
   }
 ];
 
-// ✅ UPDATED: Added Half Sheet Prize with correct order and difficulty
+// Available prizes with difficulty indicators
 const AVAILABLE_PRIZES: GamePrize[] = [
   {
-    id: 'quickFive',
-    name: 'Quick Five',
+    id: 'earlyFive',
+    name: 'Early Five',
     pattern: 'First 5 numbers',
-    description: 'First player to mark any 5 numbers',
+    description: 'First to mark any 5 numbers on the ticket',
     order: 1,
     difficulty: 'easy'
   },
   {
-    id: 'corner',
-    name: 'Corner',
-    pattern: '4 corner positions',
-    description: 'Mark all 4 corner positions of your ticket',
+    id: 'corners',
+    name: 'Four Corners',
+    pattern: '4 corners',
+    description: 'Mark all 4 corner positions',
     order: 2,
-    difficulty: 'medium'
-  },
-  {                           // ✅ NEW: Half Sheet Prize
-    id: 'halfSheet',
-    name: 'Half Sheet',
-    pattern: '3 consecutive tickets from same set',
-    description: 'Complete half of a traditional 6-ticket sheet (positions 1,2,3 or 4,5,6)',
-    order: 2.5,
-    difficulty: 'hard'
+    difficulty: 'easy'
   },
   {
     id: 'topLine',
@@ -142,16 +140,114 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     pattern: 'All numbers',
     description: 'Mark all numbers on the ticket',
     order: 7,
-    difficulty: 'hardest'
+    difficulty: 'expert'
   }
 ];
 
-export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
-  // ✅ PRESERVE: All existing real-time functionality
+export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   
-  // ✅ PRESERVE: All existing state
+  // ================== SAFETY AND VALIDATION UTILITIES ==================
+
+  /**
+   * ✅ VALIDATION: Comprehensive input validation
+   */
+  const validateGameSettings = (formData: CreateGameForm, gameData: GameData): {
+    isValid: boolean;
+    errors: string[];
+  } => {
+    const errors: string[] = [];
+    
+    const maxTickets = parseInt(formData.maxTickets);
+    if (isNaN(maxTickets) || maxTickets < 1) {
+      errors.push('Max tickets must be a valid number (minimum 1)');
+    }
+    if (maxTickets > 600) {
+      errors.push('Max tickets cannot exceed 600');
+    }
+    
+    const bookedCount = Object.values(gameData.tickets || {})
+      .filter(ticket => ticket.isBooked).length;
+    if (maxTickets < bookedCount) {
+      errors.push(`Cannot set max tickets (${maxTickets}) below current bookings (${bookedCount})`);
+    }
+    
+    if (!formData.hostPhone?.trim()) {
+      errors.push('Host phone number is required');
+    }
+    
+    if (!formData.selectedPrizes || formData.selectedPrizes.length === 0) {
+      errors.push('At least one prize must be selected');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
+
+  /**
+   * ✅ SAFETY: Check if update is safe to perform
+   */
+  const canUpdateGameSettings = (gameData: GameData): {
+    canUpdate: boolean;
+    reason?: string;
+  } => {
+    if (gameData.gameState.isActive) {
+      return { canUpdate: false, reason: 'Game is currently active' };
+    }
+    
+    if (gameData.gameState.isCountdown) {
+      return { canUpdate: false, reason: 'Game is starting (countdown active)' };
+    }
+    
+    if (gameData.gameState.gameOver) {
+      return { canUpdate: false, reason: 'Game has already ended' };
+    }
+    
+    const numbersCalledCount = gameData.gameState.calledNumbers?.length || 0;
+    if (numbersCalledCount > 0) {
+      return { canUpdate: false, reason: 'Numbers have already been called' };
+    }
+    
+    return { canUpdate: true };
+  };
+
+  /**
+   * ✅ MONITORING: Operation status tracking
+   */
+  const logUpdateOperation = (
+    phase: 'start' | 'validation' | 'live_update' | 'template_update' | 'success' | 'error',
+    data?: any
+  ) => {
+    const timestamp = new Date().toISOString();
+    const gameId = gameData?.gameId || 'unknown';
+    
+    switch (phase) {
+      case 'start':
+        console.log(`🔧 [${timestamp}] Starting settings update for game: ${gameId}`);
+        break;
+      case 'validation':
+        console.log(`✅ [${timestamp}] Validation passed for game: ${gameId}`);
+        break;
+      case 'live_update':
+        console.log(`📡 [${timestamp}] Updating live game data for: ${gameId}`);
+        break;
+      case 'template_update':
+        console.log(`💾 [${timestamp}] Updating host template for: ${gameId}`);
+        break;
+      case 'success':
+        console.log(`🎉 [${timestamp}] Settings update completed for: ${gameId}`);
+        break;
+      case 'error':
+        console.error(`❌ [${timestamp}] Settings update failed for: ${gameId}`, data);
+        break;
+    }
+  };
+
+  // ================== STATE MANAGEMENT ==================
+  
   const [operation, setOperation] = useState<OperationState>({
     type: null,
     inProgress: false,
@@ -159,19 +255,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   });
   const [editMode, setEditMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  // ✅ UPDATED: Added halfSheet to default selected prizes
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
     hostPhone: '',
     maxTickets: '100',
     selectedTicketSet: '1',
-    selectedPrizes: ['quickFive', 'halfSheet', 'topLine', 'middleLine', 'bottomLine', 'fullHouse'] // ✅ Added halfSheet
+    selectedPrizes: ['earlyFive', 'topLine', 'fullHouse']
   });
 
-  // ✅ NEW: Component-level state for winner display management
+  // Component-level state for winner display management
   const [uiState, setUIState] = useState<UIState>('calculated');
   const [cachedWinnerData, setCachedWinnerData] = useState<GameData | null>(null);
 
-  // ✅ PRESERVE: All existing functions unchanged
+  // ================== SUBSCRIPTION VALIDATION ==================
+  
   const isSubscriptionValid = React.useCallback(() => {
     const now = new Date();
     const endDate = new Date(user.subscriptionEndDate);
@@ -198,91 +294,130 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return { message: `Active until ${endDate.toLocaleDateString()}`, variant: 'default' as const };
   }, [user.subscriptionEndDate, user.isActive]);
 
-  // ✅ PRESERVE: Load previous settings unchanged
-  useEffect(() => {
-    const loadPreviousSettings = async () => {
-      try {
-        console.log('🔧 Loading previous host settings...');
-        const settings = await firebaseService.getHostSettings(user.uid);
-        if (settings) {
-          console.log('✅ Previous settings loaded');
-          setCreateGameForm(prev => ({
-            ...prev,
-            hostPhone: settings.hostPhone || prev.hostPhone,
-            maxTickets: settings.maxTickets?.toString() || prev.maxTickets,
-            selectedTicketSet: settings.selectedTicketSet || prev.selectedTicketSet,
-            selectedPrizes: settings.selectedPrizes || prev.selectedPrizes
-          }));
-        }
-      } catch (error) {
-        console.error('Failed to load host settings:', error);
-      }
+  // ================== ENHANCED SINGLE SOURCE UPDATE ==================
+
+  /**
+   * ✅ ENHANCED SINGLE SOURCE UPDATE: Complete settings update with safety checks
+   * CRITICAL: This updates BOTH live game data AND host template
+   */
+  const updateGameSettings = async () => {
+    if (!gameData) {
+      console.error('❌ No game data available for update');
+      alert('No active game found');
+      return;
+    }
+
+    if (!user?.uid) {
+      console.error('❌ No user context available');
+      alert('User not authenticated');
+      return;
+    }
+
+    logUpdateOperation('start');
+    
+    // Step 1: Input validation
+    const validation = validateGameSettings(createGameForm, gameData);
+    if (!validation.isValid) {
+      alert('Validation failed:\n' + validation.errors.join('\n'));
+      return;
+    }
+    
+    // Step 2: Safety checks
+    const safetyCheck = canUpdateGameSettings(gameData);
+    if (!safetyCheck.canUpdate) {
+      alert(`Cannot update settings: ${safetyCheck.reason}`);
+      return;
+    }
+    
+    logUpdateOperation('validation');
+    
+    // Step 3: Prepare update data
+    const maxTicketsNum = parseInt(createGameForm.maxTickets);
+    const updateData = {
+      maxTickets: maxTicketsNum,
+      hostPhone: createGameForm.hostPhone.trim(),
+      selectedPrizes: [...createGameForm.selectedPrizes], // Create copy to avoid mutations
+      selectedTicketSet: createGameForm.selectedTicketSet
     };
-
-    loadPreviousSettings();
-  }, [user.uid]);
-
-  // ✅ NEW: Handle game completion and winner display
-  useEffect(() => {
-    // When game ends and we're not already showing winners
-    if (gameData?.gameState.gameOver && uiState === 'calculated') {
-      console.log('🏆 Game completed, caching winner data for display');
-      setCachedWinnerData(gameData);
-      setUIState('winners');
-    }
     
-    // When game data becomes null (deleted) and we're in winners mode, go to setup
-    if (!gameData && uiState === 'winners' && cachedWinnerData) {
-      console.log('🎮 Game deleted, transitioning to setup mode');
-      setUIState('setup');
-    }
-  }, [gameData?.gameState.gameOver, gameData, uiState, cachedWinnerData]);
-
-  // ✅ PRESERVE: Clear operation state when real-time data updates (unchanged)
-  useEffect(() => {
-    if (operation.inProgress) {
-      if (operation.type === 'create' && gameData) {
-        console.log('✅ Create operation completed - game data received via real-time');
-        setOperation({ type: null, inProgress: false, message: 'Game created successfully!' });
-        setTimeout(() => {
-          setOperation({ type: null, inProgress: false, message: '' });
-        }, 3000);
-      } else if (operation.type === 'delete' && !gameData) {
-        console.log('✅ Delete operation completed - game data cleared via real-time');
-        setOperation({ type: null, inProgress: false, message: 'Game deleted successfully!' });
-        setTimeout(() => {
-          setOperation({ type: null, inProgress: false, message: '' });
-        }, 3000);
+    setIsCreating(true);
+    
+    try {
+      // Step 4: Combined atomic update
+      logUpdateOperation('live_update');
+      
+      await firebaseService.updateGameAndTemplate(
+        gameData.gameId,
+        user.uid,
+        updateData
+      );
+      
+      logUpdateOperation('success');
+      
+      // Step 5: Update UI state
+      setEditMode(false);
+      
+      console.log('✅ Game settings updated successfully!');
+      
+      // Note: Real-time listeners will automatically update the UI
+      // No manual state updates needed
+      
+    } catch (error: any) {
+      logUpdateOperation('error', error);
+      
+      // Step 6: User-friendly error handling
+      let errorMessage = 'Failed to update game settings';
+      
+      if (error.message.includes('below current bookings')) {
+        errorMessage = error.message;
+      } else if (error.message.includes('active') || error.message.includes('starting')) {
+        errorMessage = 'Cannot change settings while game is running or starting';
+      } else if (error.message.includes('Transaction failed')) {
+        errorMessage = 'Update failed due to database conflict. Please try again.';
+      } else if (error.message.includes('network') || error.message.includes('offline')) {
+        errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
+      
+      alert(errorMessage);
+      
+    } finally {
+      setIsCreating(false);
+      console.log('🏁 Update operation completed');
     }
-  }, [gameData, operation]);
+  };
 
-  // ✅ NEW: Handle "Create New Game" button from winner display
-  const handleCreateNewGameFromWinners = React.useCallback(() => {
-    const confirmed = window.confirm(
-      '🎮 Create New Game\n\n' +
-      'This will clear the winner display and take you to game setup.\n\n' +
-      'The winner information will be removed from view but you can note down contact details now.\n\n' +
-      'Continue to create a new game?'
-    );
-    
-    if (confirmed) {
-      console.log('✅ Host confirmed new game creation from winner display');
-      console.log('🎯 Transitioning to setup mode (winner data preserved until new game created)');
-      setUIState('setup');
-    } else {
-      console.log('🚫 Host cancelled new game creation from winner display');
-    }
-  }, []);
+  // ================== ENHANCED CREATE NEW GAME ==================
 
-  // ✅ MODIFIED: createNewGame function to handle deletion timing
   const createNewGame = async () => {
+    // ✅ SAFETY: Additional validation before game creation
+    if (!user?.uid) {
+      alert('User authentication required');
+      return;
+    }
+    
     if (!isSubscriptionValid()) {
       alert('Your subscription has expired. Please contact the administrator.');
       return;
     }
 
-    const maxTicketsNum = parseInt(createGameForm.maxTickets) || 100;
+    // Validate form inputs
+    const maxTicketsNum = parseInt(createGameForm.maxTickets);
+    if (isNaN(maxTicketsNum) || maxTicketsNum < 1 || maxTicketsNum > 600) {
+      alert('Please enter valid max tickets (1-600)');
+      return;
+    }
+
+    if (!createGameForm.hostPhone.trim()) {
+      alert('Please enter your phone number');
+      return;
+    }
+
+    if (createGameForm.selectedPrizes.length === 0) {
+      alert('Please select at least one prize');
+      return;
+    }
 
     setIsCreating(true);
     setOperation({
@@ -294,7 +429,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     try {
       console.log('🎮 Starting game creation process...');
       
-      // ✅ NEW: If we have cached winner data, delete the old game BEFORE creating new one
+      // If we have cached winner data, delete the old game BEFORE creating new one
       if (cachedWinnerData) {
         console.log('🗑️ Deleting previous completed game before creating new one:', cachedWinnerData.gameId);
         try {
@@ -302,11 +437,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           console.log('✅ Previous game deleted successfully');
         } catch (deleteError) {
           console.error('⚠️ Error deleting previous game (continuing with creation):', deleteError);
-          // Continue with creation even if deletion fails
         }
-        setCachedWinnerData(null); // Clear cached data
+        setCachedWinnerData(null);
       }
       
+      // Save host template settings
       await firebaseService.saveHostSettings(user.uid, {
         hostPhone: createGameForm.hostPhone,
         maxTickets: maxTicketsNum,
@@ -329,9 +464,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       );
       
       console.log('✅ Game created successfully:', newGame.gameId);
-      console.log('🎯 Half Sheet prize:', createGameForm.selectedPrizes.includes('halfSheet') ? 'Enabled' : 'Disabled');
       
-      // ✅ NEW: Reset UI state to calculated (let real-time data drive the view)
       setUIState('calculated');
       
       setOperation(prev => ({
@@ -348,45 +481,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ✅ PRESERVE: All other existing functions unchanged
-  const updateGameSettings = async () => {
-    if (!gameData) return;
-
-    const maxTicketsNum = parseInt(createGameForm.maxTickets);
-    if (isNaN(maxTicketsNum) || maxTicketsNum < 1) {
-      alert('Please enter a valid number for max tickets');
-      return;
-    }
-
-    if (createGameForm.selectedPrizes.length === 0) {
-      alert('Please select at least one prize');
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      await firebaseService.updateGameData(gameData.gameId, {
-        maxTickets: maxTicketsNum,
-        hostPhone: createGameForm.hostPhone
-      });
-
-      await firebaseService.saveHostSettings(user.uid, {
-        hostPhone: createGameForm.hostPhone,
-        maxTickets: maxTicketsNum,
-        selectedTicketSet: createGameForm.selectedTicketSet,
-        selectedPrizes: createGameForm.selectedPrizes
-      });
-      
-      setEditMode(false);
-      console.log('✅ Game settings updated successfully');
-
-    } catch (error: any) {
-      console.error('Update game error:', error);
-      alert(error.message || 'Failed to update game');
-    } finally {
-      setIsCreating(false);
-    }
-  };
+  // ================== OTHER EVENT HANDLERS ==================
 
   const deleteGame = async () => {
     if (!gameData) return;
@@ -426,77 +521,120 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  const subscriptionStatus = getSubscriptionStatus();
-
-  // ✅ PRESERVE: All existing loading and error states unchanged
-  const [loadingTimeout, setLoadingTimeout] = useState(false);
-  
-  useEffect(() => {
-    if (isLoading) {
-      const timer = setTimeout(() => {
-        setLoadingTimeout(true);
-      }, 3000);
-      
-      return () => clearTimeout(timer);
+  const handleCreateNewGameFromWinners = React.useCallback(() => {
+    const confirmed = window.confirm(
+      '🎮 Create New Game\n\n' +
+      'This will clear the winner display and take you to game setup.\n\n' +
+      'The winner information will be removed from view but you can note down contact details now.\n\n' +
+      'Continue to create a new game?'
+    );
+    
+    if (confirmed) {
+      console.log('✅ Host confirmed new game creation from winner display');
+      console.log('🎯 Transitioning to setup mode (winner data preserved until new game created)');
+      setUIState('setup');
     } else {
-      setLoadingTimeout(false);
+      console.log('🚫 Host cancelled new game creation from winner display');
     }
-  }, [isLoading]);
+  }, []);
 
-  // ✅ NEW: Enhanced view calculation with UI state override
+  // ================== USEEFFECTS ==================
+  
+  // Load previous settings
+  useEffect(() => {
+    const loadPreviousSettings = async () => {
+      try {
+        console.log('🔧 Loading previous host settings...');
+        const settings = await firebaseService.getHostSettings(user.uid);
+        if (settings) {
+          console.log('✅ Previous settings loaded');
+          setCreateGameForm(prev => ({
+            ...prev,
+            hostPhone: settings.hostPhone || prev.hostPhone,
+            maxTickets: settings.maxTickets?.toString() || prev.maxTickets,
+            selectedTicketSet: settings.selectedTicketSet || prev.selectedTicketSet,
+            selectedPrizes: settings.selectedPrizes || prev.selectedPrizes
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load host settings:', error);
+      }
+    };
+
+    loadPreviousSettings();
+  }, [user.uid]);
+
+  // Handle game completion and winner display
+  useEffect(() => {
+    if (gameData?.gameState.gameOver && uiState === 'calculated') {
+      console.log('🏆 Game completed, caching winner data for display');
+      setCachedWinnerData(gameData);
+      setUIState('winners');
+    }
+    
+    if (!gameData && uiState === 'winners' && cachedWinnerData) {
+      console.log('🎮 Game deleted, transitioning to setup mode');
+      setUIState('setup');
+    }
+  }, [gameData?.gameState.gameOver, gameData, uiState, cachedWinnerData]);
+
+  // Clear operation state when real-time data updates
+  useEffect(() => {
+    if (operation.inProgress) {
+      if (operation.type === 'create' && gameData) {
+        console.log('✅ Create operation completed - game data received via real-time');
+        setOperation({ type: null, inProgress: false, message: 'Game created successfully!' });
+        setTimeout(() => {
+          setOperation({ type: null, inProgress: false, message: '' });
+        }, 3000);
+      } else if (operation.type === 'delete' && !gameData) {
+        console.log('✅ Delete operation completed - game data cleared via real-time');
+        setOperation({ type: null, inProgress: false, message: 'Game deleted successfully!' });
+        setTimeout(() => {
+          setOperation({ type: null, inProgress: false, message: '' });
+        }, 3000);
+      }
+    }
+  }, [gameData, operation]);
+
+  // ================== VIEW CALCULATION ==================
+
   const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
-    // ✅ NEW: UI state overrides calculated view
-    if (uiState === 'winners') {
-      return 'winners';
-    }
-    if (uiState === 'setup') {
-      return 'setup';
-    }
-    
-    // ✅ PRESERVE: Original calculated view logic
-    if (!gameData) {
-      return 'create';
-    }
-    
-    if (currentPhase === 'countdown' || currentPhase === 'playing' || currentPhase === 'finished') {
-      return 'live';
-    }
-    
-    if (currentPhase === 'booking') {
-      return 'booking';
-    }
-    
-    return 'create';
+    if (uiState === 'winners') return 'winners';
+    if (uiState === 'setup') return 'setup';
+    if (!gameData) return 'setup';
+    if (gameData.gameState.gameOver) return 'winners';
+    if (gameData.gameState.isActive || gameData.gameState.isCountdown) return 'live';
+    return 'booking';
   };
 
   const currentView = getCurrentView();
+  const subscriptionStatus = getSubscriptionStatus();
 
-  // ✅ PRESERVE: All existing loading and error handling unchanged
-  if (isLoading && loadingTimeout) {
+  // ================== LOADING STATES ==================
+
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
-        <Card>
-          <CardContent className="p-8 text-center">
-            <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4 text-blue-500" />
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">Loading Dashboard...</h2>
-            <p className="text-gray-600">Setting up your host interface</p>
-            <p className="text-sm text-gray-500 mt-2">If this takes too long, please refresh the page</p>
-          </CardContent>
-        </Card>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading game data...</p>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
-        <Card className="border-red-300">
-          <CardContent className="p-8 text-center">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h2 className="text-xl font-semibold text-red-800 mb-2">Error</h2>
-            <p className="text-red-600 mb-4">{error}</p>
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Error Loading Game</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-700 mb-4">{error}</p>
             <Button onClick={() => window.location.reload()}>
-              Try Again
+              Reload Page
             </Button>
           </CardContent>
         </Card>
@@ -504,95 +642,82 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     );
   }
 
-  // ✅ PRESERVE: Subscription validation unchanged
   if (!isSubscriptionValid()) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
-            <p className="text-slate-600">Welcome back, {user.name}!</p>
-          </div>
-
-          <Card className="border-red-500">
-            <CardHeader>
-              <CardTitle className="flex items-center text-red-600">
-                <AlertCircle className="w-6 h-6 mr-2" />
-                Account Access Restricted
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {subscriptionStatus.message}. Please contact the administrator to restore access to your account.
-                </AlertDescription>
-              </Alert>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Subscription Expired</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-700 mb-4">
+              Your subscription has expired. Please contact the administrator to renew your subscription.
+            </p>
+            <Button onClick={() => window.location.reload()}>
+              Logout
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
+  // ================== MAIN RENDER ==================
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* ✅ PRESERVE: Header unchanged */}
-        <div className="flex justify-between items-center">
+    <div className="min-h-screen bg-gray-50">
+      <div className="container mx-auto px-4 py-8">
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
-            <p className="text-slate-600">Welcome back, {user.name}!</p>
-            <Badge variant={subscriptionStatus.variant} className="mt-2">
+            <h1 className="text-3xl font-bold text-gray-900 flex items-center">
+              <Crown className="w-8 h-8 mr-3 text-yellow-500" />
+              Host Dashboard
+            </h1>
+            <p className="text-gray-600 mt-1">Manage your Tambola games</p>
+          </div>
+          <div className="text-right">
+            <Badge variant={subscriptionStatus.variant} className="mb-2">
               {subscriptionStatus.message}
             </Badge>
+            <p className="text-sm text-gray-600">Welcome, {user.name}</p>
           </div>
         </div>
 
-        {/* ✅ PRESERVE: Operation Status Display unchanged */}
-        {operation.message && (
-          <Alert className={operation.inProgress ? "border-blue-500 bg-blue-50" : "border-green-500 bg-green-50"}>
-            <div className="flex items-center">
-              {operation.inProgress ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : (
-                <CheckCircle className="h-4 w-4 text-green-600 mr-2" />
-              )}
-              <AlertDescription className={operation.inProgress ? "text-blue-800" : "text-green-800"}>
-                {operation.message}
-                {operation.inProgress && operation.type === 'create' && (
-                  <span className="block text-sm mt-1">Real-time system will automatically switch to booking view when ready.</span>
-                )}
-                {operation.inProgress && operation.type === 'delete' && (
-                  <span className="block text-sm mt-1">Real-time system will automatically switch to create view when ready.</span>
-                )}
-              </AlertDescription>
-            </div>
-          </Alert>
+        {/* Status Display */}
+        {operation.inProgress && (
+          <Card className="mb-6 border-blue-200 bg-blue-50">
+            <CardContent className="py-4">
+              <div className="flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                <span className="text-blue-800">{operation.message}</span>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
-        {/* ✅ NEW: Winner Display View */}
-        {currentView === 'winners' && cachedWinnerData && (
-          <SimplifiedWinnerDisplay 
-            gameData={cachedWinnerData}
-            onCreateNewGame={handleCreateNewGameFromWinners}
-          />
-        )}
-
-        {/* ✅ NEW: Setup View (same as create but separate for flow clarity) */}
-        {(currentView === 'create' || currentView === 'setup') && !editMode && (
-          <CreateGameForm 
+        {/* Game Setup Phase */}
+        {currentView === 'setup' && (
+          <CreateGameForm
             createGameForm={createGameForm}
             setCreateGameForm={setCreateGameForm}
             onCreateGame={createNewGame}
             onMaxTicketsChange={handleMaxTicketsChange}
             isCreating={isCreating}
             operationInProgress={operation.inProgress}
-            isFromWinners={currentView === 'setup'} // ✅ NEW: Pass context
+            isFromWinners={!!cachedWinnerData}
           />
         )}
 
-        {/* ✅ PRESERVE: All other views unchanged */}
+        {/* Winners Display Phase */}
+        {currentView === 'winners' && cachedWinnerData && (
+          <SimplifiedWinnerDisplay
+            gameData={cachedWinnerData}
+            onCreateNewGame={handleCreateNewGameFromWinners}
+          />
+        )}
+
+        {/* Game Booking Phase */}
         {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -620,7 +745,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </div>
         )}
 
-        {/* ✅ PRESERVE: Edit Game Form unchanged */}
+        {/* Edit Game Form */}
         {currentView === 'booking' && gameData && editMode && (
           <EditGameForm
             gameData={gameData}
@@ -636,14 +761,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ PRESERVE: Live Game Phases unchanged */}
+        {/* Live Game Phases */}
         {currentView === 'live' && gameData && (
           <HostControlsProvider userId={user.uid}>
             <HostDisplay onCreateNewGame={createNewGame} />
           </HostControlsProvider>
         )}
 
-        {/* ✅ PRESERVE: Audio Manager unchanged */}
+        {/* Audio Manager */}
         {gameData && (
           <AudioManager
             currentNumber={gameData.gameState.currentNumber}
@@ -652,9 +777,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ PRESERVE: Development Debug Info unchanged */}
+        {/* Development Debug Info */}
         {process.env.NODE_ENV === 'development' && (
-          <Card className="border-gray-300 bg-gray-50">
+          <Card className="border-gray-300 bg-gray-50 mt-6">
             <CardHeader>
               <CardTitle className="text-sm text-gray-700">Debug: GameHost State</CardTitle>
             </CardHeader>
@@ -690,7 +815,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
 };
 
-// ✅ PRESERVE: All form components unchanged except for minor prop addition
+// ================== FORM COMPONENTS ==================
 
 const CreateGameForm = ({ 
   createGameForm, 
@@ -699,13 +824,13 @@ const CreateGameForm = ({
   onMaxTicketsChange, 
   isCreating,
   operationInProgress,
-  isFromWinners = false // ✅ NEW: Optional prop to show context
+  isFromWinners = false
 }: any) => (
   <Card>
     <CardHeader>
       <CardTitle className="flex items-center">
         <Plus className="w-6 h-6 mr-2" />
-        {isFromWinners ? 'Create New Tambola Game' : 'Create New Tambola Game'}
+        Create New Tambola Game
       </CardTitle>
       {isFromWinners && (
         <p className="text-sm text-blue-600">
@@ -716,107 +841,117 @@ const CreateGameForm = ({
     <CardContent className="space-y-6">
       {/* Host Phone */}
       <div>
-        <Label htmlFor="host-phone">WhatsApp Phone Number (with country code)</Label>
+        <Label htmlFor="hostPhone" className="flex items-center mb-2">
+          <Phone className="w-4 h-4 mr-2" />
+          Your WhatsApp Number
+        </Label>
         <Input
-          id="host-phone"
+          id="hostPhone"
           type="tel"
-          placeholder="e.g., 919876543210"
           value={createGameForm.hostPhone}
           onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
-          className="border-2 border-gray-200 focus:border-blue-400"
-          disabled={operationInProgress}
+          placeholder="Enter your WhatsApp number"
+          disabled={isCreating || operationInProgress}
         />
-        <p className="text-sm text-gray-500 mt-1">Players will contact you on this number</p>
+        <p className="text-sm text-gray-600 mt-1">
+          Players will use this number to contact you
+        </p>
       </div>
 
       {/* Max Tickets */}
       <div>
-        <Label htmlFor="max-tickets">Maximum Tickets</Label>
+        <Label htmlFor="maxTickets" className="flex items-center mb-2">
+          <Ticket className="w-4 h-4 mr-2" />
+          Maximum Tickets
+        </Label>
         <Input
-          id="max-tickets"
+          id="maxTickets"
           type="number"
           min="1"
           max="600"
-          placeholder="Enter number of tickets"
           value={createGameForm.maxTickets}
           onChange={onMaxTicketsChange}
-          className="border-2 border-gray-200 focus:border-blue-400"
-          disabled={operationInProgress}
+          placeholder="Enter maximum tickets (1-600)"
+          disabled={isCreating || operationInProgress}
         />
-        <p className="text-sm text-gray-500 mt-1">How many tickets can be sold for this game</p>
+        <p className="text-sm text-gray-600 mt-1">
+          Total tickets available for booking
+        </p>
       </div>
 
       {/* Ticket Set Selection */}
       <div>
-        <Label>Select Ticket Set</Label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-          {TICKET_SETS.map((ticketSet) => (
-            <Card
-              key={ticketSet.id}
-              className={`cursor-pointer transition-all ${
-                createGameForm.selectedTicketSet === ticketSet.id
-                  ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300'
-                  : 'hover:shadow-md border-gray-200'
-              } ${!ticketSet.available || operationInProgress ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={() => !operationInProgress && ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
+        <Label className="flex items-center mb-3">
+          <Settings className="w-4 h-4 mr-2" />
+          Ticket Set
+        </Label>
+        <div className="grid grid-cols-1 gap-3">
+          {TICKET_SETS.map(set => (
+            <div
+              key={set.id}
+              className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                createGameForm.selectedTicketSet === set.id
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              } ${(!set.available || isCreating || operationInProgress) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={() => {
+                if (set.available && !isCreating && !operationInProgress) {
+                  setCreateGameForm(prev => ({ ...prev, selectedTicketSet: set.id }));
+                }
+              }}
             >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className={`font-bold ${
-                    createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-900' : 'text-gray-800'
-                  }`}>{ticketSet.name}</h3>
-                  <Badge 
-                    variant={ticketSet.available ? "default" : "secondary"}
-                    className={createGameForm.selectedTicketSet === ticketSet.id ? 'bg-blue-600 text-white' : ''}
-                  >
-                    {ticketSet.available ? 'Available' : 'Coming Soon'}
-                  </Badge>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="flex items-center">
+                    <input
+                      type="radio"
+                      checked={createGameForm.selectedTicketSet === set.id}
+                      onChange={() => {}}
+                      className="mr-3"
+                      disabled={!set.available || isCreating || operationInProgress}
+                    />
+                    <h3 className="font-medium">{set.name}</h3>
+                    <Badge variant="outline" className="ml-2 text-xs">
+                      {set.ticketCount} tickets
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">{set.description}</p>
                 </div>
-                <p className={`text-sm mb-2 ${
-                  createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-800' : 'text-gray-600'
-                }`}>{ticketSet.description}</p>
-                <p className={`text-xs ${
-                  createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-700' : 'text-gray-500'
-                }`}>{ticketSet.ticketCount} tickets</p>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       </div>
 
       {/* Prize Selection */}
       <div>
-        <Label>Select Prizes</Label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-          {AVAILABLE_PRIZES
-            .sort((a, b) => a.order - b.order)
-            .map((prize) => (
-            <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+        <Label className="flex items-center mb-3">
+          <Crown className="w-4 h-4 mr-2" />
+          Select Prizes
+        </Label>
+        <div className="grid grid-cols-1 gap-3">
+          {AVAILABLE_PRIZES.map(prize => (
+            <div key={prize.id} className="flex items-start space-x-3">
               <Checkbox
                 id={prize.id}
                 checked={createGameForm.selectedPrizes.includes(prize.id)}
-                disabled={operationInProgress}
                 onCheckedChange={(checked) => {
-                  if (operationInProgress) return;
+                  if (isCreating || operationInProgress) return;
                   
-                  if (checked) {
-                    setCreateGameForm(prev => ({
-                      ...prev,
-                      selectedPrizes: [...prev.selectedPrizes, prize.id]
-                    }));
-                  } else {
-                    setCreateGameForm(prev => ({
-                      ...prev,
-                      selectedPrizes: prev.selectedPrizes.filter(id => id !== prize.id)
-                    }));
-                  }
+                  setCreateGameForm(prev => ({
+                    ...prev,
+                    selectedPrizes: checked
+                      ? [...prev.selectedPrizes, prize.id]
+                      : prev.selectedPrizes.filter(id => id !== prize.id)
+                  }));
                 }}
+                disabled={isCreating || operationInProgress}
               />
               <div className="flex-1">
-                <Label htmlFor={prize.id} className="font-medium cursor-pointer">
+                <Label htmlFor={prize.id} className="flex items-center">
                   {prize.name}
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={`ml-2 text-xs ${
                       prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
                       prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
@@ -826,12 +961,6 @@ const CreateGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
-                  {/* ✅ NEW: Special indicator for Half Sheet */}
-                  {prize.id === 'halfSheet' && (
-                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
-                      Traditional
-                    </Badge>
-                  )}
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
                 <p className="text-xs text-gray-500">{prize.description}</p>
@@ -863,23 +992,10 @@ const CreateGameForm = ({
           Real-time system will automatically update the view when ready
         </div>
       )}
-      
-      {/* ✅ NEW: Half Sheet info */}
-      {createGameForm.selectedPrizes.includes('halfSheet') && (
-        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-          <p className="text-sm text-purple-800 font-medium">
-            🎯 Half Sheet Prize Enabled
-          </p>
-          <p className="text-xs text-purple-600 mt-1">
-            Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
-          </p>
-        </div>
-      )}
     </CardContent>
   </Card>
 );
 
-// ✅ PRESERVE: EditGameForm unchanged (keeping original implementation)
 const EditGameForm = ({ 
   gameData, 
   createGameForm, 
@@ -907,107 +1023,86 @@ const EditGameForm = ({
         </AlertDescription>
       </Alert>
 
+      {/* Current Stats */}
+      <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+        <div className="text-center">
+          <p className="text-2xl font-bold text-blue-600">{bookedCount}</p>
+          <p className="text-sm text-gray-600">Booked</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-green-600">{gameData.maxTickets - bookedCount}</p>
+          <p className="text-sm text-gray-600">Available</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-gray-600">{gameData.maxTickets}</p>
+          <p className="text-sm text-gray-600">Total</p>
+        </div>
+      </div>
+
+      {/* Host Phone */}
       <div>
-        <Label htmlFor="edit-host-phone">WhatsApp Phone Number</Label>
+        <Label htmlFor="editHostPhone" className="flex items-center mb-2">
+          <Phone className="w-4 h-4 mr-2" />
+          Your WhatsApp Number
+        </Label>
         <Input
-          id="edit-host-phone"
+          id="editHostPhone"
           type="tel"
           value={createGameForm.hostPhone}
           onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
-          className="border-2 border-gray-200 focus:border-blue-400"
           disabled={isCreating || operationInProgress}
         />
       </div>
 
+      {/* Max Tickets */}
       <div>
-        <Label htmlFor="edit-max-tickets">Maximum Tickets</Label>
+        <Label htmlFor="editMaxTickets" className="flex items-center mb-2">
+          <Ticket className="w-4 h-4 mr-2" />
+          Maximum Tickets
+        </Label>
         <Input
-          id="edit-max-tickets"
+          id="editMaxTickets"
           type="number"
-          min="1"
+          min={bookedCount}
           max="600"
-          placeholder="Enter number of tickets"
           value={createGameForm.maxTickets}
           onChange={onMaxTicketsChange}
-          className="border-2 border-gray-200 focus:border-blue-400"
           disabled={isCreating || operationInProgress}
         />
-        <p className="text-sm text-gray-500 mt-1">
-          Current bookings: {bookedCount}. Cannot set below current bookings.
+        <p className="text-sm text-gray-600 mt-1">
+          Cannot be less than current bookings ({bookedCount})
         </p>
-      </div>
-
-      {/* Ticket Set Selection */}
-      <div>
-        <Label>Select Ticket Set</Label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-          {TICKET_SETS.map((ticketSet) => (
-            <Card
-              key={ticketSet.id}
-              className={`cursor-pointer transition-all ${
-                createGameForm.selectedTicketSet === ticketSet.id
-                  ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-300'
-                  : 'hover:shadow-md border-gray-200'
-              } ${!ticketSet.available || isCreating || operationInProgress ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={() => !isCreating && !operationInProgress && ticketSet.available && setCreateGameForm(prev => ({ ...prev, selectedTicketSet: ticketSet.id }))}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className={`font-bold ${
-                    createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-900' : 'text-gray-800'
-                  }`}>{ticketSet.name}</h3>
-                  <Badge 
-                    variant={ticketSet.available ? "default" : "secondary"}
-                    className={createGameForm.selectedTicketSet === ticketSet.id ? 'bg-blue-600 text-white' : ''}
-                  >
-                    {ticketSet.available ? 'Available' : 'Coming Soon'}
-                  </Badge>
-                </div>
-                <p className={`text-sm mb-2 ${
-                  createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-800' : 'text-gray-600'
-                }`}>{ticketSet.description}</p>
-                <p className={`text-xs ${
-                  createGameForm.selectedTicketSet === ticketSet.id ? 'text-blue-700' : 'text-gray-500'
-                }`}>{ticketSet.ticketCount} tickets</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       </div>
 
       {/* Prize Selection */}
       <div>
-        <Label>Select Prizes</Label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-          {AVAILABLE_PRIZES
-            .sort((a, b) => a.order - b.order)
-            .map((prize) => (
-            <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
+        <Label className="flex items-center mb-3">
+          <Crown className="w-4 h-4 mr-2" />
+          Update Prizes
+        </Label>
+        <div className="grid grid-cols-1 gap-3">
+          {AVAILABLE_PRIZES.map(prize => (
+            <div key={prize.id} className="flex items-start space-x-3">
               <Checkbox
                 id={`edit-${prize.id}`}
                 checked={createGameForm.selectedPrizes.includes(prize.id)}
-                disabled={isCreating || operationInProgress}
                 onCheckedChange={(checked) => {
                   if (isCreating || operationInProgress) return;
                   
-                  if (checked) {
-                    setCreateGameForm(prev => ({
-                      ...prev,
-                      selectedPrizes: [...prev.selectedPrizes, prize.id]
-                    }));
-                  } else {
-                    setCreateGameForm(prev => ({
-                      ...prev,
-                      selectedPrizes: prev.selectedPrizes.filter(id => id !== prize.id)
-                    }));
-                  }
+                  setCreateGameForm(prev => ({
+                    ...prev,
+                    selectedPrizes: checked
+                      ? [...prev.selectedPrizes, prize.id]
+                      : prev.selectedPrizes.filter(id => id !== prize.id)
+                  }));
                 }}
+                disabled={isCreating || operationInProgress}
               />
               <div className="flex-1">
-                <Label htmlFor={`edit-${prize.id}`} className="font-medium cursor-pointer">
+                <Label htmlFor={`edit-${prize.id}`} className="flex items-center">
                   {prize.name}
-                  <Badge 
-                    variant="outline" 
+                  <Badge
+                    variant="outline"
                     className={`ml-2 text-xs ${
                       prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
                       prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
@@ -1017,15 +1112,13 @@ const EditGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
-                  {/* ✅ NEW: Special indicator for Half Sheet */}
-                  {prize.id === 'halfSheet' && (
-                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
-                      Traditional
+                  {gameData.prizes[prize.id]?.won && (
+                    <Badge variant="default" className="ml-2 text-xs bg-green-600">
+                      Won
                     </Badge>
                   )}
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
-                <p className="text-xs text-gray-500">{prize.description}</p>
               </div>
             </div>
           ))}
@@ -1033,59 +1126,41 @@ const EditGameForm = ({
       </div>
       
       <div className="flex space-x-4">
-        <Button
+        <Button 
           onClick={onUpdateGame}
-          disabled={isCreating || operationInProgress || !createGameForm.maxTickets.trim() || parseInt(createGameForm.maxTickets) < bookedCount}
-          className="flex-1 bg-blue-600 hover:bg-blue-700"
+          disabled={isCreating || operationInProgress}
+          className="bg-blue-600 hover:bg-blue-700 text-white"
         >
           {isCreating ? (
             <>
-              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              Saving...
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Updating...
             </>
           ) : (
             <>
               <Save className="w-4 h-4 mr-2" />
-              Save Changes
+              Update Settings
             </>
           )}
         </Button>
-        <Button
+        <Button 
           onClick={onCancel}
+          disabled={operationInProgress}
           variant="outline"
-          disabled={isCreating || operationInProgress}
         >
           Cancel
         </Button>
-        <Button
+        <Button 
           onClick={onDeleteGame}
+          disabled={operationInProgress}
           variant="destructive"
-          disabled={isCreating || operationInProgress || bookedCount > 0}
-          title={bookedCount > 0 ? 'Cannot delete game with booked tickets' : 'Delete this game'}
         >
           <Trash2 className="w-4 h-4 mr-2" />
           Delete Game
         </Button>
       </div>
-      
-      {operationInProgress && (
-        <div className="text-center text-sm text-blue-600">
-          <Clock className="w-4 h-4 inline mr-1" />
-          Real-time system will automatically update the view when ready
-        </div>
-      )}
-      
-      {/* ✅ NEW: Half Sheet info in edit mode */}
-      {createGameForm.selectedPrizes.includes('halfSheet') && (
-        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-          <p className="text-sm text-purple-800 font-medium">
-            🎯 Half Sheet Prize Enabled
-          </p>
-          <p className="text-xs text-purple-600 mt-1">
-            Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
-          </p>
-        </div>
-      )}
     </CardContent>
   </Card>
 );
+
+export default GameHost;
