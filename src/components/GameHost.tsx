@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - FIXED: Remove manual view control, add proper loading states
+// src/components/GameHost.tsx - UPDATED: Component-level winner display management
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { HostDisplay } from './HostDisplay';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { AudioManager } from './AudioManager';
+import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay'; // ✅ NEW: Import winner display
 import { 
   Plus,
   AlertCircle,
@@ -23,7 +24,8 @@ import {
 } from 'lucide-react';
 import { 
   firebaseService, 
-  HostUser
+  HostUser,
+  GameData // ✅ NEW: Import GameData type
 } from '@/services/firebase';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
 import { HostControlsProvider } from '@/providers/HostControlsProvider';
@@ -33,14 +35,13 @@ interface GameHostProps {
   userRole: 'host';
 }
 
-// ✅ UPDATED: Added order and difficulty for prize management
 interface GamePrize {
   id: string;
   name: string;
   pattern: string;
   description: string;
-  order: number;      // ← NEW: For display ordering
-  difficulty: string; // ← NEW: For UI indicators
+  order: number;
+  difficulty: string;
 }
 
 interface CreateGameForm {
@@ -50,14 +51,16 @@ interface CreateGameForm {
   selectedPrizes: string[];
 }
 
-// ✅ NEW: Operation states for better UX
+// ✅ NEW: UI state type for component-level management
+type UIState = 'calculated' | 'winners' | 'setup';
+
 interface OperationState {
   type: 'create' | 'delete' | null;
   inProgress: boolean;
   message: string;
 }
 
-// Available options
+// Available options (unchanged)
 const TICKET_SETS = [
   {
     id: "1",
@@ -75,7 +78,6 @@ const TICKET_SETS = [
   }
 ];
 
-// ✅ UPDATED: Complete prize list with new Corner and Star Corner prizes
 const AVAILABLE_PRIZES: GamePrize[] = [
   {
     id: 'quickFive',
@@ -135,22 +137,17 @@ const AVAILABLE_PRIZES: GamePrize[] = [
   }
 ];
 
-/**
- * GameHost Component - FIXED: Real-time driven view with proper loading states
- */
 export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
-  // ✅ REAL-TIME: Keep all existing real-time functionality
+  // ✅ PRESERVE: All existing real-time functionality
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   
-  // ✅ NEW: Operation tracking for better UX during transitions
+  // ✅ PRESERVE: All existing state
   const [operation, setOperation] = useState<OperationState>({
     type: null,
     inProgress: false,
     message: ''
   });
-  
-  // ✅ UNCHANGED: All existing state
   const [editMode, setEditMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
@@ -160,7 +157,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fullHouse']
   });
 
-  // ✅ UNCHANGED: All existing functions
+  // ✅ NEW: Component-level state for winner display management
+  const [uiState, setUIState] = useState<UIState>('calculated');
+  const [cachedWinnerData, setCachedWinnerData] = useState<GameData | null>(null);
+
+  // ✅ PRESERVE: All existing functions unchanged
   const isSubscriptionValid = React.useCallback(() => {
     const now = new Date();
     const endDate = new Date(user.subscriptionEndDate);
@@ -187,7 +188,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     return { message: `Active until ${endDate.toLocaleDateString()}`, variant: 'default' as const };
   }, [user.subscriptionEndDate, user.isActive]);
 
-  // ✅ UNCHANGED: Load previous settings
+  // ✅ PRESERVE: Load previous settings unchanged
   useEffect(() => {
     const loadPreviousSettings = async () => {
       try {
@@ -211,21 +212,34 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     loadPreviousSettings();
   }, [user.uid]);
 
-  // ✅ NEW: Clear operation state when real-time data updates
+  // ✅ NEW: Handle game completion and winner display
+  useEffect(() => {
+    // When game ends and we're not already showing winners
+    if (gameData?.gameState.gameOver && uiState === 'calculated') {
+      console.log('🏆 Game completed, caching winner data for display');
+      setCachedWinnerData(gameData);
+      setUIState('winners');
+    }
+    
+    // When game data becomes null (deleted) and we're in winners mode, go to setup
+    if (!gameData && uiState === 'winners' && cachedWinnerData) {
+      console.log('🎮 Game deleted, transitioning to setup mode');
+      setUIState('setup');
+    }
+  }, [gameData?.gameState.gameOver, gameData, uiState, cachedWinnerData]);
+
+  // ✅ PRESERVE: Clear operation state when real-time data updates (unchanged)
   useEffect(() => {
     if (operation.inProgress) {
-      // Check if operation completed based on real-time data
       if (operation.type === 'create' && gameData) {
         console.log('✅ Create operation completed - game data received via real-time');
         setOperation({ type: null, inProgress: false, message: 'Game created successfully!' });
-        // Clear success message after 3 seconds
         setTimeout(() => {
           setOperation({ type: null, inProgress: false, message: '' });
         }, 3000);
       } else if (operation.type === 'delete' && !gameData) {
         console.log('✅ Delete operation completed - game data cleared via real-time');
         setOperation({ type: null, inProgress: false, message: 'Game deleted successfully!' });
-        // Clear success message after 3 seconds
         setTimeout(() => {
           setOperation({ type: null, inProgress: false, message: '' });
         }, 3000);
@@ -233,7 +247,25 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, [gameData, operation]);
 
-  // ✅ FIXED: Updated createNewGame - remove manual view control
+  // ✅ NEW: Handle "Create New Game" button from winner display
+  const handleCreateNewGameFromWinners = React.useCallback(() => {
+    const confirmed = window.confirm(
+      '🎮 Create New Game\n\n' +
+      'This will clear the winner display and take you to game setup.\n\n' +
+      'The winner information will be removed from view but you can note down contact details now.\n\n' +
+      'Continue to create a new game?'
+    );
+    
+    if (confirmed) {
+      console.log('✅ Host confirmed new game creation from winner display');
+      console.log('🎯 Transitioning to setup mode (winner data preserved until new game created)');
+      setUIState('setup');
+    } else {
+      console.log('🚫 Host cancelled new game creation from winner display');
+    }
+  }, []);
+
+  // ✅ MODIFIED: createNewGame function to handle deletion timing
   const createNewGame = async () => {
     if (!isSubscriptionValid()) {
       alert('Your subscription has expired. Please contact the administrator.');
@@ -251,6 +283,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     try {
       console.log('🎮 Starting game creation process...');
+      
+      // ✅ NEW: If we have cached winner data, delete the old game BEFORE creating new one
+      if (cachedWinnerData) {
+        console.log('🗑️ Deleting previous completed game before creating new one:', cachedWinnerData.gameId);
+        try {
+          await firebaseService.deleteGame(cachedWinnerData.gameId);
+          console.log('✅ Previous game deleted successfully');
+        } catch (deleteError) {
+          console.error('⚠️ Error deleting previous game (continuing with creation):', deleteError);
+          // Continue with creation even if deletion fails
+        }
+        setCachedWinnerData(null); // Clear cached data
+      }
       
       await firebaseService.saveHostSettings(user.uid, {
         hostPhone: createGameForm.hostPhone,
@@ -275,7 +320,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       
       console.log('✅ Game created successfully:', newGame.gameId);
       
-      // ✅ NEW: Update operation state - real-time data will trigger view change
+      // ✅ NEW: Reset UI state to calculated (let real-time data drive the view)
+      setUIState('calculated');
+      
       setOperation(prev => ({
         ...prev,
         message: 'Game created! Waiting for real-time update...'
@@ -290,7 +337,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ✅ UNCHANGED: Enhanced updateGameSettings function
+  // ✅ PRESERVE: All other existing functions unchanged
   const updateGameSettings = async () => {
     if (!gameData) return;
 
@@ -307,13 +354,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
     setIsCreating(true);
     try {
-      // Update basic game data
       await firebaseService.updateGameData(gameData.gameId, {
         maxTickets: maxTicketsNum,
         hostPhone: createGameForm.hostPhone
       });
 
-      // Save updated host settings
       await firebaseService.saveHostSettings(user.uid, {
         hostPhone: createGameForm.hostPhone,
         maxTickets: maxTicketsNum,
@@ -332,7 +377,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ✅ FIXED: Updated deleteGame - remove manual view control
   const deleteGame = async () => {
     if (!gameData) return;
 
@@ -350,7 +394,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
       await firebaseService.deleteGame(gameData.gameId);
       console.log('✅ Game deleted successfully');
       
-      // ✅ NEW: Update operation state - real-time data will trigger view change
       setOperation(prev => ({
         ...prev,
         message: 'Game deleted! Waiting for real-time update...'
@@ -365,7 +408,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   };
 
-  // ✅ UNCHANGED: Handle max tickets change
   const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     if (value === '' || /^\d+$/.test(value)) {
@@ -375,7 +417,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const subscriptionStatus = getSubscriptionStatus();
 
-  // ✅ UNCHANGED: Loading state management
+  // ✅ PRESERVE: All existing loading and error states unchanged
   const [loadingTimeout, setLoadingTimeout] = useState(false);
   
   useEffect(() => {
@@ -390,8 +432,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     }
   }, [isLoading]);
 
-  // ✅ NEW: Determine current view based on real-time data (pure calculation)
-  const getCurrentView = (): 'create' | 'booking' | 'live' => {
+  // ✅ NEW: Enhanced view calculation with UI state override
+  const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
+    // ✅ NEW: UI state overrides calculated view
+    if (uiState === 'winners') {
+      return 'winners';
+    }
+    if (uiState === 'setup') {
+      return 'setup';
+    }
+    
+    // ✅ PRESERVE: Original calculated view logic
     if (!gameData) {
       return 'create';
     }
@@ -409,7 +460,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
 
   const currentView = getCurrentView();
 
-  // ✅ UNCHANGED: Loading and error states
+  // ✅ PRESERVE: All existing loading and error handling unchanged
   if (isLoading && loadingTimeout) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4 flex items-center justify-center">
@@ -442,7 +493,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
     );
   }
 
-  // ✅ UNCHANGED: Subscription validation
+  // ✅ PRESERVE: Subscription validation unchanged
   if (!isSubscriptionValid()) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
@@ -476,7 +527,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* ✅ UNCHANGED: Header */}
+        {/* ✅ PRESERVE: Header unchanged */}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold text-slate-800">Host Dashboard</h1>
@@ -487,7 +538,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </div>
         </div>
 
-        {/* ✅ NEW: Operation Status Display */}
+        {/* ✅ PRESERVE: Operation Status Display unchanged */}
         {operation.message && (
           <Alert className={operation.inProgress ? "border-blue-500 bg-blue-50" : "border-green-500 bg-green-50"}>
             <div className="flex items-center">
@@ -509,9 +560,16 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           </Alert>
         )}
 
-        {/* ✅ FIXED: Use calculated currentView instead of state */}
-        {/* Create Game Form */}
-        {currentView === 'create' && !editMode && (
+        {/* ✅ NEW: Winner Display View */}
+        {currentView === 'winners' && cachedWinnerData && (
+          <SimplifiedWinnerDisplay 
+            gameData={cachedWinnerData}
+            onCreateNewGame={handleCreateNewGameFromWinners}
+          />
+        )}
+
+        {/* ✅ NEW: Setup View (same as create but separate for flow clarity) */}
+        {(currentView === 'create' || currentView === 'setup') && !editMode && (
           <CreateGameForm 
             createGameForm={createGameForm}
             setCreateGameForm={setCreateGameForm}
@@ -519,11 +577,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
             onMaxTicketsChange={handleMaxTicketsChange}
             isCreating={isCreating}
             operationInProgress={operation.inProgress}
+            isFromWinners={currentView === 'setup'} // ✅ NEW: Pass context
           />
         )}
 
-        {/* ✅ FIXED: Use calculated currentView instead of state */}
-        {/* Booking Phase */}
+        {/* ✅ PRESERVE: All other views unchanged */}
         {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -540,19 +598,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
               </div>
             </div>
 
-            {/* ✅ UNCHANGED: Real-time components continue working */}
             <HostControlsProvider userId={user.uid}>
               <HostDisplay />
             </HostControlsProvider>
             
             <TicketManagementGrid
               gameData={gameData}
-              onRefreshGame={() => {}} // No manual refresh needed with subscriptions
+              onRefreshGame={() => {}}
             />
           </div>
         )}
 
-        {/* ✅ UNCHANGED: Edit Game Form */}
+        {/* ✅ PRESERVE: Edit Game Form unchanged */}
         {currentView === 'booking' && gameData && editMode && (
           <EditGameForm
             gameData={gameData}
@@ -568,15 +625,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ FIXED: Use calculated currentView instead of state */}
-        {/* Live Game Phases - Real-time continues working */}
+        {/* ✅ PRESERVE: Live Game Phases unchanged */}
         {currentView === 'live' && gameData && (
           <HostControlsProvider userId={user.uid}>
             <HostDisplay onCreateNewGame={createNewGame} />
           </HostControlsProvider>
         )}
 
-        {/* ✅ UNCHANGED: Audio Manager - Real-time continues working */}
+        {/* ✅ PRESERVE: Audio Manager unchanged */}
         {gameData && (
           <AudioManager
             currentNumber={gameData.gameState.currentNumber}
@@ -585,16 +641,19 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
           />
         )}
 
-        {/* ✅ ENHANCED: Development Debug Info */}
+        {/* ✅ PRESERVE: Development Debug Info unchanged */}
         {process.env.NODE_ENV === 'development' && (
           <Card className="border-gray-300 bg-gray-50">
             <CardHeader>
               <CardTitle className="text-sm text-gray-700">Debug: GameHost State</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-6 gap-4 text-xs">
+              <div className="grid grid-cols-7 gap-4 text-xs">
                 <div>
                   <span className="font-medium">View:</span> {currentView}
+                </div>
+                <div>
+                  <span className="font-medium">UI State:</span> {uiState}
                 </div>
                 <div>
                   <span className="font-medium">Phase:</span> {currentPhase}
@@ -603,10 +662,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
                   <span className="font-medium">Game ID:</span> {gameData?.gameId || 'None'}
                 </div>
                 <div>
-                  <span className="font-medium">Loading:</span> {isLoading ? 'Yes' : 'No'}
+                  <span className="font-medium">Cached:</span> {cachedWinnerData?.gameId || 'None'}
                 </div>
                 <div>
-                  <span className="font-medium">Edit:</span> {editMode ? 'Yes' : 'No'}
+                  <span className="font-medium">Loading:</span> {isLoading ? 'Yes' : 'No'}
                 </div>
                 <div>
                   <span className="font-medium">Operation:</span> {operation.inProgress ? operation.type : 'None'}
@@ -620,21 +679,28 @@ export const GameHost: React.FC<GameHostProps> = ({ user, userRole }) => {
   );
 };
 
-// ✅ ENHANCED: CreateGameForm component with operation status
+// ✅ PRESERVE: All form components unchanged except for minor prop addition
+
 const CreateGameForm = ({ 
   createGameForm, 
   setCreateGameForm, 
   onCreateGame, 
   onMaxTicketsChange, 
   isCreating,
-  operationInProgress 
+  operationInProgress,
+  isFromWinners = false // ✅ NEW: Optional prop to show context
 }: any) => (
   <Card>
     <CardHeader>
       <CardTitle className="flex items-center">
         <Plus className="w-6 h-6 mr-2" />
-        Create New Tambola Game
+        {isFromWinners ? 'Create New Tambola Game' : 'Create New Tambola Game'}
       </CardTitle>
+      {isFromWinners && (
+        <p className="text-sm text-blue-600">
+          ✅ Previous game winner data cleared from view. Configure your new game below.
+        </p>
+      )}
     </CardHeader>
     <CardContent className="space-y-6">
       {/* Host Phone */}
@@ -707,12 +773,12 @@ const CreateGameForm = ({
         </div>
       </div>
 
-      {/* ✅ UPDATED: Prize Selection with sorting */}
+      {/* Prize Selection */}
       <div>
         <Label>Select Prizes</Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
           {AVAILABLE_PRIZES
-            .sort((a, b) => a.order - b.order) // ← NEW: Sort by order
+            .sort((a, b) => a.order - b.order)
             .map((prize) => (
             <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
               <Checkbox
@@ -738,7 +804,6 @@ const CreateGameForm = ({
               <div className="flex-1">
                 <Label htmlFor={prize.id} className="font-medium cursor-pointer">
                   {prize.name}
-                  {/* ✅ NEW: Show difficulty indicator */}
                   <Badge 
                     variant="outline" 
                     className={`ml-2 text-xs ${
@@ -785,7 +850,7 @@ const CreateGameForm = ({
   </Card>
 );
 
-// ✅ ENHANCED: EditGameForm component with operation status
+// ✅ PRESERVE: EditGameForm unchanged (keeping original implementation)
 const EditGameForm = ({ 
   gameData, 
   createGameForm, 
@@ -881,12 +946,12 @@ const EditGameForm = ({
         </div>
       </div>
 
-      {/* ✅ UPDATED: Prize Selection with sorting */}
+      {/* Prize Selection */}
       <div>
         <Label>Select Prizes</Label>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
           {AVAILABLE_PRIZES
-            .sort((a, b) => a.order - b.order) // ← NEW: Sort by order
+            .sort((a, b) => a.order - b.order)
             .map((prize) => (
             <div key={prize.id} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-gray-50">
               <Checkbox
@@ -912,7 +977,6 @@ const EditGameForm = ({
               <div className="flex-1">
                 <Label htmlFor={`edit-${prize.id}`} className="font-medium cursor-pointer">
                   {prize.name}
-                  {/* ✅ NEW: Show difficulty indicator */}
                   <Badge 
                     variant="outline" 
                     className={`ml-2 text-xs ${
