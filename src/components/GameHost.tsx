@@ -103,6 +103,14 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     difficulty: 'easy'
   },
   {
+    id: 'halfSheet',
+    name: 'Half Sheet',
+    pattern: '3 consecutive tickets from same set',
+    description: 'Complete half of a traditional 6-ticket sheet',
+    order: 2.5,
+    difficulty: 'medium'
+  },
+  {
     id: 'topLine',
     name: 'Top Line',
     pattern: 'Complete top row',
@@ -259,7 +267,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     hostPhone: '',
     maxTickets: '100',
     selectedTicketSet: '1',
-    selectedPrizes: ['earlyFive', 'topLine', 'fullHouse']
+    selectedPrizes: ['earlyFive', 'halfSheet', 'topLine', 'fullHouse']
   });
 
   // Component-level state for winner display management
