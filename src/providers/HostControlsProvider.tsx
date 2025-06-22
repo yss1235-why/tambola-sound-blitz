@@ -38,17 +38,39 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [callInterval, setCallInterval] = React.useState(5);
   
+  // 🛡️ NEW: Pause state lock mechanism
+  const [pauseRequested, setPauseRequested] = React.useState(false);
+  
   // Refs for stable timer management
   const gameActiveRef = useRef(false);
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // 🛡️ NEW: Ref for immediate access in timer callbacks (eliminates race condition)
+  const pauseRequestedRef = useRef(false);
 
-  // Update game active ref when game state changes
+  // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
   useEffect(() => {
     if (gameData) {
-      gameActiveRef.current = gameData.gameState.isActive && !gameData.gameState.gameOver;
+      const shouldBeActive = gameData.gameState.isActive && !gameData.gameState.gameOver;
+      
+      // Only sync from database if we're not in a manual pause state
+      if (!pauseRequested) {
+        gameActiveRef.current = shouldBeActive;
+        console.log(`🔄 Syncing gameActiveRef from database: ${shouldBeActive}`);
+      } else {
+        console.log(`🛡️ Manual pause active - ignoring database sync`);
+      }
+      
+      // If game is actually ended in database, clear pause request
+      if (gameData.gameState.gameOver) {
+        setPauseRequested(false);
+        pauseRequestedRef.current = false;
+        gameActiveRef.current = false;
+        console.log(`🏁 Game ended - clearing pause state`);
+      }
     }
-  }, [gameData?.gameState.isActive, gameData?.gameState.gameOver]);
+  }, [gameData?.gameState.isActive, gameData?.gameState.gameOver, pauseRequested]);
 
   // Clear all timers on unmount or game end
   const clearAllTimers = useCallback(() => {
@@ -68,16 +90,18 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     if (!gameData) return;
     
     const scheduleNextCall = () => {
-      if (!gameActiveRef.current) return;
+      // 🛡️ CRITICAL: Check BOTH conditions using ref for immediate access
+      if (!gameActiveRef.current || pauseRequestedRef.current) return;
       
       gameTimerRef.current = setTimeout(async () => {
-        if (!gameActiveRef.current || !gameData) return;
+        // 🛡️ CRITICAL: Check BOTH conditions again in callback
+        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) return;
         
         try {
           console.log(`🎯 Auto-calling next number for game ${gameData.gameId}`);
           const result = await firebaseService.callNextNumber(gameData.gameId);
           
-          if (result.success && !result.gameEnded && gameActiveRef.current) {
+          if (result.success && !result.gameEnded && gameActiveRef.current && !pauseRequestedRef.current) {
             scheduleNextCall(); // Continue the loop
           } else {
             clearAllTimers(); // Game ended or error
@@ -85,7 +109,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         } catch (error) {
           console.error('❌ Auto-call error:', error);
           // Continue trying after error
-          if (gameActiveRef.current) {
+          if (gameActiveRef.current && !pauseRequestedRef.current) {
             scheduleNextCall();
           }
         }
@@ -102,6 +126,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     setIsProcessing(true);
     try {
       console.log(`🎮 Starting game with countdown: ${gameData.gameId}`);
+      
+      // 🛡️ Clear pause state when starting
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
       
       // Clear any existing timers
       clearAllTimers();
@@ -145,7 +173,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     }
   }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
-  // Pause game
+  // 🛡️ ENHANCED: Pause game with immediate state lock
   const pauseGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
@@ -153,22 +181,43 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`⏸️ Pausing game: ${gameData.gameId}`);
       
+      // 🛡️ STEP 1: Immediately set pause lock (stops all timers instantly)
+      setPauseRequested(true);
+      pauseRequestedRef.current = true;
+      console.log(`🛡️ Pause lock activated - timers will stop immediately`);
+      
+      // 🛡️ STEP 2: Clear existing timers
       clearAllTimers();
       
+      // 🛡️ STEP 3: Update database (this can be slow/fail, but local is already stopped)
       await firebaseService.updateGameState(gameData.gameId, {
         isActive: false,
         isCountdown: false
       });
       
+      console.log(`✅ Game paused successfully: ${gameData.gameId}`);
+      
     } catch (error: any) {
       console.error('❌ Pause game error:', error);
+      
+      // 🛡️ ROLLBACK: If database update fails, rollback the pause state
+      console.log(`🔄 Rolling back pause state due to error`);
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
+      
+      // Try to restart the loop if game was actually active
+      if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
+        gameActiveRef.current = true;
+        startNumberCallingLoop();
+      }
+      
       throw new Error(error.message || 'Failed to pause game');
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, clearAllTimers]);
+  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
-  // Resume game
+  // 🛡️ ENHANCED: Resume game
   const resumeGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
@@ -176,13 +225,21 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`▶️ Resuming game: ${gameData.gameId}`);
       
+      // 🛡️ STEP 1: Update database first
       await firebaseService.updateGameState(gameData.gameId, {
         isActive: true,
         isCountdown: false
       });
       
+      // 🛡️ STEP 2: Clear pause lock and activate locally
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
       gameActiveRef.current = true;
+      
+      // 🛡️ STEP 3: Restart the calling loop
       startNumberCallingLoop();
+      
+      console.log(`✅ Game resumed successfully: ${gameData.gameId}`);
       
     } catch (error: any) {
       console.error('❌ Resume game error:', error);
@@ -199,6 +256,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     setIsProcessing(true);
     try {
       console.log(`🏁 Ending game: ${gameData.gameId}`);
+      
+      // 🛡️ Clear pause state when ending
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
       
       clearAllTimers();
       
@@ -224,10 +285,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // Authorization check
   const isAuthorized = gameData?.hostId === userId;
 
-  // Cleanup on unmount
+  // 🛡️ ENHANCED: Cleanup on unmount
   useEffect(() => {
     return () => {
       clearAllTimers();
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
     };
   }, [clearAllTimers]);
 
