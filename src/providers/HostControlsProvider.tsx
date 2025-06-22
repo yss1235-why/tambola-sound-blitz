@@ -16,7 +16,7 @@ interface HostControlsContextValue {
   // Status
   isProcessing: boolean;
   
-  // 🔧 NEW: Export pause state so other components can check it
+  // 🔧 ONLY NEW ADDITION: Export pause state for GameHost to check
   isPaused: boolean;
   pauseRequestedRef: React.RefObject<boolean>;
 }
@@ -89,6 +89,40 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     gameActiveRef.current = false;
   }, []);
 
+  // Automatic number calling loop
+  const startNumberCallingLoop = useCallback(() => {
+    if (!gameData) return;
+    
+    const scheduleNextCall = () => {
+      // 🛡️ CRITICAL: Check BOTH conditions using ref for immediate access
+      if (!gameActiveRef.current || pauseRequestedRef.current) return;
+      
+      gameTimerRef.current = setTimeout(async () => {
+        // 🛡️ CRITICAL: Check BOTH conditions again in callback
+        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) return;
+        
+        try {
+          console.log(`🎯 Auto-calling next number for game ${gameData.gameId}`);
+          const result = await firebaseService.callNextNumber(gameData.gameId);
+          
+          if (result.success && !result.gameEnded && gameActiveRef.current && !pauseRequestedRef.current) {
+            scheduleNextCall(); // Continue the loop
+          } else {
+            clearAllTimers(); // Game ended or error
+          }
+        } catch (error) {
+          console.error('❌ Auto-call error:', error);
+          // Continue trying after error
+          if (gameActiveRef.current && !pauseRequestedRef.current) {
+            scheduleNextCall();
+          }
+        }
+      }, callInterval * 1000);
+    };
+
+    scheduleNextCall();
+  }, [gameData, callInterval, clearAllTimers]);
+
   // Start game with countdown
   const startGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
@@ -131,6 +165,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
           });
           
           gameActiveRef.current = true;
+          startNumberCallingLoop();
         }
       }, 1000);
       
@@ -140,7 +175,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, clearAllTimers]);
+  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
   // 🛡️ ENHANCED: Pause game with immediate state lock
   const pauseGame = useCallback(async () => {
@@ -150,16 +185,15 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`⏸️ Pausing game: ${gameData.gameId}`);
       
-      // 🔧 CRITICAL: Set pause state FIRST - this stops all timers instantly
+      // 🛡️ STEP 1: Immediately set pause lock (stops all timers instantly)
       setPauseRequested(true);
       pauseRequestedRef.current = true;
-      gameActiveRef.current = false;
-      console.log(`🛡️ Pause flags set - all timers should stop now`);
+      console.log(`🛡️ Pause lock activated - timers will stop immediately`);
       
-      // Clear existing timers
+      // 🛡️ STEP 2: Clear existing timers
       clearAllTimers();
       
-      // Update database
+      // 🛡️ STEP 3: Update database (this can be slow/fail, but local is already stopped)
       await firebaseService.updateGameState(gameData.gameId, {
         isActive: false,
         isCountdown: false
@@ -170,19 +204,22 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } catch (error: any) {
       console.error('❌ Pause game error:', error);
       
-      // Rollback pause state
+      // 🛡️ ROLLBACK: If database update fails, rollback the pause state
+      console.log(`🔄 Rolling back pause state due to error`);
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       
+      // Try to restart the loop if game was actually active
       if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
         gameActiveRef.current = true;
+        startNumberCallingLoop();
       }
       
       throw new Error(error.message || 'Failed to pause game');
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, clearAllTimers]);
+  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
   // 🛡️ ENHANCED: Resume game
   const resumeGame = useCallback(async () => {
@@ -197,12 +234,14 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isActive: true,
         isCountdown: false
       });
-
+      
       // 🛡️ STEP 2: Clear pause lock and activate locally
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       gameActiveRef.current = true;
-      console.log(`🔄 Pause flags cleared - timers can resume`);
+      
+      // 🛡️ STEP 3: Restart the calling loop
+      startNumberCallingLoop();
       
       console.log(`✅ Game resumed successfully: ${gameData.gameId}`);
       
@@ -212,7 +251,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing]);
+  }, [gameData, isProcessing, startNumberCallingLoop]);
 
   // End game
   const endGame = useCallback(async () => {
@@ -222,9 +261,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`🏁 Ending game: ${gameData.gameId}`);
       
-      // Clear pause state and stop timers
+      // 🛡️ Clear pause state when ending
       setPauseRequested(false);
       pauseRequestedRef.current = false;
+      
       clearAllTimers();
       
       await firebaseService.updateGameState(gameData.gameId, {
@@ -232,8 +272,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isCountdown: false,
         gameOver: true
       });
-      
-      console.log(`✅ Game ended successfully: ${gameData.gameId}`);
       
     } catch (error: any) {
       console.error('❌ End game error:', error);
@@ -245,39 +283,54 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
   // Update call interval
   const updateCallInterval = useCallback((seconds: number) => {
-    setCallInterval(seconds);
-    console.log(`⏰ Call interval updated to ${seconds} seconds`);
+    setCallInterval(Math.max(3, Math.min(15, seconds))); // Clamp between 3-15 seconds
   }, []);
 
-  // Cleanup on unmount
+  // Authorization check
+  const isAuthorized = gameData?.hostId === userId;
+
+  // 🛡️ ENHANCED: Cleanup on unmount
   useEffect(() => {
     return () => {
       clearAllTimers();
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
     };
   }, [clearAllTimers]);
 
-  const value: HostControlsContextValue = {
-    startGame,
-    pauseGame,
-    resumeGame,
-    endGame,
+  // Create stable context value
+  const contextValue = React.useMemo((): HostControlsContextValue => ({
+    startGame: isAuthorized ? startGame : async () => { throw new Error('Not authorized'); },
+    pauseGame: isAuthorized ? pauseGame : async () => { throw new Error('Not authorized'); },
+    resumeGame: isAuthorized ? resumeGame : async () => { throw new Error('Not authorized'); },
+    endGame: isAuthorized ? endGame : async () => { throw new Error('Not authorized'); },
     updateCallInterval,
     isProcessing,
     isPaused: pauseRequested,
     pauseRequestedRef
-  };
+  }), [isAuthorized, startGame, pauseGame, resumeGame, endGame, updateCallInterval, isProcessing, pauseRequested]);
 
   return (
-    <HostControlsContext.Provider value={value}>
+    <HostControlsContext.Provider value={contextValue}>
       {children}
     </HostControlsContext.Provider>
   );
 };
 
-export const useHostControls = () => {
+/**
+ * Hook to access host controls from any child component
+ */
+export const useHostControls = (): HostControlsContextValue => {
   const context = useContext(HostControlsContext);
   if (!context) {
     throw new Error('useHostControls must be used within a HostControlsProvider');
   }
   return context;
+};
+
+/**
+ * Hook that returns null if not in host context (for optional host features)
+ */
+export const useOptionalHostControls = (): HostControlsContextValue | null => {
+  return useContext(HostControlsContext);
 };
