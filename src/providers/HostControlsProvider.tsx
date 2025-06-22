@@ -50,29 +50,23 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const pauseRequestedRef = useRef(false);
   const gameControllerRef = useRef<AbortController | null>(null);
 
-  // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
-  useEffect(() => {
-    if (gameData) {
-      const shouldBeActive = gameData.gameState.isActive && !gameData.gameState.gameOver;
-      
-      // Only sync from database if we're not in a manual pause state
-      if (!pauseRequested) {
-        gameActiveRef.current = shouldBeActive;
-        console.log(`🔄 Syncing gameActiveRef from database: ${shouldBeActive}`);
-      } else {
-        console.log(`🛡️ Manual pause active - ignoring database sync`);
-      }
-      
-      // If game is actually ended in database, clear pause request
-      if (gameData.gameState.gameOver) {
-        setPauseRequested(false);
-        pauseRequestedRef.current = false;
-        gameActiveRef.current = false;
-        console.log(`🏁 Game ended - clearing pause state`);
-      }
+ // ✅ FIXED: Remove the conflicting conditional logic
+useEffect(() => {
+  if (gameData) {
+    const shouldBeActive = gameData.gameState.isActive && !gameData.gameState.gameOver;
+    
+    // ✅ SIMPLE: Always sync with database state (no conditional logic)
+    gameActiveRef.current = shouldBeActive;
+    console.log(`🔄 Syncing gameActiveRef from database: ${shouldBeActive}`);
+    
+    // ✅ KEEP: Game end cleanup (essential)
+    if (gameData.gameState.gameOver) {
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
+      console.log(`🏁 Game ended - clearing pause state`);
     }
-  }, [gameData?.gameState.isActive, gameData?.gameState.gameOver, pauseRequested]);
-
+  }
+}, [gameData?.gameState.isActive, gameData?.gameState.gameOver]); // ✅ Removed pauseRequested dependency
   // Clear all timers on unmount or game end
   const clearAllTimers = useCallback(() => {
     if (gameTimerRef.current) {
