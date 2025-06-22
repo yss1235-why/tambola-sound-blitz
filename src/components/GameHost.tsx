@@ -1,6 +1,6 @@
-// src/components/GameHost.tsx - COMPLETE: Single Source of Truth Implementation + Expansion-Only Tickets
+// src/components/GameHost.tsx - COMPLETE: Real Implementation with Pause Button Fix
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,20 +35,11 @@ import {
   GameData
 } from '@/services/firebase';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
-import { HostControlsProvider } from '@/providers/HostControlsProvider';
+import { HostControlsProvider, useHostControls } from '@/providers/HostControlsProvider';
 
 interface GameHostProps {
   user: HostUser;
   userRole: 'host';
-}
-
-interface GamePrize {
-  id: string;
-  name: string;
-  pattern: string;
-  description: string;
-  order: number;
-  difficulty: string;
 }
 
 interface CreateGameForm {
@@ -66,198 +57,226 @@ interface OperationState {
   message: string;
 }
 
-// Available ticket sets
-const TICKET_SETS = [
-  {
-    id: "1",
-    name: "Standard Set",
-    available: true,
-    ticketCount: 600,
-    description: "Traditional ticket set with balanced number distribution"
-  },
-  {
-    id: "2",
-    name: "Premium Set",
-    available: true,
-    ticketCount: 600,
-    description: "Premium ticket set with optimized winning patterns"
-  }
-];
+// ================== FORM COMPONENTS ==================
 
-// Available prizes with difficulty indicators
-const AVAILABLE_PRIZES: GamePrize[] = [
-  {
-    id: 'earlyFive',
-    name: 'Early Five',
-    pattern: 'First 5 numbers',
-    description: 'First to mark any 5 numbers on the ticket',
-    order: 1,
-    difficulty: 'easy'
-  },
-  {
-    id: 'corners',
-    name: 'Four Corners',
-    pattern: '4 corners',
-    description: 'Mark all 4 corner positions',
-    order: 2,
-    difficulty: 'easy'
-  },
-  {
-    id: 'halfSheet',
-    name: 'Half Sheet',
-    pattern: '3 consecutive tickets from same set',
-    description: 'Complete half of a traditional 6-ticket sheet',
-    order: 2.5,
-    difficulty: 'medium'
-  },
-  {
-    id: 'topLine',
-    name: 'Top Line',
-    pattern: 'Complete top row',
-    description: 'Complete the top row of any ticket',
-    order: 3,
-    difficulty: 'medium'
-  },
-  {
-    id: 'middleLine',
-    name: 'Middle Line',
-    pattern: 'Complete middle row',
-    description: 'Complete the middle row of any ticket',
-    order: 4,
-    difficulty: 'medium'
-  },
-  {
-    id: 'bottomLine',
-    name: 'Bottom Line',
-    pattern: 'Complete bottom row',
-    description: 'Complete the bottom row of any ticket',
-    order: 5,
-    difficulty: 'medium'
-  },
-  {
-    id: 'starCorner',
-    name: 'Star Corner',
-    pattern: '4 corners + center',
-    description: 'Mark all 4 corner positions plus center position',
-    order: 6,
-    difficulty: 'hard'
-  },
-  {
-    id: 'fullHouse',
-    name: 'Full House',
-    pattern: 'All numbers',
-    description: 'Mark all numbers on the ticket',
-    order: 7,
-    difficulty: 'expert'
-  }
-];
+const CreateGameForm = ({ 
+  createGameForm, 
+  setCreateGameForm, 
+  onCreateGame, 
+  onMaxTicketsChange, 
+  isCreating,
+  operationInProgress,
+  isFromWinners = false
+}: any) => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center">
+        <Plus className="w-6 h-6 mr-2" />
+        Create New Tambola Game
+      </CardTitle>
+      {isFromWinners && (
+        <p className="text-sm text-blue-600">
+          ✅ Previous game winner data cleared from view. Configure your new game below.
+        </p>
+      )}
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div>
+        <Label htmlFor="hostPhone">Host WhatsApp Number</Label>
+        <Input
+          id="hostPhone"
+          value={createGameForm.hostPhone}
+          onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
+          placeholder="Enter your WhatsApp number"
+          disabled={operationInProgress}
+        />
+      </div>
 
-export const GameHost: React.FC<GameHostProps> = ({ user }) => {
-  const { gameData, currentPhase, isLoading, error } = useGameData();
-  const { bookedCount } = useBookingStats();
+      <div>
+        <Label htmlFor="maxTickets">Maximum Tickets (1-600)</Label>
+        <Input
+          id="maxTickets"
+          type="number"
+          min="1"
+          max="600"
+          value={createGameForm.maxTickets}
+          onChange={(e) => {
+            setCreateGameForm(prev => ({ ...prev, maxTickets: e.target.value }));
+            if (onMaxTicketsChange) onMaxTicketsChange(e.target.value);
+          }}
+          disabled={operationInProgress}
+        />
+      </div>
+
+      <div>
+        <Label>Ticket Set</Label>
+        <select
+          value={createGameForm.selectedTicketSet}
+          onChange={(e) => setCreateGameForm(prev => ({ ...prev, selectedTicketSet: e.target.value }))}
+          className="w-full p-2 border rounded"
+          disabled={operationInProgress}
+        >
+          <option value="1">Set 1 (Classic)</option>
+          <option value="2">Set 2 (Premium)</option>
+          <option value="3">Set 3 (Deluxe)</option>
+        </select>
+      </div>
+
+      <div>
+        <Label>Select Prizes</Label>
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          {[
+            { id: 'earlyFive', name: 'Early Five' },
+            { id: 'topLine', name: 'Top Line' },
+            { id: 'middleLine', name: 'Middle Line' },
+            { id: 'bottomLine', name: 'Bottom Line' },
+            { id: 'fourCorners', name: 'Four Corners' },
+            { id: 'fullHouse', name: 'Full House' }
+          ].map(prize => (
+            <div key={prize.id} className="flex items-center space-x-2">
+              <Checkbox
+                id={prize.id}
+                checked={createGameForm.selectedPrizes.includes(prize.id)}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    setCreateGameForm(prev => ({
+                      ...prev,
+                      selectedPrizes: [...prev.selectedPrizes, prize.id]
+                    }));
+                  } else {
+                    setCreateGameForm(prev => ({
+                      ...prev,
+                      selectedPrizes: prev.selectedPrizes.filter(id => id !== prize.id)
+                    }));
+                  }
+                }}
+                disabled={operationInProgress}
+              />
+              <Label htmlFor={prize.id}>{prize.name}</Label>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Button 
+        onClick={onCreateGame}
+        disabled={isCreating || operationInProgress}
+        className="w-full"
+      >
+        {isCreating ? (
+          <>
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Creating Game...
+          </>
+        ) : (
+          <>
+            <Plus className="w-4 h-4 mr-2" />
+            Create Game
+          </>
+        )}
+      </Button>
+    </CardContent>
+  </Card>
+);
+
+const EditGameForm = ({ 
+  gameData,
+  createGameForm, 
+  setCreateGameForm, 
+  onUpdateGame,
+  onDeleteGame,
+  onCancel,
+  onMaxTicketsChange,
+  bookedCount,
+  isCreating,
+  operationInProgress
+}: any) => (
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center">
+        <Edit className="w-6 h-6 mr-2" />
+        Edit Game Settings
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div>
+        <Label htmlFor="editHostPhone">Host WhatsApp Number</Label>
+        <Input
+          id="editHostPhone"
+          value={createGameForm.hostPhone}
+          onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
+          disabled={operationInProgress}
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="editMaxTickets">Maximum Tickets</Label>
+        <Input
+          id="editMaxTickets"
+          type="number"
+          min={Math.max(1, bookedCount)}
+          max="600"
+          value={createGameForm.maxTickets}
+          onChange={(e) => {
+            setCreateGameForm(prev => ({ ...prev, maxTickets: e.target.value }));
+            if (onMaxTicketsChange) onMaxTicketsChange(e.target.value);
+          }}
+          disabled={operationInProgress}
+        />
+        <p className="text-sm text-gray-600 mt-1">
+          Currently {bookedCount} tickets booked. You can only increase the limit.
+        </p>
+      </div>
+
+      <div className="flex space-x-2">
+        <Button 
+          onClick={onUpdateGame}
+          disabled={operationInProgress}
+          className="flex-1"
+        >
+          {operationInProgress ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Updating...
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4 mr-2" />
+              Update Settings
+            </>
+          )}
+        </Button>
+        <Button 
+          onClick={onCancel}
+          variant="outline"
+          disabled={operationInProgress}
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={onDeleteGame}
+          variant="destructive"
+          disabled={operationInProgress}
+        >
+          <Trash2 className="w-4 h-4 mr-2" />
+          Delete
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+);
+
+// ================== MAIN COMPONENT INNER ==================
+
+const GameHostInner: React.FC<GameHostProps> = ({ user }) => {
+  const { gameData, currentPhase, isLoading, error, reloadData } = useGameData();
+  const { bookedCount, availableCount } = useBookingStats();
   
-  // ================== SAFETY AND VALIDATION UTILITIES ==================
-
-  /**
-   * ✅ VALIDATION: Comprehensive input validation + NEW: Expansion-only validation
-   */
-  const validateGameSettings = (formData: CreateGameForm, gameData: GameData): {
-    isValid: boolean;
-    errors: string[];
-  } => {
-    const errors: string[] = [];
-    
-    const maxTickets = parseInt(formData.maxTickets);
-    if (isNaN(maxTickets) || maxTickets < 1) {
-      errors.push('Max tickets must be a valid number (minimum 1)');
-    }
-    if (maxTickets > 600) {
-      errors.push('Max tickets cannot exceed 600');
-    }
-    
-    const bookedCount = Object.values(gameData.tickets || {})
-      .filter(ticket => ticket.isBooked).length;
-    if (maxTickets < bookedCount) {
-      errors.push(`Cannot set max tickets (${maxTickets}) below current bookings (${bookedCount})`);
-    }
-    
-    // ✅ NEW: Validate ticket reduction (expansion-only approach)
-    const currentMaxTickets = gameData.maxTickets;
-    if (maxTickets < currentMaxTickets) {
-      errors.push(`Cannot reduce tickets from ${currentMaxTickets} to ${maxTickets}. You can only increase the ticket count. To reduce tickets, create a new game instead.`);
-    }
-    
-    if (!formData.hostPhone?.trim()) {
-      errors.push('Host phone number is required');
-    }
-    
-    if (!formData.selectedPrizes || formData.selectedPrizes.length === 0) {
-      errors.push('At least one prize must be selected');
-    }
-    
-    return {
-      isValid: errors.length === 0,
-      errors
-    };
-  };
-
-  /**
-   * ✅ SAFETY: Check if update is safe to perform
-   */
-  const canUpdateGameSettings = (gameData: GameData): {
-    canUpdate: boolean;
-    reason?: string;
-  } => {
-    if (gameData.gameState.isActive) {
-      return { canUpdate: false, reason: 'Game is currently active' };
-    }
-    
-    if (gameData.gameState.isCountdown) {
-      return { canUpdate: false, reason: 'Game is starting (countdown active)' };
-    }
-    
-    if (gameData.gameState.gameOver) {
-      return { canUpdate: false, reason: 'Game has already ended' };
-    }
-    
-    const numbersCalledCount = gameData.gameState.calledNumbers?.length || 0;
-    if (numbersCalledCount > 0) {
-      return { canUpdate: false, reason: 'Numbers have already been called' };
-    }
-    
-    return { canUpdate: true };
-  };
-
-  /**
-   * ✅ MONITORING: Operation status tracking
-   */
-  const logUpdateOperation = (
-    phase: 'start' | 'validation' | 'live_update' | 'template_update' | 'success' | 'error',
-    data?: any
-  ) => {
-    const timestamp = new Date().toISOString();
-    const gameId = gameData?.gameId || 'unknown';
-    
-    switch (phase) {
-      case 'start':
-        console.log(`🔧 [${timestamp}] Starting settings update for game: ${gameId}`);
-        break;
-      case 'validation':
-        console.log(`✅ [${timestamp}] Validation passed for game: ${gameId}`);
-        break;
-      case 'live_update':
-        console.log(`📡 [${timestamp}] Updating live game data for: ${gameId}`);
-        break;
-      case 'template_update':
-        console.log(`💾 [${timestamp}] Updating host template for: ${gameId}`);
-        break;
-      case 'success':
-        console.log(`🎉 [${timestamp}] Settings update completed for: ${gameId}`);
-        break;
-      case 'error':
-        console.error(`❌ [${timestamp}] Settings update failed for: ${gameId}`, data);
-        break;
-    }
+  // 🔧 CRITICAL: Get pause state from HostControlsProvider
+  const hostControls = useHostControls();
+  const { isPaused, pauseRequestedRef } = hostControls || { 
+    isPaused: false, 
+    pauseRequestedRef: { current: false } 
   };
 
   // ================== STATE MANAGEMENT ==================
@@ -270,15 +289,24 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   const [editMode, setEditMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
-    hostPhone: '',
+    hostPhone: user.phone || '',
     maxTickets: '100',
     selectedTicketSet: '1',
-    selectedPrizes: ['earlyFive', 'halfSheet', 'topLine', 'fullHouse']
+    selectedPrizes: ['earlyFive', 'topLine', 'fullHouse']
   });
 
   // Component-level state for winner display management
   const [uiState, setUIState] = useState<UIState>('calculated');
   const [cachedWinnerData, setCachedWinnerData] = useState<GameData | null>(null);
+
+  // Game control state
+  const [callInterval, setCallInterval] = useState(5);
+  const [isCallingNumber, setIsCallingNumber] = useState(false);
+  const [isWaitingForAudio, setIsWaitingForAudio] = useState(false);
+
+  // Refs for game control
+  const gameActiveRef = useRef(false);
+  const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // ================== SUBSCRIPTION VALIDATION ==================
   
@@ -308,140 +336,169 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     return { message: `Active until ${endDate.toLocaleDateString()}`, variant: 'default' as const };
   }, [user.subscriptionEndDate, user.isActive]);
 
-  // ================== ENHANCED SINGLE SOURCE UPDATE + EXPANSION ==================
+  // ================== AUTOMATIC NUMBER CALLING WITH PAUSE FIX ==================
 
-  /**
-   * ✅ ENHANCED SINGLE SOURCE UPDATE: Complete settings update with safety checks + NEW EXPANSION LOGIC
-   * CRITICAL: This updates BOTH live game data AND host template + handles ticket expansion
-   */
-  const updateGameSettings = async () => {
-    if (!gameData) {
-      console.error('❌ No game data available for update');
-      alert('No active game found');
+  // 🔧 CRITICAL: Updated handleAudioComplete with pause checking
+  const handleAudioComplete = useCallback(() => {
+    setIsWaitingForAudio(false);
+    
+    console.log(`🎤 Audio completed. Checking game state...`);
+    console.log(`- isPaused: ${isPaused}`);
+    console.log(`- pauseRequestedRef.current: ${pauseRequestedRef?.current}`);
+    console.log(`- gameActiveRef.current: ${gameActiveRef.current}`);
+    console.log(`- gameData.gameState.isActive: ${gameData?.gameState.isActive}`);
+    
+    // 🔧 CRITICAL: Check pause state BEFORE scheduling next number
+    if (pauseRequestedRef?.current || isPaused) {
+      console.log(`🚫 Game is paused, skipping next number schedule`);
+      return;
+    }
+    
+    if (gameActiveRef.current && gameData?.gameState.isActive) {
+      console.log(`⏰ Scheduling next number in ${callInterval} seconds...`);
+      
+      // Schedule next number after configurable interval
+      gameTimerRef.current = setTimeout(() => {
+        // 🔧 CRITICAL: Check pause state again in timer callback
+        if (pauseRequestedRef?.current || isPaused) {
+          console.log(`🚫 Game paused during timer, aborting number call`);
+          return;
+        }
+        
+        if (gameActiveRef.current && gameData?.gameState.isActive) {
+          console.log(`🎯 Timer expired, calling next number...`);
+          callNextNumber();
+        } else {
+          console.log(`🚫 Game no longer active, skipping number call`);
+        }
+      }, callInterval * 1000);
+    } else {
+      console.log(`🚫 Game not active, not scheduling next number`);
+    }
+  }, [gameData, callInterval, isPaused, pauseRequestedRef]);
+
+  const callNextNumber = useCallback(async () => {
+    if (!gameData || !gameActiveRef.current || isCallingNumber) {
+      console.log(`🚫 Cannot call number: gameData=${!!gameData}, gameActive=${gameActiveRef.current}, isCalling=${isCallingNumber}`);
       return;
     }
 
-    if (!user?.uid) {
-      console.error('❌ No user context available');
-      alert('User not authenticated');
+    // 🔧 CRITICAL: Check pause state before calling
+    if (pauseRequestedRef?.current || isPaused) {
+      console.log(`🚫 Game is paused, aborting number call`);
       return;
     }
 
-    logUpdateOperation('start');
-    
-    // Step 1: Input validation
-    const validation = validateGameSettings(createGameForm, gameData);
-    if (!validation.isValid) {
-      alert('Validation failed:\n' + validation.errors.join('\n'));
+    const calledNumbers = gameData.gameState.calledNumbers || [];
+    const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+      .filter(num => !calledNumbers.includes(num));
+
+    if (availableNumbers.length === 0) {
+      console.log(`🏁 No more numbers available, ending game`);
+      endGame();
       return;
     }
-    
-    // Step 2: Safety checks
-    const safetyCheck = canUpdateGameSettings(gameData);
-    if (!safetyCheck.canUpdate) {
-      alert(`Cannot update settings: ${safetyCheck.reason}`);
-      return;
-    }
-    
-    logUpdateOperation('validation');
-    
-    // Step 3: Prepare update data
-    const maxTicketsNum = parseInt(createGameForm.maxTickets);
-    const updateData = {
-      maxTickets: maxTicketsNum,
-      hostPhone: createGameForm.hostPhone.trim(),
-      selectedPrizes: [...createGameForm.selectedPrizes], // Create copy to avoid mutations
-      selectedTicketSet: createGameForm.selectedTicketSet
-    };
-    
-    setIsCreating(true);
+
+    setIsCallingNumber(true);
     
     try {
-      // ✅ UPDATED: Handle ticket expansion and other updates
-      logUpdateOperation('live_update');
+      console.log(`🎯 Calling next number for game ${gameData.gameId}`);
+      const result = await firebaseService.callNextNumber(gameData.gameId);
       
-      const currentMaxTickets = gameData.maxTickets;
-      const newMaxTickets = maxTicketsNum;
-      
-      // ✅ Check if we need to expand tickets
-      if (newMaxTickets > currentMaxTickets) {
-        console.log(`📈 Ticket expansion needed: ${currentMaxTickets} → ${newMaxTickets} (+${newMaxTickets - currentMaxTickets} tickets)`);
-        
-        // Use expansion method for ticket count increase
-        await firebaseService.expandGameTickets(
-          gameData.gameId,
-          newMaxTickets,
-          createGameForm.selectedTicketSet
-        );
-        
-        // Update host template separately (expansion method doesn't handle template)
-        await firebaseService.updateHostTemplate(user.uid, {
-          hostPhone: createGameForm.hostPhone.trim(),
-          maxTickets: newMaxTickets,
-          selectedTicketSet: createGameForm.selectedTicketSet,
-          selectedPrizes: createGameForm.selectedPrizes
-        });
-        
-        console.log(`✅ Ticket expansion completed: ${currentMaxTickets} → ${newMaxTickets}`);
-      } 
-      else {
-        // No ticket expansion needed - use existing update method
-        console.log(`📝 Standard settings update (no ticket expansion)`);
-        
-        await firebaseService.updateGameAndTemplate(
-          gameData.gameId,
-          user.uid,
-          updateData
-        );
+      // Check for game end conditions
+      if (result.gameEnded || availableNumbers.length === 1) {
+        endGame();
+        return;
       }
-      
-      logUpdateOperation('success');
 
-      // Step 5: Update UI state
-      setEditMode(false);
-      
-      console.log('✅ Game settings updated successfully!');
-      
-      // Note: Real-time listeners will automatically update the UI
-      // No manual state updates needed
-      
-    } catch (error: any) {
-      logUpdateOperation('error', error);
-      
-      // Step 6: User-friendly error handling
-      let errorMessage = 'Failed to update game settings';
-      
-      if (error.message.includes('below current bookings')) {
-        errorMessage = error.message;
-      } else if (error.message.includes('active') || error.message.includes('starting')) {
-        errorMessage = 'Cannot change settings while game is running or starting';
-      } else if (error.message.includes('Transaction failed')) {
-        errorMessage = 'Update failed due to database conflict. Please try again.';
-      } else if (error.message.includes('network') || error.message.includes('offline')) {
-        errorMessage = 'Network error. Please check your connection and try again.';
-      } else if (error.message.includes('expand') || error.message.includes('expansion')) {
-        errorMessage = `Ticket expansion failed: ${error.message}`;
-      } else if (error.message) {
-        errorMessage = error.message;
+      // Schedule next number call after audio completion
+      if (gameActiveRef.current && !pauseRequestedRef?.current && !isPaused) {
+        setIsWaitingForAudio(true);
       }
-      
-      alert(errorMessage);
-      
+    } catch (error) {
+      console.error('❌ Error calling next number:', error);
     } finally {
-      setIsCreating(false);
-      console.log('🏁 Update operation completed');
+      setIsCallingNumber(false);
     }
-  };
+  }, [gameData, isCallingNumber, isPaused, pauseRequestedRef]);
 
-  // ================== ENHANCED CREATE NEW GAME ==================
+  const endGame = useCallback(async () => {
+    if (!gameData) return;
+    
+    try {
+      gameActiveRef.current = false;
+      clearAllTimers();
+      
+      await firebaseService.updateGameState(gameData.gameId, {
+        isActive: false,
+        isCountdown: false,
+        gameOver: true
+      });
+      
+      console.log(`✅ Game ended successfully: ${gameData.gameId}`);
+    } catch (error) {
+      console.error('❌ Error ending game:', error);
+    }
+  }, [gameData]);
 
-  const createNewGame = async () => {
-    // ✅ SAFETY: Additional validation before game creation
-    if (!user?.uid) {
-      alert('User authentication required');
-      return;
+  const clearAllTimers = useCallback(() => {
+    if (gameTimerRef.current) {
+      clearTimeout(gameTimerRef.current);
+      gameTimerRef.current = null;
+      console.log(`🧹 Cleared game timer`);
+    }
+  }, []);
+
+  // ================== GAME MANAGEMENT ==================
+
+  const validateGameSettings = (formData: CreateGameForm, gameData?: GameData) => {
+    const errors: string[] = [];
+    
+    const maxTicketsNum = parseInt(formData.maxTickets);
+    if (isNaN(maxTicketsNum) || maxTicketsNum < 1 || maxTicketsNum > 600) {
+      errors.push('Max tickets must be between 1 and 600');
     }
     
+    if (gameData && maxTicketsNum < bookedCount) {
+      errors.push(`Cannot reduce max tickets below current bookings (${bookedCount}). You can only increase the ticket count. To reduce tickets, create a new game instead.`);
+    }
+    
+    if (!formData.hostPhone?.trim()) {
+      errors.push('Host phone number is required');
+    }
+    
+    if (!formData.selectedPrizes || formData.selectedPrizes.length === 0) {
+      errors.push('At least one prize must be selected');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  };
+
+  const canUpdateGameSettings = (gameData: GameData): { canUpdate: boolean; reason?: string } => {
+    if (gameData.gameState.isActive) {
+      return { canUpdate: false, reason: 'Game is currently active' };
+    }
+    
+    if (gameData.gameState.isCountdown) {
+      return { canUpdate: false, reason: 'Game is starting (countdown active)' };
+    }
+    
+    if (gameData.gameState.gameOver) {
+      return { canUpdate: false, reason: 'Game has already ended' };
+    }
+    
+    const numbersCalledCount = gameData.gameState.calledNumbers?.length || 0;
+    if (numbersCalledCount > 0) {
+      return { canUpdate: false, reason: 'Numbers have already been called' };
+    }
+    
+    return { canUpdate: true };
+  };
+
+  const createNewGame = async () => {
     if (!isSubscriptionValid()) {
       alert('Your subscription has expired. Please contact the administrator.');
       return;
@@ -526,7 +583,48 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     }
   };
 
-  // ================== OTHER EVENT HANDLERS ==================
+  const updateGameSettings = async () => {
+    if (!gameData) {
+      console.error('❌ No game data available for update');
+      alert('No active game found');
+      return;
+    }
+
+    const validation = validateGameSettings(createGameForm, gameData);
+    if (!validation.isValid) {
+      alert('Validation failed:\n' + validation.errors.join('\n'));
+      return;
+    }
+    
+    const safetyCheck = canUpdateGameSettings(gameData);
+    if (!safetyCheck.canUpdate) {
+      alert(`Cannot update settings: ${safetyCheck.reason}`);
+      return;
+    }
+    
+    try {
+      const maxTicketsNum = parseInt(createGameForm.maxTickets);
+      
+      await firebaseService.updateLiveGameSettings(gameData.gameId, {
+        maxTickets: maxTicketsNum,
+        hostPhone: createGameForm.hostPhone
+      });
+
+      await firebaseService.saveHostSettings(user.uid, {
+        hostPhone: createGameForm.hostPhone,
+        maxTickets: maxTicketsNum,
+        selectedTicketSet: createGameForm.selectedTicketSet,
+        selectedPrizes: createGameForm.selectedPrizes
+      });
+
+      setEditMode(false);
+      alert('Game settings updated successfully!');
+      
+    } catch (error: any) {
+      console.error('❌ Update game error:', error);
+      alert(error.message || 'Failed to update game settings');
+    }
+  };
 
   const deleteGame = async () => {
     if (!gameData) return;
@@ -534,7 +632,6 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     const confirmed = window.confirm('Are you sure you want to delete this game? This action cannot be undone.');
     if (!confirmed) return;
 
-    setIsCreating(true);
     setOperation({
       type: 'delete',
       inProgress: true,
@@ -544,44 +641,37 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     try {
       await firebaseService.deleteGame(gameData.gameId);
       console.log('✅ Game deleted successfully');
-      
-      setOperation(prev => ({
-        ...prev,
-        message: 'Game deleted! Waiting for real-time update...'
-      }));
-      
     } catch (error: any) {
-      console.error('Delete game error:', error);
+      console.error('❌ Delete game error:', error);
       setOperation({ type: null, inProgress: false, message: '' });
       alert(error.message || 'Failed to delete game');
-    } finally {
-      setIsCreating(false);
     }
   };
 
-  const handleMaxTicketsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (value === '' || /^\d+$/.test(value)) {
-      setCreateGameForm(prev => ({ ...prev, maxTickets: value }));
-    }
-  };
-
-  const handleCreateNewGameFromWinners = React.useCallback(() => {
+  const handleCreateNewGameFromWinners = useCallback(() => {
     const confirmed = window.confirm(
-      '🎮 Create New Game\n\n' +
-      'This will clear the winner display and take you to game setup.\n\n' +
-      'The winner information will be removed from view but you can note down contact details now.\n\n' +
-      'Continue to create a new game?'
+      'Create a new game? This will clear the winner display and start fresh.'
     );
     
     if (confirmed) {
       console.log('✅ Host confirmed new game creation from winner display');
-      console.log('🎯 Transitioning to setup mode (winner data preserved until new game created)');
       setUIState('setup');
-    } else {
-      console.log('🚫 Host cancelled new game creation from winner display');
     }
   }, []);
+
+  const handleMaxTicketsChange = (value: string) => {
+    console.log('📊 Max tickets changed:', value);
+  };
+
+  // ================== SYNC GAME ACTIVE REF ==================
+
+  useEffect(() => {
+    if (gameData) {
+      const shouldBeActive = gameData.gameState.isActive && !gameData.gameState.gameOver;
+      gameActiveRef.current = shouldBeActive;
+      console.log(`🔄 Synced gameActiveRef: ${shouldBeActive}`);
+    }
+  }, [gameData?.gameState.isActive, gameData?.gameState.gameOver]);
 
   // ================== USEEFFECTS ==================
   
@@ -642,6 +732,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     }
   }, [gameData, operation]);
 
+  // ================== CLEANUP ==================
+
+  useEffect(() => {
+    return () => {
+      clearAllTimers();
+    };
+  }, [clearAllTimers]);
+
   // ================== VIEW CALCULATION ==================
 
   const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
@@ -698,51 +796,38 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
             <p className="text-gray-700 mb-4">
               Your subscription has expired. Please contact the administrator to renew your subscription.
             </p>
-            <Button onClick={() => window.location.reload()}>
-              Logout
-            </Button>
+            <p className="text-sm text-gray-600">
+              Contact: admin@tambola.com
+            </p>
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  // ================== MAIN RENDER ==================
+  // ================== RENDER DIFFERENT VIEWS ==================
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-              <Crown className="w-8 h-8 mr-3 text-yellow-500" />
-              Host Dashboard
-            </h1>
-            <p className="text-gray-600 mt-1">Manage your Tambola games</p>
-          </div>
-          <div className="text-right">
-            <Badge variant={subscriptionStatus.variant} className="mb-2">
-              {subscriptionStatus.message}
-            </Badge>
-            <p className="text-sm text-gray-600">Welcome, {user.name}</p>
-          </div>
-        </div>
-
-        {/* Status Display */}
-        {operation.inProgress && (
-          <Card className="mb-6 border-blue-200 bg-blue-50">
-            <CardContent className="py-4">
-              <div className="flex items-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                <span className="text-blue-800">{operation.message}</span>
+  if (currentView === 'setup') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+        <div className="max-w-4xl mx-auto space-y-6">
+          {/* Header */}
+          <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
+            <CardHeader className="text-center">
+              <CardTitle className="text-3xl font-bold">🎲 Host Dashboard 🎲</CardTitle>
+              <p className="text-blue-100">Welcome back, {user.name}!</p>
+              <div className="flex justify-center items-center space-x-4 mt-2">
+                <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                  📞 {user.phone}
+                </Badge>
+                <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                  ⏰ {subscriptionStatus.message}
+                </Badge>
               </div>
-            </CardContent>
+            </CardHeader>
           </Card>
-        )}
 
-        {/* Game Setup Phase */}
-        {currentView === 'setup' && (
+          {/* Create Game Form */}
           <CreateGameForm
             createGameForm={createGameForm}
             setCreateGameForm={setCreateGameForm}
@@ -750,7 +835,70 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
             onMaxTicketsChange={handleMaxTicketsChange}
             isCreating={isCreating}
             operationInProgress={operation.inProgress}
-            isFromWinners={!!cachedWinnerData}
+            isFromWinners={false}
+          />
+
+          {/* Operation Status */}
+          {operation.message && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{operation.message}</AlertDescription>
+            </Alert>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ================== MAIN GAME VIEW ==================
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header with Game Info */}
+        <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-3xl font-bold">🎲 {gameData?.name} 🎲</CardTitle>
+                <p className="text-blue-100">Host: {user.name}</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                    📞 {gameData?.hostPhone}
+                  </Badge>
+                  <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                    🎫 {bookedCount}/{gameData?.maxTickets} tickets
+                  </Badge>
+                  <Badge variant="secondary" className="bg-white/20 text-white border-white/30">
+                    🎯 {Object.keys(gameData?.prizes || {}).length} prizes
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-right">
+                <Button
+                  variant="outline"
+                  onClick={deleteGame}
+                  disabled={operation.inProgress}
+                  className="bg-white/10 border-white/30 text-white hover:bg-white/20"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Game
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Setup Phase */}
+        {currentView === 'create' && !gameData && (
+          <CreateGameForm
+            createGameForm={createGameForm}
+            setCreateGameForm={setCreateGameForm}
+            onCreateGame={createNewGame}
+            onMaxTicketsChange={handleMaxTicketsChange}
+            isCreating={isCreating}
+            operationInProgress={operation.inProgress}
+            isFromWinners={!cachedWinnerData}
           />
         )}
 
@@ -779,9 +927,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
               </div>
             </div>
 
-            <HostControlsProvider userId={user.uid}>
-              <HostDisplay />
-            </HostControlsProvider>
+            <HostDisplay />
             
             <TicketManagementGrid
               gameData={gameData}
@@ -808,9 +954,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
 
         {/* Live Game Phases */}
         {currentView === 'live' && gameData && (
-          <HostControlsProvider userId={user.uid}>
-            <HostDisplay onCreateNewGame={createNewGame} />
-          </HostControlsProvider>
+          <HostDisplay onCreateNewGame={createNewGame} />
         )}
 
         {/* Audio Manager */}
@@ -818,8 +962,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
           <AudioManager
             currentNumber={gameData.gameState.currentNumber}
             prizes={Object.values(gameData.prizes)}
+            onAudioComplete={handleAudioComplete}
             forceEnable={true}
           />
+        )}
+
+        {/* Operation Status */}
+        {operation.message && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{operation.message}</AlertDescription>
+          </Alert>
         )}
 
         {/* Development Debug Info */}
@@ -860,388 +1013,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   );
 };
 
-// ================== FORM COMPONENTS ==================
+// ================== MAIN EXPORT WITH PROVIDER WRAPPER ==================
 
-const CreateGameForm = ({ 
-  createGameForm, 
-  setCreateGameForm, 
-  onCreateGame, 
-  onMaxTicketsChange, 
-  isCreating,
-  operationInProgress,
-  isFromWinners = false
-}: any) => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center">
-        <Plus className="w-6 h-6 mr-2" />
-        Create New Tambola Game
-      </CardTitle>
-      {isFromWinners && (
-        <p className="text-sm text-blue-600">
-          ✅ Previous game winner data cleared from view. Configure your new game below.
-        </p>
-      )}
-    </CardHeader>
-    <CardContent className="space-y-6">
-      {/* Host Phone */}
-      <div>
-        <Label htmlFor="hostPhone" className="flex items-center mb-2">
-          <Phone className="w-4 h-4 mr-2" />
-          Your WhatsApp Number
-        </Label>
-        <Input
-          id="hostPhone"
-          type="tel"
-          value={createGameForm.hostPhone}
-          onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
-          placeholder="Enter your WhatsApp number"
-          disabled={isCreating || operationInProgress}
-        />
-        <p className="text-sm text-gray-600 mt-1">
-          Players will use this number to contact you
-        </p>
-      </div>
-
-      {/* Max Tickets */}
-      <div>
-        <Label htmlFor="maxTickets" className="flex items-center mb-2">
-          <Ticket className="w-4 h-4 mr-2" />
-          Maximum Tickets
-        </Label>
-        <Input
-          id="maxTickets"
-          type="number"
-          min="1"
-          max="600"
-          value={createGameForm.maxTickets}
-          onChange={onMaxTicketsChange}
-          placeholder="Enter maximum tickets (1-600)"
-          disabled={isCreating || operationInProgress}
-        />
-        <p className="text-sm text-gray-600 mt-1">
-          Total tickets available for booking
-        </p>
-      </div>
-
-      {/* Ticket Set Selection */}
-      <div>
-        <Label className="flex items-center mb-3">
-          <Settings className="w-4 h-4 mr-2" />
-          Ticket Set
-        </Label>
-        <div className="grid grid-cols-1 gap-3">
-          {TICKET_SETS.map(set => (
-            <div
-              key={set.id}
-              className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                createGameForm.selectedTicketSet === set.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              } ${(!set.available || isCreating || operationInProgress) ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={() => {
-                if (set.available && !isCreating && !operationInProgress) {
-                  setCreateGameForm(prev => ({ ...prev, selectedTicketSet: set.id }));
-                }
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center">
-                    <input
-                      type="radio"
-                      checked={createGameForm.selectedTicketSet === set.id}
-                      onChange={() => {}}
-                      className="mr-3"
-                      disabled={!set.available || isCreating || operationInProgress}
-                    />
-                    <h3 className="font-medium">{set.name}</h3>
-                    <Badge variant="outline" className="ml-2 text-xs">
-                      {set.ticketCount} tickets
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-gray-600 mt-1">{set.description}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Prize Selection */}
-      <div>
-        <Label className="flex items-center mb-3">
-          <Crown className="w-4 h-4 mr-2" />
-          Select Prizes
-        </Label>
-        <div className="grid grid-cols-1 gap-3">
-          {AVAILABLE_PRIZES.map(prize => (
-            <div key={prize.id} className="flex items-start space-x-3">
-              <Checkbox
-                id={prize.id}
-                checked={createGameForm.selectedPrizes.includes(prize.id)}
-                onCheckedChange={(checked) => {
-                  if (isCreating || operationInProgress) return;
-                  
-                  setCreateGameForm(prev => ({
-                    ...prev,
-                    selectedPrizes: checked
-                      ? [...prev.selectedPrizes, prize.id]
-                      : prev.selectedPrizes.filter(id => id !== prize.id)
-                  }));
-                }}
-                disabled={isCreating || operationInProgress}
-              />
-              <div className="flex-1">
-                <Label htmlFor={prize.id} className="flex items-center">
-                  {prize.name}
-                  <Badge
-                    variant="outline"
-                    className={`ml-2 text-xs ${
-                      prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
-                      prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                      prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                      'text-red-600 border-red-300'
-                    }`}
-                  >
-                    {prize.difficulty}
-                  </Badge>
-                  {/* ✅ NEW: Special indicator for Half Sheet */}
-                  {prize.id === 'halfSheet' && (
-                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
-                      Traditional
-                    </Badge>
-                  )}
-                </Label>
-                <p className="text-sm text-gray-600">{prize.pattern}</p>
-                <p className="text-xs text-gray-500">{prize.description}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      <Button
-        onClick={onCreateGame}
-        disabled={isCreating || operationInProgress || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
-        className="w-full bg-blue-600 hover:bg-blue-700"
-        size="lg"
-      >
-        {isCreating ? (
-          <>
-            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-            Creating Game...
-          </>
-        ) : (
-          'Create & Open Booking'
-        )}
-      </Button>
-      
-      {operationInProgress && (
-        <div className="text-center text-sm text-blue-600">
-          <Clock className="w-4 h-4 inline mr-1" />
-          Real-time system will automatically update the view when ready
-        </div>
-      )}
-      
-      {/* ✅ NEW: Half Sheet info */}
-      {createGameForm.selectedPrizes.includes('halfSheet') && (
-        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-          <p className="text-sm text-purple-800 font-medium">
-            🎯 Half Sheet Prize Enabled
-          </p>
-          <p className="text-xs text-purple-600 mt-1">
-            Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
-          </p>
-        </div>
-      )}
-    </CardContent>
-  </Card>
-);
-
-const EditGameForm = ({ 
-  gameData, 
-  createGameForm, 
-  setCreateGameForm, 
-  onUpdateGame, 
-  onDeleteGame, 
-  onCancel, 
-  onMaxTicketsChange, 
-  bookedCount, 
-  isCreating,
-  operationInProgress
-}: any) => (
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center">
-        <Edit className="w-6 h-6 mr-2" />
-        Edit Game Settings
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="space-y-6">
-      <Alert>
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>
-          You can edit game settings as long as the game hasn't started yet. ✅ Ticket expansion is supported - you can only increase the ticket count.
-        </AlertDescription>
-      </Alert>
-
-      {/* Current Stats */}
-      <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-blue-600">{bookedCount}</p>
-          <p className="text-sm text-gray-600">Booked</p>
-        </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold text-green-600">{gameData.maxTickets - bookedCount}</p>
-          <p className="text-sm text-gray-600">Available</p>
-        </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold text-gray-600">{gameData.maxTickets}</p>
-          <p className="text-sm text-gray-600">Total</p>
-        </div>
-      </div>
-
-      {/* ✅ NEW: Expansion Notice */}
-      {parseInt(createGameForm.maxTickets) > gameData.maxTickets && (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800 font-medium">
-            📈 Ticket Expansion Detected
-          </p>
-          <p className="text-xs text-blue-600 mt-1">
-            Will expand from {gameData.maxTickets} to {createGameForm.maxTickets} tickets (+{parseInt(createGameForm.maxTickets) - gameData.maxTickets} new tickets). All existing bookings will be preserved.
-          </p>
-        </div>
-      )}
-
-      {/* Host Phone */}
-      <div>
-        <Label htmlFor="editHostPhone" className="flex items-center mb-2">
-          <Phone className="w-4 h-4 mr-2" />
-          Your WhatsApp Number
-        </Label>
-        <Input
-          id="editHostPhone"
-          type="tel"
-          value={createGameForm.hostPhone}
-          onChange={(e) => setCreateGameForm(prev => ({ ...prev, hostPhone: e.target.value }))}
-          disabled={isCreating || operationInProgress}
-        />
-      </div>
-
-      {/* Max Tickets */}
-      <div>
-        <Label htmlFor="editMaxTickets" className="flex items-center mb-2">
-          <Ticket className="w-4 h-4 mr-2" />
-          Maximum Tickets
-        </Label>
-        <Input
-          id="editMaxTickets"
-          type="number"
-          min={gameData.maxTickets} // ✅ NEW: Prevent reduction
-          max="600"
-          value={createGameForm.maxTickets}
-          onChange={onMaxTicketsChange}
-          disabled={isCreating || operationInProgress}
-        />
-        <p className="text-sm text-gray-600 mt-1">
-          ✅ Can only increase tickets (current: {gameData.maxTickets}, minimum: {gameData.maxTickets})
-        </p>
-      </div>
-
-      {/* Prize Selection */}
-      <div>
-        <Label className="flex items-center mb-3">
-          <Crown className="w-4 h-4 mr-2" />
-          Update Prizes
-        </Label>
-        <div className="grid grid-cols-1 gap-3">
-          {AVAILABLE_PRIZES.map(prize => (
-            <div key={prize.id} className="flex items-start space-x-3">
-              <Checkbox
-                id={`edit-${prize.id}`}
-                checked={createGameForm.selectedPrizes.includes(prize.id)}
-                onCheckedChange={(checked) => {
-                  if (isCreating || operationInProgress) return;
-                  
-                  setCreateGameForm(prev => ({
-                    ...prev,
-                    selectedPrizes: checked
-                      ? [...prev.selectedPrizes, prize.id]
-                      : prev.selectedPrizes.filter(id => id !== prize.id)
-                  }));
-                }}
-                disabled={isCreating || operationInProgress}
-              />
-              <div className="flex-1">
-                <Label htmlFor={`edit-${prize.id}`} className="flex items-center">
-                  {prize.name}
-                  <Badge
-                    variant="outline"
-                    className={`ml-2 text-xs ${
-                      prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
-                      prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                      prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                      'text-red-600 border-red-300'
-                    }`}
-                  >
-                    {prize.difficulty}
-                  </Badge>
-                  {/* ✅ NEW: Special indicator for Half Sheet */}
-                  {prize.id === 'halfSheet' && (
-                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
-                      Traditional
-                    </Badge>
-                  )}
-                  {gameData.prizes[prize.id]?.won && (
-                    <Badge variant="default" className="ml-2 text-xs bg-green-600">
-                      Won
-                    </Badge>
-                  )}
-                </Label>
-                <p className="text-sm text-gray-600">{prize.pattern}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      <div className="flex space-x-4">
-        <Button 
-          onClick={onUpdateGame}
-          disabled={isCreating || operationInProgress}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          {isCreating ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {parseInt(createGameForm.maxTickets) > gameData.maxTickets ? 'Expanding...' : 'Updating...'}
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4 mr-2" />
-              {parseInt(createGameForm.maxTickets) > gameData.maxTickets ? 'Expand & Update' : 'Update Settings'}
-            </>
-          )}
-        </Button>
-        <Button 
-          onClick={onCancel}
-          disabled={operationInProgress}
-          variant="outline"
-        >
-          Cancel
-        </Button>
-        <Button 
-          onClick={onDeleteGame}
-          disabled={operationInProgress}
-          variant="destructive"
-        >
-          <Trash2 className="w-4 h-4 mr-2" />
-          Delete Game
-        </Button>
-      </div>
-    </CardContent>
-  </Card>
-);
-
-export default GameHost;
+export const GameHost: React.FC<GameHostProps> = (props) => {
+  return (
+    <HostControlsProvider userId={props.user.uid}>
+      <GameHostInner {...props} />
+    </HostControlsProvider>
+  );
+};
