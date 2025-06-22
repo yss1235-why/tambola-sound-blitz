@@ -48,9 +48,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   
   // 🛡️ NEW: Ref for immediate access in timer callbacks (eliminates race condition)
   const pauseRequestedRef = useRef(false);
-  
-  // 🔧 CRITICAL: Request ID pattern for reliable cancellation
-  const currentRequestIdRef = useRef<string | null>(null);
+  const timerGenerationRef = useRef(0);
 
   // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
   useEffect(() => {
@@ -70,7 +68,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         setPauseRequested(false);
         pauseRequestedRef.current = false;
         gameActiveRef.current = false;
-        currentRequestIdRef.current = null;
         console.log(`🏁 Game ended - clearing pause state`);
       }
     }
@@ -86,78 +83,56 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
-    // Invalidate current request
-    currentRequestIdRef.current = null;
     gameActiveRef.current = false;
   }, []);
 
-  // 🔧 CRITICAL: Generate unique request ID for cancellation
-  const generateRequestId = () => {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  };
-
-  // Automatic number calling loop with request ID validation
+  // Automatic number calling loop
   const startNumberCallingLoop = useCallback(() => {
     if (!gameData) return;
     
-    // Generate unique request ID for this timer loop
-    const requestId = generateRequestId();
-    currentRequestIdRef.current = requestId;
-    console.log(`🆔 Starting timer loop with request ID: ${requestId}`);
+    // Capture current generation when starting the loop
+    const loopGeneration = timerGenerationRef.current;
     
     const scheduleNextCall = () => {
-      // Check if this request is still valid
-      if (currentRequestIdRef.current !== requestId) {
-        console.log(`🚫 Request ${requestId} invalidated, stopping timer loop`);
+      // Check if this timer generation is still valid
+      if (timerGenerationRef.current !== loopGeneration) {
+        console.log(`🚫 Timer generation ${loopGeneration} invalidated, stopping`);
         return;
       }
       
       // Existing checks
-      if (!gameActiveRef.current || pauseRequestedRef.current) {
-        console.log(`🚫 Game inactive or paused, stopping timer loop`);
-        return;
-      }
+      if (!gameActiveRef.current || pauseRequestedRef.current) return;
       
       gameTimerRef.current = setTimeout(async () => {
-        // 🔧 CRITICAL: Check request ID FIRST - before any async operations
-        if (currentRequestIdRef.current !== requestId) {
-          console.log(`🚫 Request ${requestId} invalidated in callback, aborting`);
+        // 🔧 CRITICAL: Check timer generation FIRST in callback
+        if (timerGenerationRef.current !== loopGeneration) {
+          console.log(`🚫 Timer callback generation ${loopGeneration} invalidated, aborting`);
           return;
         }
         
         // Then existing checks
-        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) {
-          console.log(`🚫 Game state changed, aborting number call`);
-          return;
-        }
+        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) return;
         
         try {
-          console.log(`🎯 Auto-calling next number for game ${gameData.gameId} (req: ${requestId})`);
-          
-          // Final check before Firebase call
-          if (currentRequestIdRef.current !== requestId) {
-            console.log(`🚫 Request ${requestId} invalidated before Firebase call, aborting`);
-            return;
-          }
-          
+          console.log(`🎯 Auto-calling next number for game ${gameData.gameId} (gen: ${loopGeneration})`);
           const result = await firebaseService.callNextNumber(gameData.gameId);
           
-          // Check request ID again after async operation
-          if (currentRequestIdRef.current !== requestId) {
-            console.log(`🚫 Request ${requestId} invalidated after Firebase call, stopping`);
+          // Check generation again after async operation
+          if (timerGenerationRef.current !== loopGeneration) {
+            console.log(`🚫 Timer generation changed during async call, stopping`);
             return;
           }
           
           if (result.success && !result.gameEnded && gameActiveRef.current && !pauseRequestedRef.current) {
-            scheduleNextCall(); // Continue with same request ID
+            scheduleNextCall(); // Continue with same generation
           } else {
             clearAllTimers();
           }
         } catch (error) {
           console.error('❌ Auto-call error:', error);
           
-          // Check request ID before retrying
-          if (currentRequestIdRef.current === requestId && gameActiveRef.current && !pauseRequestedRef.current) {
+          // Check generation before retrying
+          if (timerGenerationRef.current === loopGeneration && gameActiveRef.current && !pauseRequestedRef.current) {
             scheduleNextCall();
           }
         }
@@ -179,7 +154,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       
-      // Clear any existing timers and requests
+      // Clear any existing timers
       clearAllTimers();
       
       // Start 10-second countdown
@@ -221,7 +196,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     }
   }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
-  // 🛡️ ENHANCED: Pause game with immediate request invalidation
+  // 🛡️ ENHANCED: Pause game with immediate state lock
   const pauseGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
@@ -229,10 +204,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`⏸️ Pausing game: ${gameData.gameId}`);
       
-      // 🔧 CRITICAL: Invalidate current request FIRST - this stops all pending operations
-      const oldRequestId = currentRequestIdRef.current;
-      currentRequestIdRef.current = null;
-      console.log(`🚫 Request invalidated: ${oldRequestId} -> null`);
+      // 🔧 CRITICAL: Increment timer generation to invalidate all queued callbacks
+      timerGenerationRef.current++;
+      const currentGeneration = timerGenerationRef.current;
+      console.log(`🔄 Timer generation incremented to: ${currentGeneration}`);
       
       // Set pause state immediately
       setPauseRequested(true);
@@ -241,9 +216,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       
       // Clear existing timers
       clearAllTimers();
-      
-      // Small delay to ensure any in-flight callbacks see the invalidated request
-      await new Promise(resolve => setTimeout(resolve, 50));
       
       // Update database
       await firebaseService.updateGameState(gameData.gameId, {
@@ -256,12 +228,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } catch (error: any) {
       console.error('❌ Pause game error:', error);
       
-      // 🛡️ ROLLBACK: If database update fails, rollback the pause state
-      console.log(`🔄 Rolling back pause state due to error`);
+      // Rollback pause state
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       
-      // Try to restart the loop if game was actually active
       if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
         gameActiveRef.current = true;
         startNumberCallingLoop();
@@ -287,16 +257,16 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isCountdown: false
       });
       
-      // Invalidate any old requests
-      currentRequestIdRef.current = null;
-      console.log(`🔄 Cleared request ID for resume`);
+      // Increment generation for new timer loop
+      timerGenerationRef.current++;
+      console.log(`🔄 New timer generation for resume: ${timerGenerationRef.current}`);
 
       // 🛡️ STEP 2: Clear pause lock and activate locally
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       gameActiveRef.current = true;
       
-      // 🛡️ STEP 3: Restart the calling loop (will generate new request ID)
+      // 🛡️ STEP 3: Restart the calling loop
       startNumberCallingLoop();
       
       console.log(`✅ Game resumed successfully: ${gameData.gameId}`);
