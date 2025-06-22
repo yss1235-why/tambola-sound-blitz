@@ -15,10 +15,6 @@ interface HostControlsContextValue {
   
   // Status
   isProcessing: boolean;
-  
-  // 🔧 ONLY NEW ADDITION: Export pause state for GameHost to check
-  isPaused: boolean;
-  pauseRequestedRef: React.RefObject<boolean>;
 }
 
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
@@ -52,6 +48,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   
   // 🛡️ NEW: Ref for immediate access in timer callbacks (eliminates race condition)
   const pauseRequestedRef = useRef(false);
+  
+  // 🔧 CRITICAL: Request ID pattern for reliable cancellation
+  const currentRequestIdRef = useRef<string | null>(null);
 
   // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
   useEffect(() => {
@@ -71,6 +70,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         setPauseRequested(false);
         pauseRequestedRef.current = false;
         gameActiveRef.current = false;
+        currentRequestIdRef.current = null;
         console.log(`🏁 Game ended - clearing pause state`);
       }
     }
@@ -86,34 +86,78 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+    // Invalidate current request
+    currentRequestIdRef.current = null;
     gameActiveRef.current = false;
   }, []);
 
-  // Automatic number calling loop
+  // 🔧 CRITICAL: Generate unique request ID for cancellation
+  const generateRequestId = () => {
+    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  };
+
+  // Automatic number calling loop with request ID validation
   const startNumberCallingLoop = useCallback(() => {
     if (!gameData) return;
     
+    // Generate unique request ID for this timer loop
+    const requestId = generateRequestId();
+    currentRequestIdRef.current = requestId;
+    console.log(`🆔 Starting timer loop with request ID: ${requestId}`);
+    
     const scheduleNextCall = () => {
-      // 🛡️ CRITICAL: Check BOTH conditions using ref for immediate access
-      if (!gameActiveRef.current || pauseRequestedRef.current) return;
+      // Check if this request is still valid
+      if (currentRequestIdRef.current !== requestId) {
+        console.log(`🚫 Request ${requestId} invalidated, stopping timer loop`);
+        return;
+      }
+      
+      // Existing checks
+      if (!gameActiveRef.current || pauseRequestedRef.current) {
+        console.log(`🚫 Game inactive or paused, stopping timer loop`);
+        return;
+      }
       
       gameTimerRef.current = setTimeout(async () => {
-        // 🛡️ CRITICAL: Check BOTH conditions again in callback
-        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) return;
+        // 🔧 CRITICAL: Check request ID FIRST - before any async operations
+        if (currentRequestIdRef.current !== requestId) {
+          console.log(`🚫 Request ${requestId} invalidated in callback, aborting`);
+          return;
+        }
+        
+        // Then existing checks
+        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) {
+          console.log(`🚫 Game state changed, aborting number call`);
+          return;
+        }
         
         try {
-          console.log(`🎯 Auto-calling next number for game ${gameData.gameId}`);
+          console.log(`🎯 Auto-calling next number for game ${gameData.gameId} (req: ${requestId})`);
+          
+          // Final check before Firebase call
+          if (currentRequestIdRef.current !== requestId) {
+            console.log(`🚫 Request ${requestId} invalidated before Firebase call, aborting`);
+            return;
+          }
+          
           const result = await firebaseService.callNextNumber(gameData.gameId);
           
+          // Check request ID again after async operation
+          if (currentRequestIdRef.current !== requestId) {
+            console.log(`🚫 Request ${requestId} invalidated after Firebase call, stopping`);
+            return;
+          }
+          
           if (result.success && !result.gameEnded && gameActiveRef.current && !pauseRequestedRef.current) {
-            scheduleNextCall(); // Continue the loop
+            scheduleNextCall(); // Continue with same request ID
           } else {
-            clearAllTimers(); // Game ended or error
+            clearAllTimers();
           }
         } catch (error) {
           console.error('❌ Auto-call error:', error);
-          // Continue trying after error
-          if (gameActiveRef.current && !pauseRequestedRef.current) {
+          
+          // Check request ID before retrying
+          if (currentRequestIdRef.current === requestId && gameActiveRef.current && !pauseRequestedRef.current) {
             scheduleNextCall();
           }
         }
@@ -135,7 +179,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       
-      // Clear any existing timers
+      // Clear any existing timers and requests
       clearAllTimers();
       
       // Start 10-second countdown
@@ -177,7 +221,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     }
   }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
-  // 🛡️ ENHANCED: Pause game with immediate state lock
+  // 🛡️ ENHANCED: Pause game with immediate request invalidation
   const pauseGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
@@ -185,15 +229,23 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`⏸️ Pausing game: ${gameData.gameId}`);
       
-      // 🛡️ STEP 1: Immediately set pause lock (stops all timers instantly)
+      // 🔧 CRITICAL: Invalidate current request FIRST - this stops all pending operations
+      const oldRequestId = currentRequestIdRef.current;
+      currentRequestIdRef.current = null;
+      console.log(`🚫 Request invalidated: ${oldRequestId} -> null`);
+      
+      // Set pause state immediately
       setPauseRequested(true);
       pauseRequestedRef.current = true;
-      console.log(`🛡️ Pause lock activated - timers will stop immediately`);
+      gameActiveRef.current = false;
       
-      // 🛡️ STEP 2: Clear existing timers
+      // Clear existing timers
       clearAllTimers();
       
-      // 🛡️ STEP 3: Update database (this can be slow/fail, but local is already stopped)
+      // Small delay to ensure any in-flight callbacks see the invalidated request
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Update database
       await firebaseService.updateGameState(gameData.gameId, {
         isActive: false,
         isCountdown: false
@@ -235,12 +287,16 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isCountdown: false
       });
       
+      // Invalidate any old requests
+      currentRequestIdRef.current = null;
+      console.log(`🔄 Cleared request ID for resume`);
+
       // 🛡️ STEP 2: Clear pause lock and activate locally
       setPauseRequested(false);
       pauseRequestedRef.current = false;
       gameActiveRef.current = true;
       
-      // 🛡️ STEP 3: Restart the calling loop
+      // 🛡️ STEP 3: Restart the calling loop (will generate new request ID)
       startNumberCallingLoop();
       
       console.log(`✅ Game resumed successfully: ${gameData.gameId}`);
@@ -261,10 +317,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`🏁 Ending game: ${gameData.gameId}`);
       
-      // 🛡️ Clear pause state when ending
+      // Clear pause state and stop timers
       setPauseRequested(false);
       pauseRequestedRef.current = false;
-      
       clearAllTimers();
       
       await firebaseService.updateGameState(gameData.gameId, {
@@ -272,6 +327,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isCountdown: false,
         gameOver: true
       });
+      
+      console.log(`✅ Game ended successfully: ${gameData.gameId}`);
       
     } catch (error: any) {
       console.error('❌ End game error:', error);
@@ -283,54 +340,37 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
   // Update call interval
   const updateCallInterval = useCallback((seconds: number) => {
-    setCallInterval(Math.max(3, Math.min(15, seconds))); // Clamp between 3-15 seconds
+    setCallInterval(seconds);
+    console.log(`⏰ Call interval updated to ${seconds} seconds`);
   }, []);
 
-  // Authorization check
-  const isAuthorized = gameData?.hostId === userId;
-
-  // 🛡️ ENHANCED: Cleanup on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearAllTimers();
-      setPauseRequested(false);
-      pauseRequestedRef.current = false;
     };
   }, [clearAllTimers]);
 
-  // Create stable context value
-  const contextValue = React.useMemo((): HostControlsContextValue => ({
-    startGame: isAuthorized ? startGame : async () => { throw new Error('Not authorized'); },
-    pauseGame: isAuthorized ? pauseGame : async () => { throw new Error('Not authorized'); },
-    resumeGame: isAuthorized ? resumeGame : async () => { throw new Error('Not authorized'); },
-    endGame: isAuthorized ? endGame : async () => { throw new Error('Not authorized'); },
+  const value: HostControlsContextValue = {
+    startGame,
+    pauseGame,
+    resumeGame,
+    endGame,
     updateCallInterval,
-    isProcessing,
-    isPaused: pauseRequested,
-    pauseRequestedRef
-  }), [isAuthorized, startGame, pauseGame, resumeGame, endGame, updateCallInterval, isProcessing, pauseRequested]);
+    isProcessing
+  };
 
   return (
-    <HostControlsContext.Provider value={contextValue}>
+    <HostControlsContext.Provider value={value}>
       {children}
     </HostControlsContext.Provider>
   );
 };
 
-/**
- * Hook to access host controls from any child component
- */
-export const useHostControls = (): HostControlsContextValue => {
+export const useHostControls = () => {
   const context = useContext(HostControlsContext);
   if (!context) {
     throw new Error('useHostControls must be used within a HostControlsProvider');
   }
   return context;
-};
-
-/**
- * Hook that returns null if not in host context (for optional host features)
- */
-export const useOptionalHostControls = (): HostControlsContextValue | null => {
-  return useContext(HostControlsContext);
 };
