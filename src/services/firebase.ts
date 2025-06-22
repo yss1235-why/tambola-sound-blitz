@@ -468,6 +468,14 @@ class FirebaseService {
         won: false,
         order: 2
       },
+      halfSheet: {
+        id: 'halfSheet',
+        name: 'Half Sheet',
+        pattern: '3 consecutive tickets from same set',
+        description: 'Complete half of a traditional 6-ticket sheet',
+        won: false,
+        order: 2.5
+      },
       topLine: {
         id: 'topLine',
         name: 'Top Line',
@@ -1248,6 +1256,38 @@ class FirebaseService {
             case 'corners':
               hasWon = ticket.metadata?.hasValidCorners && 
                       ticket.metadata.corners.every(corner => calledNumbers.includes(corner));
+              break;
+
+            case 'halfSheet':
+              // Half Sheet: 3 consecutive tickets from same set, each with ≥2 marked numbers
+              if (ticket.setId && ticket.positionInSet) {
+                const setId = ticket.setId;
+                const position = ticket.positionInSet;
+                
+                // Check if this is part of a valid half sheet (positions 1,2,3 or 4,5,6)
+                const isFirstHalf = [1, 2, 3].includes(position);
+                const isSecondHalf = [4, 5, 6].includes(position);
+                
+                if (isFirstHalf || isSecondHalf) {
+                  const targetPositions = isFirstHalf ? [1, 2, 3] : [4, 5, 6];
+                  
+                  // Find all tickets from same set with target positions
+                  const sameSetTickets = Object.values(tickets).filter(t => 
+                    t.isBooked && t.setId === setId && 
+                    targetPositions.includes(t.positionInSet || 0)
+                  );
+                  
+                  if (sameSetTickets.length === 3) {
+                    // Check if all 3 tickets have at least 2 marked numbers
+                    hasWon = sameSetTickets.every(t => {
+                      const markedCount = t.metadata?.allNumbers.filter(num => 
+                        calledNumbers.includes(num)
+                      ).length || 0;
+                      return markedCount >= 2;
+                    });
+                  }
+                }
+              }
               break;
 
             case 'topLine':
