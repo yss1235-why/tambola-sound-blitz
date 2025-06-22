@@ -50,26 +50,24 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const pauseRequestedRef = useRef(false);
   const gameControllerRef = useRef<AbortController | null>(null);
 
-  // ✅ AUTOMATIC: Smart state transitions with auto-restart
+  // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
   useEffect(() => {
     if (gameData) {
-      const newActiveState = gameData.gameState.isActive && !gameData.gameState.gameOver;
-      const wasActive = gameActiveRef.current;
+      const shouldBeActive = gameData.gameState.isActive && !gameData.gameState.gameOver;
       
-      // Update the ref to new state
-      gameActiveRef.current = newActiveState;
-      console.log(`🔄 State transition: ${wasActive} → ${newActiveState}`);
-      
-      // 🚀 AUTOMATIC RESTART: When database changes from inactive to active
-      if (!wasActive && newActiveState && !pauseRequested) {
-        console.log(`🚀 Auto-restarting loop due to database state change`);
-        startNumberCallingLoop();
+      // Only sync from database if we're not in a manual pause state
+      if (!pauseRequested) {
+        gameActiveRef.current = shouldBeActive;
+        console.log(`🔄 Syncing gameActiveRef from database: ${shouldBeActive}`);
+      } else {
+        console.log(`🛡️ Manual pause active - ignoring database sync`);
       }
       
-      // Clear pause state when game ends (essential logic)
+      // If game is actually ended in database, clear pause request
       if (gameData.gameState.gameOver) {
         setPauseRequested(false);
         pauseRequestedRef.current = false;
+        gameActiveRef.current = false;
         console.log(`🏁 Game ended - clearing pause state`);
       }
     }
@@ -198,7 +196,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     }
   }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
-  // ✅ SIMPLIFIED: Atomic pause operation
+  // 🛡️ ENHANCED: Pause game with immediate state lock
   const pauseGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
@@ -206,19 +204,22 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`⏸️ Pausing game: ${gameData.gameId}`);
       
-      // 🔧 STEP 1: Immediately stop all timers (prevents new scheduling)
+      // 🔧 CRITICAL: Abort current timer loop to stop all queued callbacks
       if (gameControllerRef.current) {
         gameControllerRef.current.abort();
         gameControllerRef.current = null;
         console.log(`🚫 Timer loop aborted`);
       }
-      clearAllTimers();
       
-      // 🔧 STEP 2: Set temporary pause lock
+      // Set pause state immediately
       setPauseRequested(true);
       pauseRequestedRef.current = true;
+      gameActiveRef.current = false;
       
-      // 🔧 STEP 3: Update database (useEffect will sync gameActiveRef automatically)
+      // Clear existing timers
+      clearAllTimers();
+      
+      // Update database
       await firebaseService.updateGameState(gameData.gameId, {
         isActive: false,
         isCountdown: false
@@ -229,17 +230,24 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } catch (error: any) {
       console.error('❌ Pause game error:', error);
       
-      // 🔧 ROLLBACK: Clear pause state on error
+      // 🛡️ ROLLBACK: If database update fails, rollback the pause state
+      console.log(`🔄 Rolling back pause state due to error`);
       setPauseRequested(false);
       pauseRequestedRef.current = false;
+      
+      // Try to restart the loop if game was actually active
+      if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
+        gameActiveRef.current = true;
+        startNumberCallingLoop();
+      }
       
       throw new Error(error.message || 'Failed to pause game');
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, clearAllTimers]);
+  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
 
-  // ✅ AUTOMATIC: Resume with automatic loop restart via useEffect
+  // 🛡️ ENHANCED: Resume game
   const resumeGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
@@ -247,25 +255,28 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`▶️ Resuming game: ${gameData.gameId}`);
       
-      // 🔧 STEP 1: Clear any existing timers first
-      if (gameControllerRef.current) {
-        gameControllerRef.current.abort();
-        gameControllerRef.current = null;
-      }
-      clearAllTimers();
-      
-      // 🔧 STEP 2: Clear pause state
-      setPauseRequested(false);
-      pauseRequestedRef.current = false;
-      
-      // 🔧 STEP 3: Update database (useEffect will auto-restart the loop)
+      // 🛡️ STEP 1: Update database first
       await firebaseService.updateGameState(gameData.gameId, {
         isActive: true,
         isCountdown: false
       });
       
-      // 🚀 NO MANUAL RESTART: useEffect will detect state change and auto-restart
-      console.log(`✅ Game resumed - useEffect will auto-restart loop`);
+      // Create new AbortController for resume
+      if (gameControllerRef.current) {
+        gameControllerRef.current.abort();
+        gameControllerRef.current = null;
+      }
+      console.log(`🔄 New timer controller for resume`);
+
+      // 🛡️ STEP 2: Clear pause lock and activate locally
+      setPauseRequested(false);
+      pauseRequestedRef.current = false;
+      gameActiveRef.current = true;
+      
+      // 🛡️ STEP 3: Restart the calling loop
+      startNumberCallingLoop();
+      
+      console.log(`✅ Game resumed successfully: ${gameData.gameId}`);
       
     } catch (error: any) {
       console.error('❌ Resume game error:', error);
@@ -273,7 +284,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [gameData, isProcessing, clearAllTimers]);
+  }, [gameData, isProcessing, startNumberCallingLoop]);
 
   // End game
   const endGame = useCallback(async () => {
