@@ -1,4 +1,4 @@
-// src/services/firebase.ts - COMPLETE: Single Source of Truth Implementation
+// src/services/firebase.ts - COMPLETE: Single Source of Truth Implementation + Expansion-Only Tickets
 
 import { initializeApp } from 'firebase/app';
 import { 
@@ -739,6 +739,95 @@ class FirebaseService {
       }
       
       throw new Error(`Failed to load ticket set ${ticketSetId}: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * ✅ NEW: Safely expand game tickets while preserving existing bookings
+   * EXPANSION-ONLY: Can only increase maxTickets, never reduce
+   * Used when host increases maxTickets to add only the additional tickets needed
+   * 
+   * @param gameId - The game to expand
+   * @param newMaxTickets - New ticket count (must be > current maxTickets)
+   * @param ticketSetId - Which ticket set to load from (1 or 2)
+   */
+  async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
+    try {
+      console.log(`📈 Expanding game ${gameId} tickets to ${newMaxTickets} from set ${ticketSetId}`);
+      
+      // ✅ STEP 1: Get current game data to understand current state
+      const currentGameData = await this.getGameData(gameId);
+      if (!currentGameData) {
+        throw new Error(`Game ${gameId} not found for ticket expansion`);
+      }
+      
+      const currentMaxTickets = currentGameData.maxTickets;
+      const currentTickets = currentGameData.tickets || {};
+      
+      // ✅ STEP 2: Validate this is a valid expansion
+      if (newMaxTickets <= currentMaxTickets) {
+        throw new Error(`Can only expand tickets. Current: ${currentMaxTickets}, Requested: ${newMaxTickets}. To reduce tickets, create a new game.`);
+      }
+      
+      if (newMaxTickets > 600) {
+        throw new Error(`Maximum ticket limit is 600. Requested: ${newMaxTickets}`);
+      }
+      
+      // ✅ STEP 3: Check game state - can't expand during active game
+      if (currentGameData.gameState.isActive || currentGameData.gameState.isCountdown) {
+        throw new Error('Cannot expand tickets while game is active or starting');
+      }
+      
+      if (currentGameData.gameState.gameOver) {
+        throw new Error('Cannot expand tickets for completed games');
+      }
+      
+      const numbersCalledCount = currentGameData.gameState.calledNumbers?.length || 0;
+      if (numbersCalledCount > 0) {
+        throw new Error('Cannot expand tickets after numbers have been called');
+      }
+      
+      console.log(`📊 Current state: ${currentMaxTickets} tickets, expanding to ${newMaxTickets} (+${newMaxTickets - currentMaxTickets} new)`);
+      
+      // ✅ STEP 4: Load complete ticket set (we'll extract only what we need)
+      const allTicketsFromSet = await this.loadTicketsFromSet(ticketSetId, newMaxTickets);
+      
+      // ✅ STEP 5: Extract ONLY the new tickets we need to add
+      const newTicketsToAdd: { [ticketId: string]: TambolaTicket } = {};
+      const ticketsToAddCount = newMaxTickets - currentMaxTickets;
+      
+      for (let i = currentMaxTickets + 1; i <= newMaxTickets; i++) {
+        const ticketId = i.toString();
+        if (allTicketsFromSet[ticketId]) {
+          newTicketsToAdd[ticketId] = allTicketsFromSet[ticketId];
+        } else {
+          throw new Error(`Ticket ${ticketId} not found in set ${ticketSetId}`);
+        }
+      }
+      
+      console.log(`🎫 Adding ${ticketsToAddCount} new tickets: ${Object.keys(newTicketsToAdd).join(', ')}`);
+      
+      // ✅ STEP 6: Atomic update - combine existing and new tickets
+      const updatedTickets = {
+        ...currentTickets,     // Preserve ALL existing tickets and bookings
+        ...newTicketsToAdd     // Add only the new tickets
+      };
+      
+      const updates = {
+        maxTickets: newMaxTickets,
+        tickets: updatedTickets,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await update(ref(database, `games/${gameId}`), removeUndefinedValues(updates));
+      
+      console.log(`✅ Successfully expanded game ${gameId} from ${currentMaxTickets} to ${newMaxTickets} tickets`);
+      console.log(`📋 Total tickets now: ${Object.keys(updatedTickets).length}`);
+      console.log(`👥 Existing bookings preserved: ${Object.values(updatedTickets).filter(t => t.isBooked).length}`);
+      
+    } catch (error: any) {
+      console.error(`❌ Error expanding game tickets for ${gameId}:`, error);
+      throw new Error(`Failed to expand tickets: ${error.message}`);
     }
   }
 
