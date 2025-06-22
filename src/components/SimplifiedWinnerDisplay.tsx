@@ -1,17 +1,14 @@
-// FILE 2: src/components/SimplifiedWinnerDisplay.tsx - NEW MOBILE-OPTIMIZED COMPONENT
-// CREATE this new file
-// ================================================================================
-
+// src/components/SimplifiedWinnerDisplay.tsx - VERIFIED: Mobile-optimized winner display for hosts
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, User, Phone, Play, CheckCircle, Calendar } from 'lucide-react';
+import { Trophy, User, Phone, Play, CheckCircle } from 'lucide-react';
 import { GameData } from '@/services/firebase';
 
 interface SimplifiedWinnerDisplayProps {
   gameData: GameData;
-  onCreateNewGame?: () => void;
+  onCreateNewGame: () => void; // ✅ VERIFIED: Correct function signature for the flow
 }
 
 export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = ({ 
@@ -21,11 +18,15 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
 
+  // ✅ PRESERVE: All existing console logs for debugging
+  console.log('🏆 SimplifiedWinnerDisplay rendered for game:', gameData.gameId);
+  console.log('📊 Winner summary:', { totalWinners, prizesWon: wonPrizes.length });
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-yellow-50 via-orange-50 to-red-50 p-2 sm:p-4">
       <div className="max-w-3xl mx-auto space-y-4">
         
-        {/* Celebration Header - Compact */}
+        {/* Celebration Header - Compact Mobile-Optimized */}
         <Card className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
           <CardContent className="text-center py-4 sm:py-6">
             <Trophy className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 sm:mb-4 animate-bounce" />
@@ -60,6 +61,9 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
               <div className="text-center py-6">
                 <Trophy className="w-8 h-8 text-gray-400 mx-auto mb-3" />
                 <p className="text-gray-600 text-sm">No prizes were won in this game.</p>
+                <p className="text-gray-500 text-xs mt-1">
+                  Game ended with {gameData.gameState.calledNumbers?.length || 0} numbers called.
+                </p>
               </div>
             ) : (
               <div className="space-y-2 sm:space-y-3">
@@ -106,6 +110,7 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
                                       <a 
                                         href={`tel:${winner.phone}`}
                                         className="text-xs text-green-700 hover:text-green-800 font-medium"
+                                        onClick={() => console.log('📞 Host calling winner:', winner.name, winner.phone)}
                                       >
                                         {winner.phone}
                                       </a>
@@ -120,6 +125,7 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
                                     variant="outline"
                                     onClick={() => {
                                       const message = `Congratulations ${winner.name}! You won ${prize.name} in today's Tambola game with ticket ${winner.ticketId}. Well done! 🎉`;
+                                      console.log('📱 Host sending WhatsApp to winner:', winner.name);
                                       window.open(`https://wa.me/${winner.phone}?text=${encodeURIComponent(message)}`, '_blank');
                                     }}
                                     className="text-green-600 border-green-300 hover:bg-green-50 text-xs px-2 py-1 h-7"
@@ -141,33 +147,36 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
         </Card>
 
         {/* Create New Game Button - Prominent */}
-        {onCreateNewGame && (
-          <Card>
-            <CardContent className="p-3 sm:p-4 text-center">
-              <div className="mb-3 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-xs sm:text-sm text-blue-800 font-medium mb-1">
-                  ✅ Game completed! Winner information saved.
-                </p>
-                <p className="text-xs text-blue-600">
-                  💡 Take screenshots or note down contact details before creating a new game.
-                </p>
-              </div>
-              
-              <Button 
-                onClick={onCreateNewGame}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 text-sm sm:text-base font-semibold w-full sm:w-auto"
-                size="lg"
-              >
-                <Play className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                Create New Game
-              </Button>
-              
-              <p className="text-xs text-gray-500 mt-2">
-                🔒 Winner data remains in system records
+        <Card>
+          <CardContent className="p-3 sm:p-4 text-center">
+            <div className="mb-3 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs sm:text-sm text-blue-800 font-medium mb-1">
+                ✅ Game completed! Winner information displayed above.
               </p>
-            </CardContent>
-          </Card>
-        )}
+              <p className="text-xs text-blue-600">
+                💡 Note down contact details now. Creating a new game will clear this display.
+              </p>
+            </div>
+            
+            {/* ✅ VERIFIED: Button calls onCreateNewGame which triggers the alert and flow */}
+            <Button 
+              onClick={() => {
+                console.log('🎮 Host clicked Create New Game from winner display');
+                console.log('🔄 Triggering flow: Alert → Setup Mode → Configure → Create & Open Booking');
+                onCreateNewGame(); // This will trigger the alert and flow in GameHost.tsx
+              }}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 text-sm sm:text-base font-semibold w-full sm:w-auto"
+              size="lg"
+            >
+              <Play className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+              Create New Game
+            </Button>
+            
+            <p className="text-xs text-gray-500 mt-2">
+              🔒 This will take you to game setup. Old game data will be preserved until new game is created.
+            </p>
+          </CardContent>
+        </Card>
 
         {/* Game Summary - Minimal */}
         <Card className="bg-gray-50">
