@@ -1,4 +1,4 @@
-// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes + Winner Display + YOUR DYNAMIC CORNER LOGIC
+// src/services/firebase.ts - UPDATED: Pre-made ticket sets integration + Corner/Star Corner prizes + Winner Display + Half Sheet Prize + YOUR DYNAMIC CORNER LOGIC
 import { initializeApp } from 'firebase/app';
 import { 
   getDatabase, 
@@ -46,6 +46,8 @@ export const auth: Auth = getAuth(app);
 
 export interface TambolaTicket {
   ticketId: string;
+  setId: number;        // ✅ NEW: Preserve from JSON (1, 2, 3...)
+  positionInSet: number; // ✅ NEW: Position within set (1-6)
   rows: number[][]; // 3 rows x 9 columns
   isBooked: boolean;
   playerName?: string;
@@ -311,7 +313,7 @@ class FirebaseService {
   // ================== PRE-MADE TICKET LOADING ==================
 
   /**
-   * ✅ UPDATED: Load tickets from pre-made ticket sets with metadata computation
+   * ✅ UPDATED: Load tickets from pre-made ticket sets with metadata computation and Half Sheet support
    */
   async loadTicketsFromSet(ticketSetId: string, maxTickets: number): Promise<{ [ticketId: string]: TambolaTicket }> {
     try {
@@ -409,9 +411,11 @@ class FirebaseService {
           continue;
         }
 
-        // ✅ CREATE: Build ticket object in app's expected format
+        // ✅ CREATE: Build ticket object in app's expected format with preserved metadata
         const ticket: TambolaTicket = {
           ticketId: ticketId.toString(), // Keep as string for consistency
+          setId: rows[0].setId,           // ✅ NEW: Preserve setId from JSON data
+          positionInSet: ((ticketId - 1) % 6) + 1, // ✅ NEW: Calculate position (1-6)
           rows: rows.map(row => row.numbers), // Extract numbers arrays
           isBooked: false
         };
@@ -434,6 +438,7 @@ class FirebaseService {
       console.log(`🎫 Ticket IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${createdTicketCount > 5 ? '...' : ''}`);
       console.log(`📐 Sample ticket structure verified: ${tickets['1'] ? '3 rows × 9 columns' : 'Invalid'}`);
       console.log(`⚡ Metadata computed for all tickets (corners, center, allNumbers)`);
+      console.log(`🎯 Half Sheet support: setId and positionInSet preserved for traditional validation`);
 
       return tickets;
 
@@ -462,7 +467,7 @@ class FirebaseService {
   // ================== GAME MANAGEMENT ==================
 
   /**
-   * ✅ UPDATED: Create game using pre-made ticket sets with new prizes
+   * ✅ UPDATED: Create game using pre-made ticket sets with new prizes including Half Sheet
    */
   async createGame(
     config: CreateGameConfig,
@@ -480,7 +485,7 @@ class FirebaseService {
       console.log(`✅ Loaded ${Object.keys(tickets).length} pre-made tickets from set ${ticketSetId}`);
       console.log(`📊 SetId concept preserved: Each setId represents a traditional 6-ticket Tambola sheet`);
 
-      // ✅ UPDATED: Initialize selected prizes with new Corner and Star Corner prizes
+      // ✅ UPDATED: Initialize selected prizes with new Corner, Star Corner, and Half Sheet prizes
       const availablePrizes = {
         quickFive: {
           id: 'quickFive',
@@ -497,6 +502,14 @@ class FirebaseService {
           description: 'Mark all 4 corner positions of your ticket',
           won: false,
           order: 2
+        },
+        halfSheet: {          // ✅ NEW: Half Sheet Prize
+          id: 'halfSheet',
+          name: 'Half Sheet',
+          pattern: '3 consecutive tickets from same set',
+          description: 'Complete half of a traditional 6-ticket sheet',
+          won: false,
+          order: 2.5
         },
         topLine: {
           id: 'topLine',
@@ -580,6 +593,7 @@ class FirebaseService {
       console.log(`✅ Game created successfully with ID: ${gameId}`);
       console.log(`🎫 Using pre-made tickets from set ${ticketSetId} (${Object.keys(tickets).length} tickets)`);
       console.log(`🏆 Configured prizes: ${selectedPrizes.join(', ')}`);
+      console.log(`🎯 Half Sheet support: Traditional set validation enabled`);
       
       return gameData;
     } catch (error: any) {
@@ -904,6 +918,13 @@ class FirebaseService {
         if (currentTicket.metadata) {
           (ticketData as any).metadata = currentTicket.metadata;
         }
+        // ✅ NEW: Preserve Half Sheet metadata
+        if (currentTicket.setId) {
+          (ticketData as any).setId = currentTicket.setId;
+        }
+        if (currentTicket.positionInSet) {
+          (ticketData as any).positionInSet = currentTicket.positionInSet;
+        }
       }
 
       await update(
@@ -1111,7 +1132,7 @@ class FirebaseService {
 
   // ================== PRIZE VALIDATION ==================
 
-  // ✅ UPDATED: YOUR REQUESTED DYNAMIC CORNER/STAR CORNER VALIDATION
+  // ✅ UPDATED: YOUR REQUESTED DYNAMIC CORNER/STAR CORNER VALIDATION + NEW HALF SHEET VALIDATION
   async validateTicketsForPrizes(
     tickets: { [ticketId: string]: TambolaTicket },
     calledNumbers: number[],
@@ -1125,6 +1146,102 @@ class FirebaseService {
 
       const prizeWinners: { name: string; ticketId: string; phone?: string }[] = [];
 
+      // ✅ NEW: Half Sheet uses different validation logic
+      if (prizeId === 'halfSheet') {
+        try {
+          console.log(`🎯 Validating Half Sheet prize...`);
+          
+          // Group all booked tickets by player name
+          const playerTickets = new Map<string, TambolaTicket[]>();
+          
+          for (const [ticketId, ticket] of Object.entries(tickets)) {
+            if (!ticket.isBooked || !ticket.playerName) continue;
+            
+            // ✅ SAFETY: Handle legacy tickets without set metadata
+            if (!ticket.setId || !ticket.positionInSet) {
+              console.warn(`Legacy ticket ${ticketId} missing set metadata - skipping half sheet validation`);
+              continue;
+            }
+            
+            if (!playerTickets.has(ticket.playerName)) {
+              playerTickets.set(ticket.playerName, []);
+            }
+            playerTickets.get(ticket.playerName)!.push(ticket);
+          }
+          
+          console.log(`🔍 Half Sheet: Checking ${playerTickets.size} players for valid half sheets`);
+          
+          // Check each player for valid half sheets
+          for (const [playerName, playerTicketList] of playerTickets) {
+            // Group player's tickets by setId
+            const ticketsBySet = new Map<number, TambolaTicket[]>();
+            
+            for (const ticket of playerTicketList) {
+              if (!ticketsBySet.has(ticket.setId)) {
+                ticketsBySet.set(ticket.setId, []);
+              }
+              ticketsBySet.get(ticket.setId)!.push(ticket);
+            }
+            
+            // Check each set for valid half
+            for (const [setId, setTickets] of ticketsBySet) {
+              if (setTickets.length !== 3) continue; // Must be exactly 3 tickets
+              
+              // Get positions and sort
+              const positions = setTickets.map(t => t.positionInSet).sort((a, b) => a - b);
+              
+              // Check for valid halves: [1,2,3] or [4,5,6]
+              const isFirstHalf = JSON.stringify(positions) === JSON.stringify([1,2,3]);
+              const isSecondHalf = JSON.stringify(positions) === JSON.stringify([4,5,6]);
+              
+              console.log(`🎯 Checking set ${setId} for ${playerName}: positions [${positions.join(',')}], firstHalf: ${isFirstHalf}, secondHalf: ${isSecondHalf}`);
+              
+              if (isFirstHalf || isSecondHalf) {
+                // Validate minimum progress (≥2 numbers marked per ticket)
+                const progressResults = setTickets.map(ticket => {
+                  const markedCount = ticket.rows.flat()
+                    .filter(num => num > 0 && calledNumbers.includes(num)).length;
+                  return { ticketId: ticket.ticketId, markedCount };
+                });
+                
+                const allTicketsProgressed = progressResults.every(result => result.markedCount >= 2);
+                
+                console.log(`📊 Progress check for ${playerName} set ${setId}:`, progressResults, `All ≥2: ${allTicketsProgressed}`);
+                
+                if (allTicketsProgressed) {
+                  console.log(`🎉 Half Sheet winner found: ${playerName} with set ${setId} positions [${positions.join(',')}]`);
+                  
+                  // Found a valid half sheet for this player
+                  prizeWinners.push({
+                    name: playerName,
+                    ticketId: `Set ${setId} (${positions.join(',')})`, // Show set and positions
+                    phone: setTickets[0].playerPhone // Use phone from first ticket
+                  });
+                  break; // One half sheet win per player is enough
+                }
+              }
+            }
+          }
+          
+          console.log(`✅ Half Sheet validation complete: ${prizeWinners.length} winners found`);
+          
+        } catch (error) {
+          // ✅ SAFETY: Error recovery
+          console.error(`Half Sheet validation error:`, error);
+          // Continue processing other prizes
+        }
+        
+        // Add winners if found
+        if (prizeWinners.length > 0) {
+          winners[prizeId] = {
+            prizeName: prize.name,
+            winners: prizeWinners
+          };
+        }
+        continue; // Skip to next prize
+      }
+
+      // ✅ EXISTING: Per-ticket validation for all other prizes
       for (const [ticketId, ticket] of Object.entries(tickets)) {
         if (!ticket.isBooked || !ticket.playerName) continue;
 
