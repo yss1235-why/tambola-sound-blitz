@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - COMPLETE: Single Source of Truth Implementation
+// src/components/GameHost.tsx - COMPLETE: Single Source of Truth Implementation + Expansion-Only Tickets
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -159,7 +159,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   // ================== SAFETY AND VALIDATION UTILITIES ==================
 
   /**
-   * ✅ VALIDATION: Comprehensive input validation
+   * ✅ VALIDATION: Comprehensive input validation + NEW: Expansion-only validation
    */
   const validateGameSettings = (formData: CreateGameForm, gameData: GameData): {
     isValid: boolean;
@@ -179,6 +179,12 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       .filter(ticket => ticket.isBooked).length;
     if (maxTickets < bookedCount) {
       errors.push(`Cannot set max tickets (${maxTickets}) below current bookings (${bookedCount})`);
+    }
+    
+    // ✅ NEW: Validate ticket reduction (expansion-only approach)
+    const currentMaxTickets = gameData.maxTickets;
+    if (maxTickets < currentMaxTickets) {
+      errors.push(`Cannot reduce tickets from ${currentMaxTickets} to ${maxTickets}. You can only increase the ticket count. To reduce tickets, create a new game instead.`);
     }
     
     if (!formData.hostPhone?.trim()) {
@@ -302,11 +308,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     return { message: `Active until ${endDate.toLocaleDateString()}`, variant: 'default' as const };
   }, [user.subscriptionEndDate, user.isActive]);
 
-  // ================== ENHANCED SINGLE SOURCE UPDATE ==================
+  // ================== ENHANCED SINGLE SOURCE UPDATE + EXPANSION ==================
 
   /**
-   * ✅ ENHANCED SINGLE SOURCE UPDATE: Complete settings update with safety checks
-   * CRITICAL: This updates BOTH live game data AND host template
+   * ✅ ENHANCED SINGLE SOURCE UPDATE: Complete settings update with safety checks + NEW EXPANSION LOGIC
+   * CRITICAL: This updates BOTH live game data AND host template + handles ticket expansion
    */
   const updateGameSettings = async () => {
     if (!gameData) {
@@ -351,17 +357,46 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     setIsCreating(true);
     
     try {
-      // Step 4: Combined atomic update
+      // ✅ UPDATED: Handle ticket expansion and other updates
       logUpdateOperation('live_update');
       
-      await firebaseService.updateGameAndTemplate(
-        gameData.gameId,
-        user.uid,
-        updateData
-      );
+      const currentMaxTickets = gameData.maxTickets;
+      const newMaxTickets = maxTicketsNum;
+      
+      // ✅ Check if we need to expand tickets
+      if (newMaxTickets > currentMaxTickets) {
+        console.log(`📈 Ticket expansion needed: ${currentMaxTickets} → ${newMaxTickets} (+${newMaxTickets - currentMaxTickets} tickets)`);
+        
+        // Use expansion method for ticket count increase
+        await firebaseService.expandGameTickets(
+          gameData.gameId,
+          newMaxTickets,
+          createGameForm.selectedTicketSet
+        );
+        
+        // Update host template separately (expansion method doesn't handle template)
+        await firebaseService.updateHostTemplate(user.uid, {
+          hostPhone: createGameForm.hostPhone.trim(),
+          maxTickets: newMaxTickets,
+          selectedTicketSet: createGameForm.selectedTicketSet,
+          selectedPrizes: createGameForm.selectedPrizes
+        });
+        
+        console.log(`✅ Ticket expansion completed: ${currentMaxTickets} → ${newMaxTickets}`);
+      } 
+      else {
+        // No ticket expansion needed - use existing update method
+        console.log(`📝 Standard settings update (no ticket expansion)`);
+        
+        await firebaseService.updateGameAndTemplate(
+          gameData.gameId,
+          user.uid,
+          updateData
+        );
+      }
       
       logUpdateOperation('success');
-      
+
       // Step 5: Update UI state
       setEditMode(false);
       
@@ -384,6 +419,8 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
         errorMessage = 'Update failed due to database conflict. Please try again.';
       } else if (error.message.includes('network') || error.message.includes('offline')) {
         errorMessage = 'Network error. Please check your connection and try again.';
+      } else if (error.message.includes('expand') || error.message.includes('expansion')) {
+        errorMessage = `Ticket expansion failed: ${error.message}`;
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -1045,7 +1082,7 @@ const EditGameForm = ({
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          You can edit game settings as long as the game hasn't started yet.
+          You can edit game settings as long as the game hasn't started yet. ✅ Ticket expansion is supported - you can only increase the ticket count.
         </AlertDescription>
       </Alert>
 
@@ -1064,6 +1101,18 @@ const EditGameForm = ({
           <p className="text-sm text-gray-600">Total</p>
         </div>
       </div>
+
+      {/* ✅ NEW: Expansion Notice */}
+      {parseInt(createGameForm.maxTickets) > gameData.maxTickets && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-800 font-medium">
+            📈 Ticket Expansion Detected
+          </p>
+          <p className="text-xs text-blue-600 mt-1">
+            Will expand from {gameData.maxTickets} to {createGameForm.maxTickets} tickets (+{parseInt(createGameForm.maxTickets) - gameData.maxTickets} new tickets). All existing bookings will be preserved.
+          </p>
+        </div>
+      )}
 
       {/* Host Phone */}
       <div>
@@ -1089,14 +1138,14 @@ const EditGameForm = ({
         <Input
           id="editMaxTickets"
           type="number"
-          min={bookedCount}
+          min={gameData.maxTickets} // ✅ NEW: Prevent reduction
           max="600"
           value={createGameForm.maxTickets}
           onChange={onMaxTicketsChange}
           disabled={isCreating || operationInProgress}
         />
         <p className="text-sm text-gray-600 mt-1">
-          Cannot be less than current bookings ({bookedCount})
+          ✅ Can only increase tickets (current: {gameData.maxTickets}, minimum: {gameData.maxTickets})
         </p>
       </div>
 
@@ -1166,12 +1215,12 @@ const EditGameForm = ({
           {isCreating ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Updating...
+              {parseInt(createGameForm.maxTickets) > gameData.maxTickets ? 'Expanding...' : 'Updating...'}
             </>
           ) : (
             <>
               <Save className="w-4 h-4 mr-2" />
-              Update Settings
+              {parseInt(createGameForm.maxTickets) > gameData.maxTickets ? 'Expand & Update' : 'Update Settings'}
             </>
           )}
         </Button>
