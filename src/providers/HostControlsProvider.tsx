@@ -48,6 +48,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   
   // 🛡️ NEW: Ref for immediate access in timer callbacks (eliminates race condition)
   const pauseRequestedRef = useRef(false);
+  const gameControllerRef = useRef<AbortController | null>(null);
 
   // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
   useEffect(() => {
@@ -82,6 +83,11 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+    // Abort any running timer loop
+    if (gameControllerRef.current) {
+      gameControllerRef.current.abort();
+      gameControllerRef.current = null;
+    }
     gameActiveRef.current = false;
   }, []);
 
@@ -89,27 +95,44 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const startNumberCallingLoop = useCallback(() => {
     if (!gameData) return;
     
+    // Create new AbortController for this timer loop
+    gameControllerRef.current = new AbortController();
+    const { signal } = gameControllerRef.current;
+    
     const scheduleNextCall = () => {
-      // 🛡️ CRITICAL: Check BOTH conditions using ref for immediate access
-      if (!gameActiveRef.current || pauseRequestedRef.current) return;
+      // Check abort signal first, then existing checks
+      if (signal.aborted || !gameActiveRef.current || pauseRequestedRef.current) return;
       
       gameTimerRef.current = setTimeout(async () => {
-        // 🛡️ CRITICAL: Check BOTH conditions again in callback
+        // 🔧 CRITICAL: Check abort signal FIRST in callback
+        if (signal.aborted) {
+          console.log(`🚫 Timer callback aborted, stopping`);
+          return;
+        }
+        
+        // Then existing checks
         if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) return;
         
         try {
           console.log(`🎯 Auto-calling next number for game ${gameData.gameId}`);
           const result = await firebaseService.callNextNumber(gameData.gameId);
           
+          // Check abort signal again after async operation
+          if (signal.aborted) {
+            console.log(`🚫 Timer loop aborted during async call, stopping`);
+            return;
+          }
+          
           if (result.success && !result.gameEnded && gameActiveRef.current && !pauseRequestedRef.current) {
-            scheduleNextCall(); // Continue the loop
+            scheduleNextCall(); // Continue with same controller
           } else {
-            clearAllTimers(); // Game ended or error
+            clearAllTimers();
           }
         } catch (error) {
           console.error('❌ Auto-call error:', error);
-          // Continue trying after error
-          if (gameActiveRef.current && !pauseRequestedRef.current) {
+          
+          // Check abort signal before retrying
+          if (!signal.aborted && gameActiveRef.current && !pauseRequestedRef.current) {
             scheduleNextCall();
           }
         }
@@ -181,15 +204,22 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`⏸️ Pausing game: ${gameData.gameId}`);
       
-      // 🛡️ STEP 1: Immediately set pause lock (stops all timers instantly)
+      // 🔧 CRITICAL: Abort current timer loop to stop all queued callbacks
+      if (gameControllerRef.current) {
+        gameControllerRef.current.abort();
+        gameControllerRef.current = null;
+        console.log(`🚫 Timer loop aborted`);
+      }
+      
+      // Set pause state immediately
       setPauseRequested(true);
       pauseRequestedRef.current = true;
-      console.log(`🛡️ Pause lock activated - timers will stop immediately`);
+      gameActiveRef.current = false;
       
-      // 🛡️ STEP 2: Clear existing timers
+      // Clear existing timers
       clearAllTimers();
       
-      // 🛡️ STEP 3: Update database (this can be slow/fail, but local is already stopped)
+      // Update database
       await firebaseService.updateGameState(gameData.gameId, {
         isActive: false,
         isCountdown: false
@@ -231,6 +261,13 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isCountdown: false
       });
       
+      // Create new AbortController for resume
+      if (gameControllerRef.current) {
+        gameControllerRef.current.abort();
+        gameControllerRef.current = null;
+      }
+      console.log(`🔄 New timer controller for resume`);
+
       // 🛡️ STEP 2: Clear pause lock and activate locally
       setPauseRequested(false);
       pauseRequestedRef.current = false;
@@ -257,10 +294,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     try {
       console.log(`🏁 Ending game: ${gameData.gameId}`);
       
-      // 🛡️ Clear pause state when ending
+      // Clear pause state and stop timers
       setPauseRequested(false);
       pauseRequestedRef.current = false;
-      
       clearAllTimers();
       
       await firebaseService.updateGameState(gameData.gameId, {
@@ -268,6 +304,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         isCountdown: false,
         gameOver: true
       });
+      
+      console.log(`✅ Game ended successfully: ${gameData.gameId}`);
       
     } catch (error: any) {
       console.error('❌ End game error:', error);
@@ -279,52 +317,37 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
   // Update call interval
   const updateCallInterval = useCallback((seconds: number) => {
-    setCallInterval(Math.max(3, Math.min(15, seconds))); // Clamp between 3-15 seconds
+    setCallInterval(seconds);
+    console.log(`⏰ Call interval updated to ${seconds} seconds`);
   }, []);
 
-  // Authorization check
-  const isAuthorized = gameData?.hostId === userId;
-
-  // 🛡️ ENHANCED: Cleanup on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       clearAllTimers();
-      setPauseRequested(false);
-      pauseRequestedRef.current = false;
     };
   }, [clearAllTimers]);
 
-  // Create stable context value
-  const contextValue = React.useMemo((): HostControlsContextValue => ({
-    startGame: isAuthorized ? startGame : async () => { throw new Error('Not authorized'); },
-    pauseGame: isAuthorized ? pauseGame : async () => { throw new Error('Not authorized'); },
-    resumeGame: isAuthorized ? resumeGame : async () => { throw new Error('Not authorized'); },
-    endGame: isAuthorized ? endGame : async () => { throw new Error('Not authorized'); },
+  const value: HostControlsContextValue = {
+    startGame,
+    pauseGame,
+    resumeGame,
+    endGame,
     updateCallInterval,
     isProcessing
-  }), [isAuthorized, startGame, pauseGame, resumeGame, endGame, updateCallInterval, isProcessing]);
+  };
 
   return (
-    <HostControlsContext.Provider value={contextValue}>
+    <HostControlsContext.Provider value={value}>
       {children}
     </HostControlsContext.Provider>
   );
 };
 
-/**
- * Hook to access host controls from any child component
- */
-export const useHostControls = (): HostControlsContextValue => {
+export const useHostControls = () => {
   const context = useContext(HostControlsContext);
   if (!context) {
     throw new Error('useHostControls must be used within a HostControlsProvider');
   }
   return context;
-};
-
-/**
- * Hook that returns null if not in host context (for optional host features)
- */
-export const useOptionalHostControls = (): HostControlsContextValue | null => {
-  return useContext(HostControlsContext);
 };
