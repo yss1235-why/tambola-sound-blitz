@@ -969,6 +969,12 @@ const CreateGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
+                  {/* ✅ NEW: Special indicator for Half Sheet */}
+                  {prize.id === 'halfSheet' && (
+                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                      Traditional
+                    </Badge>
+                  )}
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
                 <p className="text-xs text-gray-500">{prize.description}</p>
@@ -998,6 +1004,18 @@ const CreateGameForm = ({
         <div className="text-center text-sm text-blue-600">
           <Clock className="w-4 h-4 inline mr-1" />
           Real-time system will automatically update the view when ready
+        </div>
+      )}
+      
+      {/* ✅ NEW: Half Sheet info */}
+      {createGameForm.selectedPrizes.includes('halfSheet') && (
+        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+          <p className="text-sm text-purple-800 font-medium">
+            🎯 Half Sheet Prize Enabled
+          </p>
+          <p className="text-xs text-purple-600 mt-1">
+            Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
+          </p>
         </div>
       )}
     </CardContent>
@@ -1120,6 +1138,12 @@ const EditGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
+                  {/* ✅ NEW: Special indicator for Half Sheet */}
+                  {prize.id === 'halfSheet' && (
+                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                      Traditional
+                    </Badge>
+                  )}
                   {gameData.prizes[prize.id]?.won && (
                     <Badge variant="default" className="ml-2 text-xs bg-green-600">
                       Won
