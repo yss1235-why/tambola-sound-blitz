@@ -73,7 +73,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         console.log(`🏁 Game ended - clearing pause state`);
       }
     }
-  }, [gameData?.gameState.isActive, gameData?.gameState.gameOver, pauseRequested, startNumberCallingLoop]);
+  }, [gameData?.gameState.isActive, gameData?.gameState.gameOver, pauseRequested]);
 
   // Clear all timers on unmount or game end
   const clearAllTimers = useCallback(() => {
