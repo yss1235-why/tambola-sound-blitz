@@ -6,7 +6,8 @@ import {
   signInWithEmailAndPassword, 
   signOut,
   onAuthStateChanged,
-  User
+  User,
+  createUserWithEmailAndPassword  // ← ADD THIS IMPORT
 } from 'firebase/auth';
 import { 
   getDatabase, 
@@ -138,21 +139,16 @@ export interface CreateGameConfig {
   maxTickets: number;
   ticketPrice: number;
   hostPhone: string;
-}
-
-interface TicketRowData {
-  setId: number;
-  ticketId: number;
-  rowId: number;
-  numbers: number[];
+  selectedTicketSet: string;
+  selectedPrizes: string[];
 }
 
 // ================== UTILITY FUNCTIONS ==================
 
 export const removeUndefinedValues = (obj: any): any => {
-  if (obj === null || obj === undefined) return null;
+  if (obj === null || obj === undefined) return obj;
   if (typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(removeUndefinedValues).filter(item => item !== undefined);
+  if (Array.isArray(obj)) return obj.map(removeUndefinedValues);
   
   const cleaned: any = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -163,81 +159,34 @@ export const removeUndefinedValues = (obj: any): any => {
   return cleaned;
 };
 
-// ================== FIREBASE CORE SERVICE CLASS ==================
+// ================== FIREBASE CORE SERVICE ==================
 
-export class FirebaseCore {
-  private cleanupInProgress = new Set<string>();
-  
-  // ================== RACE CONDITION PREVENTION ==================
+class FirebaseCoreService {
 
-  private activeLocks = new Map<string, Promise<any>>();
+  // ================== SAFE TRANSACTION HELPER ==================
 
-  /**
-   * ✅ RACE CONDITION PREVENTION: Ensure only one update per game at a time
-   */
-  private async withGameLock<T>(gameId: string, operation: () => Promise<T>): Promise<T> {
-    const lockKey = `game_${gameId}`;
-    
-    if (this.activeLocks.has(lockKey)) {
-      console.log(`⏳ Waiting for existing operation on game: ${gameId}`);
-      await this.activeLocks.get(lockKey);
-    }
-    
-    const operationPromise = (async () => {
-      try {
-        console.log(`🔒 Acquired lock for game: ${gameId}`);
-        return await operation();
-      } finally {
-        console.log(`🔓 Released lock for game: ${gameId}`);
-        this.activeLocks.delete(lockKey);
-      }
-    })();
-    
-    this.activeLocks.set(lockKey, operationPromise);
-    return operationPromise;
-  }
-
-  /**
-   * ✅ TRANSACTION WRAPPER: Safe Firebase updates with retries
-   */
-  async safeTransactionUpdate(
-    path: string, 
-    updates: any, 
-    retries: number = 3
-  ): Promise<void> {
+  async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        console.log(`📡 Transaction attempt ${attempt}/${retries} for: ${path}`);
-        
-        await runTransaction(ref(database, path), (current) => {
-          if (current === null) {
-            throw new Error(`Path ${path} does not exist`);
-          }
-          return { ...current, ...removeUndefinedValues(updates) };
+        await runTransaction(ref(database, path), (currentData) => {
+          return { ...currentData, ...removeUndefinedValues(updates) };
         });
-        
-        console.log(`✅ Transaction completed successfully for: ${path}`);
         return;
-        
       } catch (error: any) {
-        console.warn(`⚠️ Transaction attempt ${attempt} failed:`, error.message);
-        
-        if (attempt === retries) {
-          throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
-        }
-        
-        const delay = Math.pow(2, attempt) * 100;
-        await new Promise(resolve => setTimeout(resolve, delay));
+        console.error(`Transaction attempt ${attempt} failed:`, error);
+        if (attempt === retries) throw error;
+        await new Promise(resolve => setTimeout(resolve, 100 * attempt));
       }
     }
   }
 
   // ================== AUTHENTICATION ==================
-  
+
   async loginAdmin(email: string, password: string): Promise<AdminUser> {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email, password);
       const userData = await this.getUserData();
+      
       if (!userData || userData.role !== 'admin') {
         throw new Error('Not authorized as admin');
       }
@@ -249,8 +198,9 @@ export class FirebaseCore {
 
   async loginHost(email: string, password: string): Promise<HostUser> {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(auth, email, password);
       const userData = await this.getUserData();
+      
       if (!userData || userData.role !== 'host') {
         throw new Error('Not authorized as host');
       }
@@ -363,21 +313,33 @@ export class FirebaseCore {
         isActive: true
       };
 
-      const hostRef = push(ref(database, 'hosts'));
-      const hostId = hostRef.key!;
-      hostData.uid = hostId;
-      
+      // ✅ FIXED: Create Firebase Auth account first
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseAuthUid = userCredential.user.uid;
+
+      // ✅ FIXED: Use Firebase Auth UID as both the database key AND the uid field
+      hostData.uid = firebaseAuthUid;
+      const hostRef = ref(database, `hosts/${firebaseAuthUid}`);
       await set(hostRef, removeUndefinedValues(hostData));
       
-      console.log(`✅ Host ${name} created successfully with ID: ${hostId}`);
+      console.log(`✅ Host ${name} created successfully with Firebase Auth UID: ${firebaseAuthUid}`);
       throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
       
     } catch (error: any) {
-      if (error.message.startsWith('SUCCESS:')) {
+      // Handle Firebase Auth errors specifically
+      if (error.code === 'auth/email-already-in-use') {
+        throw new Error('Email already exists. Please use a different email address.');
+      } else if (error.code === 'auth/weak-password') {
+        throw new Error('Password is too weak. Please use a stronger password.');
+      } else if (error.code === 'auth/invalid-email') {
+        throw new Error('Invalid email address format.');
+      } else if (error.message.startsWith('SUCCESS:')) {
+        // Re-throw success messages
         throw error;
+      } else {
+        console.error('❌ Error creating host:', error);
+        throw new Error(error.message || 'Failed to create host');
       }
-      console.error('❌ Error creating host:', error);
-      throw new Error(error.message || 'Failed to create host');
     }
   }
 
@@ -525,7 +487,25 @@ export class FirebaseCore {
       callback(null);
     });
 
-    return () => off(gameRef, 'value', unsubscribe);
+    return () => unsubscribe();
+  }
+
+  subscribeToHostGames(hostId: string, callback: (games: GameData[]) => void): () => void {
+    const gamesRef = query(ref(database, 'games'), orderByChild('hostId'), equalTo(hostId));
+    
+    const unsubscribe = onValue(gamesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const gamesData = Object.values(snapshot.val()) as GameData[];
+        callback(gamesData);
+      } else {
+        callback([]);
+      }
+    }, (error) => {
+      console.error('Firebase subscription error:', error);
+      callback([]);
+    });
+
+    return () => unsubscribe();
   }
 
   subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
@@ -534,77 +514,20 @@ export class FirebaseCore {
     const unsubscribe = onValue(gamesRef, (snapshot) => {
       if (snapshot.exists()) {
         const allGames = Object.values(snapshot.val()) as GameData[];
-        
-        const validGames = allGames.filter(game => 
-          game.hostId && game.gameId && game.gameState
-        );
-
-        const gamesByHost = new Map<string, GameData[]>();
-        validGames.forEach(game => {
-          if (!gamesByHost.has(game.hostId)) {
-            gamesByHost.set(game.hostId, []);
-          }
-          gamesByHost.get(game.hostId)!.push(game);
-        });
-
-        const publicGames: GameData[] = [];
-        
-        gamesByHost.forEach((hostGames) => {
-          const activeGame = hostGames.find(game => !game.gameState.gameOver);
-          
-          if (activeGame) {
-            publicGames.push(activeGame);
-            return;
-          }
-          
-          const completedGames = hostGames
-            .filter(game => game.gameState.gameOver && game.createdAt)
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          
-          if (completedGames.length > 0) {
-            publicGames.push(completedGames[0]);
-          }
-        });
-
-        const sortedGames = publicGames.sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        
-        callback(sortedGames);
+        const activeGames = allGames.filter(game => game.gameState?.isActive === true);
+        callback(activeGames);
       } else {
         callback([]);
       }
     }, (error) => {
-      console.error('Games subscription error:', error);
+      console.error('Firebase subscription error:', error);
       callback([]);
     });
 
-    return () => off(gamesRef, 'value', unsubscribe);
-  }
-
-  subscribeToGames(callback: (games: GameData[]) => void): () => void {
-    return this.subscribeToAllActiveGames(callback);
-  }
-
-  subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
-    const hostsRef = ref(database, 'hosts');
-    
-    const unsubscribe = onValue(hostsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const hosts = Object.values(snapshot.val()) as HostUser[];
-        callback(hosts);
-      } else {
-        callback([]);
-      }
-    }, (error) => {
-      console.error('Hosts subscription error:', error);
-      callback(null);
-    });
-
-    return () => off(hostsRef, 'value', unsubscribe);
+    return () => unsubscribe();
   }
 }
 
 // ================== SINGLETON EXPORT ==================
 
-export const firebaseCore = new FirebaseCore();
+export const firebaseCore = new FirebaseCoreService();
