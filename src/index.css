@@ -407,7 +407,7 @@
   /* Responsive adjustments with mobile-first 6-column support */
   @screen sm {
     .ticket-slot {
-      @apply h-18 text-lg min-w-[80px];
+      @apply h-20 text-lg min-w-[80px];
     }
 
     .number-cell {
@@ -417,7 +417,7 @@
 
   @screen lg {
     .ticket-slot {
-      @apply h-20 text-lg min-w-[90px];
+      @apply h-24 text-lg min-w-[90px];
     }
 
     .number-cell {
@@ -455,7 +455,7 @@
   /* Tablet optimization - maintain 6 columns but allow larger cells */
   @media (min-width: 768px) and (max-width: 1024px) {
     .ticket-slot {
-      @apply h-18 text-lg min-w-[80px];
+      @apply h-20 text-lg min-w-[80px];
       font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     }
   }
@@ -463,7 +463,7 @@
   /* Desktop optimization - larger cells for better host interaction */
   @media (min-width: 1024px) {
     .ticket-slot {
-      @apply h-20 text-lg min-w-[90px];
+      @apply h-24 text-lg min-w-[90px];
       font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     }
   }
