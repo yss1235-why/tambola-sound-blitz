@@ -372,8 +372,7 @@ export class FirebaseGame {
   }
 
   /**
-   * ✅ TEMPLATE MANAGEMENT: Update host template settings (separate from live games)
-   * PURPOSE: Save host preferences for pre-filling future game forms
+   * ✅ TEMPLATE MANAGEMENT: Update host template settings (delegate to core)
    */
   async updateHostTemplate(hostId: string, templateSettings: {
     hostPhone?: string;
@@ -381,34 +380,7 @@ export class FirebaseGame {
     selectedTicketSet?: string;
     selectedPrizes?: string[];
   }): Promise<void> {
-    try {
-      console.log(`💾 Updating host template for: ${hostId}`, templateSettings);
-      
-      if (templateSettings.maxTickets !== undefined) {
-        if (templateSettings.maxTickets < 1 || templateSettings.maxTickets > 600) {
-          throw new Error('Template max tickets must be between 1 and 600');
-        }
-      }
-      
-      if (templateSettings.hostPhone !== undefined) {
-        if (!templateSettings.hostPhone.trim()) {
-          throw new Error('Template phone number cannot be empty');
-        }
-      }
-      
-      const updates = {
-        ...removeUndefinedValues(templateSettings),
-        updatedAt: new Date().toISOString()
-      };
-      
-      await firebaseCore.safeTransactionUpdate(`hostSettings/${hostId}`, updates);
-      
-      console.log(`✅ Host template updated successfully for: ${hostId}`);
-      
-    } catch (error: any) {
-      console.error(`❌ Error updating host template for ${hostId}:`, error);
-      throw new Error(error.message || 'Failed to update host template');
-    }
+    return firebaseCore.updateHostTemplate(hostId, templateSettings);
   }
 
   /**
@@ -433,7 +405,7 @@ export class FirebaseGame {
       await this.updateLiveGameSettings(gameId, liveGameUpdates);
       
       try {
-        await this.updateHostTemplate(hostId, settings);
+        await firebaseCore.updateHostTemplate(hostId, settings);
       } catch (templateError: any) {
         console.warn(`⚠️ Template update failed (live game updated successfully):`, templateError);
       }
