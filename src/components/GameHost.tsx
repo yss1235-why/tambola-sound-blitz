@@ -111,6 +111,14 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     difficulty: 'medium'
   },
   {
+    id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
+    name: 'Full Sheet',
+    pattern: 'Complete 6-ticket set',
+    description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)',
+    order: 2.8,
+    difficulty: 'hard'
+  },
+  {
     id: 'topLine',
     name: 'Top Line',
     pattern: 'Complete top row',
@@ -1006,8 +1014,8 @@ const CreateGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
-                  {/* ✅ NEW: Special indicator for Half Sheet */}
-                  {prize.id === 'halfSheet' && (
+                  {/* ✅ MINIMAL CHANGE: Updated condition for Traditional badge */}
+                  {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
                     <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
                       Traditional
                     </Badge>
@@ -1052,6 +1060,18 @@ const CreateGameForm = ({
           </p>
           <p className="text-xs text-purple-600 mt-1">
             Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
+          </p>
+        </div>
+      )}
+
+      {/* ✅ MINIMAL CHANGE: Added Full Sheet info box */}
+      {createGameForm.selectedPrizes.includes('fullSheet') && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-sm text-blue-800 font-medium">
+            🏆 Full Sheet Prize Enabled
+          </p>
+          <p className="text-xs text-blue-600 mt-1">
+            Players who book all 6 tickets from the same complete set (positions 1,2,3,4,5,6) can win when each ticket has ≥2 marked numbers.
           </p>
         </div>
       )}
@@ -1187,8 +1207,8 @@ const EditGameForm = ({
                   >
                     {prize.difficulty}
                   </Badge>
-                  {/* ✅ NEW: Special indicator for Half Sheet */}
-                  {prize.id === 'halfSheet' && (
+                  {/* ✅ MINIMAL CHANGE: Updated condition for Traditional badge */}
+                  {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
                     <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
                       Traditional
                     </Badge>
