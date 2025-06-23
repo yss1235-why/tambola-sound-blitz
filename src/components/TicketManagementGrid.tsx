@@ -1,4 +1,4 @@
-// src/components/TicketManagementGrid.tsx - MOBILE 6-COLUMN FIX: Optimized for 3-digit numbers + FLOATING BOOKING SUMMARY
+// src/components/TicketManagementGrid.tsx - MOBILE 6-COLUMN FIX: Optimized for 3-digit numbers
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -205,6 +205,18 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     }
   };
 
+  const getTicketClassName = (ticket: TicketInfo) => {
+    const baseClasses = "relative border-2 rounded-lg p-3 cursor-pointer transition-all duration-200";
+    
+    if (ticket.isBooked) {
+      return `${baseClasses} border-green-300 bg-green-50`;
+    } else if (selectedTickets.includes(ticket.ticketId)) {
+      return `${baseClasses} border-orange-400 bg-orange-50`;
+    } else {
+      return `${baseClasses} border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50`;
+    }
+  };
+
   // Clear selection when component unmounts or game changes
   useEffect(() => {
     return () => {
@@ -274,13 +286,30 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
               {selectedTickets.length === availableCount ? 'Deselect All' : 'Select All Available'}
             </Button>
 
-            <Button
-              onClick={deselectAll}
-              variant="outline"
-              disabled={selectedTickets.length === 0}
-            >
-              Clear Selection
-            </Button>
+            {selectedTickets.length > 0 && (
+              <Button 
+                onClick={deselectAll}
+                variant="outline"
+              >
+                Clear Selection
+              </Button>
+            )}
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-4 mb-6 text-sm">
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-gray-100 border-2 border-gray-300 rounded"></div>
+              <span>Available</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-blue-500 border-2 border-blue-600 rounded"></div>
+              <span>Selected</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 bg-green-500 border-2 border-green-600 rounded"></div>
+              <span>Booked</span>
+            </div>
           </div>
 
           {(Object.keys(gameData.tickets || {}).length < gameData.maxTickets) && (
@@ -308,31 +337,26 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </CardContent>
       </Card>
 
-      {/* Tickets Grid */}
+      {/* UPDATED: 6-Column Tickets Grid for Mobile */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <Ticket className="w-5 h-5" />
-            <span>Tickets ({gameData.maxTickets})</span>
+          <CardTitle>
+            Tickets Grid - 6 Column Mobile Layout ({ticketInfo.length} tickets)
           </CardTitle>
+          <p className="text-sm text-gray-600">
+            ✅ Optimized for mobile with consistent 3-digit number spacing
+          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {ticketRows.map((row, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+              <div key={rowIndex} className="grid grid-cols-6 gap-4 sm:gap-3">
                 {row.map((ticket) => (
                   <div
                     key={ticket.ticketId}
+                    className={getTicketClassName(ticket)}
                     onClick={() => handleTicketClick(ticket.ticketId, ticket.isBooked)}
-                    className={`
-                      relative border-2 rounded-lg p-3 cursor-pointer transition-all duration-200
-                      ${ticket.isBooked 
-                        ? 'border-green-300 bg-green-50' 
-                        : selectedTickets.includes(ticket.ticketId)
-                          ? 'border-orange-400 bg-orange-50'
-                          : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'
-                      }
-                    `}
+                    title={`Ticket ${ticket.ticketId}${ticket.isBooked ? ` - ${ticket.playerName}` : ''}`}
                   >
                     <div className="text-center">
                       <div className="font-bold text-lg mb-1">#{ticket.ticketId}</div>
@@ -396,7 +420,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </CardContent>
       </Card>
 
-      {/* 🆕 FLOATING BOOKING SUMMARY - Mobile Responsive */}
+      {/* 🆕 FLOATING BOOKING SUMMARY - ONLY NEW ADDITION */}
       {selectedTickets.length > 0 && (
         <div className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-4 max-w-xs sm:max-w-sm">
           <div className="flex items-center justify-between mb-3">
@@ -445,7 +469,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </div>
       )}
 
-      {/* Booking Dialog (Existing - kept as backup) */}
+      {/* Booking Dialog (Original - unchanged) */}
       <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
         <DialogContent>
           <DialogHeader>
@@ -495,7 +519,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Edit Dialog */}
+      {/* Edit Dialog (Original - unchanged) */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent>
           <DialogHeader>
