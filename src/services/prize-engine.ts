@@ -123,6 +123,14 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 2.5
     },
+    anyLine: {
+      id: 'anyLine',
+      name: 'Any Line',
+      pattern: 'Complete any row',
+      description: 'Complete any single row of your ticket',
+      won: false,
+      order: 2.8
+    },
     topLine: {
       id: 'topLine',
       name: 'Top Line',
@@ -147,6 +155,14 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 5
     },
+    twoLines: {
+      id: 'twoLines',
+      name: 'Two Lines',
+      pattern: 'Complete any two rows',
+      description: 'Complete any two rows of your ticket',
+      won: false,
+      order: 5.5
+    },
     starCorner: {
       id: 'starCorner',
       name: 'Star Corner',
@@ -154,6 +170,22 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       description: 'Mark all 4 corner positions plus center position',
       won: false,
       order: 6
+    },
+    breakfast: {
+      id: 'breakfast',
+      name: 'Breakfast',
+      pattern: 'Set-based prize',
+      description: 'Special set-based breakfast prize',
+      won: false,
+      order: 6.5
+    },
+    firstHouse: {
+      id: 'firstHouse',
+      name: 'First House',
+      pattern: 'All numbers (first)',
+      description: 'First to mark all numbers on the ticket',
+      won: false,
+      order: 7
     },
     fullHouse: {
       id: 'fullHouse',
@@ -232,6 +264,50 @@ export const validateTicketsForPrizes = async (
             const starCorners = getStarCorners(ticket);
             hasWon = starCorners.every(corner => calledNumbers.includes(corner));
             console.log(`⭐ Star corners check:`, { ticketId, starCorners, hasWon });
+            break;
+
+          case 'firstHouse':
+          case 'fullHouse':
+            const allNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
+            hasWon = allNumbers.every(num => calledNumbers.includes(num));
+            break;
+
+          case 'anyLine':
+            hasWon = ticket.rows.some(row => 
+              row.filter(num => num > 0).every(num => calledNumbers.includes(num))
+            );
+            break;
+
+          case 'twoLines':
+            const completedLines = ticket.rows.filter(row => 
+              row.filter(num => num > 0).every(num => calledNumbers.includes(num))
+            );
+            hasWon = completedLines.length >= 2;
+            break;
+
+          case 'breakfast':
+            if (ticket.setId && ticket.positionInSet) {
+              const setId = ticket.setId;
+              const position = ticket.positionInSet;
+              
+              if ([1, 2].includes(setId) && [1, 2, 3, 4, 5, 6].includes(position)) {
+                const targetPositions = position <= 3 ? [1, 2, 3] : [4, 5, 6];
+                
+                const sameSetTickets = Object.values(tickets).filter(t => 
+                  t.isBooked && t.setId === setId && 
+                  targetPositions.includes(t.positionInSet || 0)
+                );
+                
+                if (sameSetTickets.length === 3) {
+                  hasWon = sameSetTickets.every(t => {
+                    const markedCount = t.metadata?.allNumbers.filter(num => 
+                      calledNumbers.includes(num)
+                    ).length || 0;
+                    return markedCount >= 2;
+                  });
+                }
+              }
+            }
             break;
 
           case 'topLine':
@@ -359,3 +435,14 @@ export class PrizeEngine {
 
 // Export singleton instance
 export const prizeEngine = new PrizeEngine();
+
+// ================== EXPORT INDIVIDUAL FUNCTIONS FOR DIRECT USE ==================
+
+// Export individual functions for when you need them outside the class
+export { 
+  computeTicketMetadata, 
+  getTicketCorners, 
+  getStarCorners, 
+  createPrizeConfiguration, 
+  validateTicketsForPrizes 
+};
