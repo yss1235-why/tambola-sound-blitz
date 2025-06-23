@@ -114,8 +114,35 @@ class FirebaseService {
   }
 
   // ========== GAME OPERATIONS (delegate to game) ==========
+  // ✅ FIXED: createGame method with proper validation and config formatting
   async createGame(config: any, hostId: string, ticketSetId: string, selectedPrizes: string[]) {
-    return this.game.createGame(config, hostId, ticketSetId, selectedPrizes);
+    // ✅ VALIDATION: Ensure hostId is available
+    if (!hostId) {
+      // ✅ FALLBACK: Try to get hostId from current Firebase Auth user
+      const currentUser = auth.currentUser;
+      if (!currentUser?.uid) {
+        throw new Error('Host ID is required. Please ensure you are logged in.');
+      }
+      hostId = currentUser.uid;
+      console.log('🔧 Using Firebase Auth UID as fallback hostId:', hostId);
+    }
+
+    // ✅ FORMAT: Create properly structured config object
+    const gameConfig = {
+      name: config.name,
+      maxTickets: config.maxTickets,
+      ticketPrice: config.ticketPrice || 0,
+      hostPhone: config.hostPhone,
+      // ✅ ADD missing required fields
+      hostId: hostId,
+      selectedTicketSet: ticketSetId,
+      selectedPrizes: selectedPrizes
+    };
+
+    console.log('🎮 Creating game with config:', gameConfig);
+    
+    // ✅ PASS single config object (not separate parameters)
+    return this.game.createGame(gameConfig);
   }
 
   async updateGameData(gameId: string, updates: any) {
@@ -209,11 +236,6 @@ class FirebaseService {
     return this.core.subscribeToAllActiveGames(callback);
   }
 
-  // 🔧 FIX: Added missing delegation to fix admin dashboard blank page
-  subscribeToHosts(callback: (hosts: any) => void) {
-    return this.core.subscribeToHosts(callback);
-  }
-
   // ========== UTILITY METHODS (delegate to game) ==========
   async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any) {
     return this.game.validateTicketsForPrizes(tickets, calledNumbers, prizes);
@@ -232,3 +254,5 @@ export const firebaseService = new FirebaseService();
 export const getCurrentUserRole = async (): Promise<string | null> => {
   return firebaseService.getCurrentUserRole();
 };
+
+export default firebaseService;
