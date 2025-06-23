@@ -147,35 +147,87 @@ export class FirebaseGame {
     maxTickets?: number;
     hostPhone?: string;
     ticketPrice?: number;
+    selectedPrizes?: string[];
   }): Promise<void> {
     return this.withGameLock(gameId, async () => {
       try {
-        console.log(`🔧 Updating live game settings for ${gameId}:`, updates);
+        console.log(`🔧 Starting atomic update for game: ${gameId}`, updates);
         
-        const gameRef = ref(database, `games/${gameId}`);
-        const snapshot = await get(gameRef);
-        
-        if (!snapshot.exists()) {
-          throw new Error('Game not found');
+        const currentGame = await firebaseCore.getGameData(gameId);
+        if (!currentGame) {
+          throw new Error(`Game ${gameId} not found`);
         }
-
-        const gameData = snapshot.val() as GameData;
         
-        if (gameData.gameState.isActive) {
-          throw new Error('Cannot update settings while game is active');
+        if (currentGame.gameState.isActive || currentGame.gameState.isCountdown) {
+          throw new Error('Cannot modify settings while game is active or starting');
         }
-
-        const gameUpdates = removeUndefinedValues({
-          ...updates,
-          updatedAt: new Date().toISOString()
-        });
-
-        await update(gameRef, gameUpdates);
-        console.log(`✅ Live game settings updated successfully for ${gameId}`);
+        
+        if (currentGame.gameState.gameOver) {
+          throw new Error('Cannot modify settings for completed games');
+        }
+        
+        const numbersCallCount = currentGame.gameState.calledNumbers?.length || 0;
+        if (numbersCallCount > 0) {
+          throw new Error('Cannot modify settings after numbers have been called');
+        }
+        
+        if (updates.maxTickets !== undefined) {
+          const bookedCount = Object.values(currentGame.tickets || {})
+            .filter(ticket => ticket.isBooked).length;
+          
+          if (updates.maxTickets < bookedCount) {
+            throw new Error(
+              `Cannot set max tickets (${updates.maxTickets}) below current bookings (${bookedCount}). ` +
+              `Please increase the number or cancel some bookings.`
+            );
+          }
+          
+          if (updates.maxTickets < 1 || updates.maxTickets > 600) {
+            throw new Error('Max tickets must be between 1 and 600');
+          }
+        }
+        
+        if (updates.hostPhone !== undefined) {
+          if (!updates.hostPhone.trim()) {
+            throw new Error('Host phone number cannot be empty');
+          }
+        }
+        
+        let finalUpdates: any = { ...updates };
+        
+        if (updates.selectedPrizes) {
+          console.log(`🏆 Processing prize changes for game: ${gameId}`);
+          
+          const newPrizes = this.createPrizeConfiguration(updates.selectedPrizes);
+          
+          Object.keys(currentGame.prizes || {}).forEach(prizeId => {
+            const currentPrize = currentGame.prizes[prizeId];
+            
+            if (currentPrize.won && newPrizes[prizeId]) {
+              newPrizes[prizeId] = {
+                ...newPrizes[prizeId],
+                won: currentPrize.won,
+                winners: currentPrize.winners,
+                winningNumber: currentPrize.winningNumber,
+                wonAt: currentPrize.wonAt
+              };
+              console.log(`✅ Preserved winner data for prize: ${prizeId}`);
+            }
+          });
+          
+          finalUpdates.prizes = newPrizes;
+          delete finalUpdates.selectedPrizes;
+        }
+        
+        finalUpdates.updatedAt = new Date().toISOString();
+        
+        await firebaseCore.safeTransactionUpdate(`games/${gameId}`, finalUpdates);
+        
+        console.log(`✅ Live game settings updated successfully for: ${gameId}`);
         
       } catch (error: any) {
         console.error(`❌ Error updating live game settings for ${gameId}:`, error);
-        throw new Error(error.message || 'Failed to update live game settings');
+        throw new Error(error.message || 'Failed to update game settings');
       }
     });
   }
@@ -221,9 +273,9 @@ export class FirebaseGame {
 
   // ================== GAME MANAGEMENT ==================
 
-  async createGame(config: CreateGameConfig, hostId: string, selectedPrizes: string[]): Promise<string> {
+  async createGame(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
     try {
-      console.log('🎮 Creating game with config:', config);
+      console.log(`🎮 Creating game for host ${hostId} with ${config.maxTickets} tickets from set ${ticketSetId}`);
       console.log('🏆 Selected prizes:', selectedPrizes);
 
       if (!config.name || !config.maxTickets || !config.ticketPrice || !config.hostPhone) {
@@ -248,8 +300,11 @@ export class FirebaseGame {
         throw new Error('Host already has an active game. Please end the current game first.');
       }
 
-      const gameRef = push(ref(database, 'games'));
-      const gameId = gameRef.key!;
+      // Load tickets from the specified set
+      const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
+      console.log(`✅ Loaded ${Object.keys(tickets).length} pre-made tickets from set ${ticketSetId}`);
+
+      const prizes = this.createPrizeConfiguration(selectedPrizes);
 
       const gameState: GameState = {
         isActive: false,
@@ -260,10 +315,8 @@ export class FirebaseGame {
         currentNumber: null
       };
 
-      const prizes = this.generatePrizes(selectedPrizes);
-
       const gameData: GameData = {
-        gameId,
+        gameId: '',
         name: config.name,
         hostId,
         hostPhone: config.hostPhone,
@@ -271,19 +324,36 @@ export class FirebaseGame {
         maxTickets: config.maxTickets,
         ticketPrice: config.ticketPrice,
         gameState,
-        tickets: {},
+        tickets,
         prizes,
         updatedAt: new Date().toISOString()
       };
 
-      await set(gameRef, removeUndefinedValues(gameData));
-      console.log(`✅ Game created successfully with ID: ${gameId}`);
+      const gamesRef = ref(database, 'games');
+      const newGameRef = push(gamesRef);
+      const gameId = newGameRef.key!;
       
-      return gameId;
+      gameData.gameId = gameId;
+      
+      await set(newGameRef, removeUndefinedValues(gameData));
+      
+      console.log(`✅ Game created successfully with ID: ${gameId}`);
+      return gameData;
       
     } catch (error: any) {
       console.error('❌ Error creating game:', error);
       throw new Error(error.message || 'Failed to create game');
+    }
+  }
+
+  async updateGameData(gameId: string, updates: Partial<GameData>): Promise<void> {
+    try {
+      const cleanUpdates = removeUndefinedValues(updates);
+      await update(ref(database, `games/${gameId}`), cleanUpdates);
+      console.log(`✅ Game data updated successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating game data:', error);
+      throw new Error(error.message || 'Failed to update game data');
     }
   }
 
@@ -301,31 +371,250 @@ export class FirebaseGame {
     }
   }
 
+  /**
+   * ✅ TEMPLATE MANAGEMENT: Update host template settings (separate from live games)
+   * PURPOSE: Save host preferences for pre-filling future game forms
+   */
+  async updateHostTemplate(hostId: string, templateSettings: {
+    hostPhone?: string;
+    maxTickets?: number;
+    selectedTicketSet?: string;
+    selectedPrizes?: string[];
+  }): Promise<void> {
+    try {
+      console.log(`💾 Updating host template for: ${hostId}`, templateSettings);
+      
+      if (templateSettings.maxTickets !== undefined) {
+        if (templateSettings.maxTickets < 1 || templateSettings.maxTickets > 600) {
+          throw new Error('Template max tickets must be between 1 and 600');
+        }
+      }
+      
+      if (templateSettings.hostPhone !== undefined) {
+        if (!templateSettings.hostPhone.trim()) {
+          throw new Error('Template phone number cannot be empty');
+        }
+      }
+      
+      const updates = {
+        ...removeUndefinedValues(templateSettings),
+        updatedAt: new Date().toISOString()
+      };
+      
+      await firebaseCore.safeTransactionUpdate(`hostSettings/${hostId}`, updates);
+      
+      console.log(`✅ Host template updated successfully for: ${hostId}`);
+      
+    } catch (error: any) {
+      console.error(`❌ Error updating host template for ${hostId}:`, error);
+      throw new Error(error.message || 'Failed to update host template');
+    }
+  }
+
+  /**
+   * ✅ COMBINED UPDATE: Update both live game AND host template atomically
+   * USE CASE: When host updates settings, save to both live game and template
+   */
+  async updateGameAndTemplate(gameId: string, hostId: string, settings: {
+    maxTickets?: number;
+    hostPhone?: string;
+    selectedPrizes?: string[];
+    selectedTicketSet?: string;
+  }): Promise<void> {
+    try {
+      console.log(`🔄 Starting combined update for game: ${gameId}, host: ${hostId}`);
+      
+      const liveGameUpdates = {
+        maxTickets: settings.maxTickets,
+        hostPhone: settings.hostPhone,
+        selectedPrizes: settings.selectedPrizes
+      };
+      
+      await this.updateLiveGameSettings(gameId, liveGameUpdates);
+      
+      try {
+        await this.updateHostTemplate(hostId, settings);
+      } catch (templateError: any) {
+        console.warn(`⚠️ Template update failed (live game updated successfully):`, templateError);
+      }
+      
+      console.log(`✅ Combined update completed for game: ${gameId}`);
+      
+    } catch (error: any) {
+      console.error(`❌ Combined update failed for game: ${gameId}:`, error);
+      throw error;
+    }
+  }
+
   async getHostCurrentGame(hostId: string): Promise<GameData | null> {
     try {
-      const gamesRef = ref(database, 'games');
-      const hostGamesQuery = query(gamesRef, orderByChild('hostId'), equalTo(hostId));
-      const snapshot = await get(hostGamesQuery);
+      console.log(`🔍 Searching for current game for host: ${hostId}`);
       
-      if (!snapshot.exists()) {
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('hostId'),
+        equalTo(hostId)
+      );
+      
+      const gamesSnapshot = await get(gamesQuery);
+      
+      if (!gamesSnapshot.exists()) {
+        console.log(`📭 No games found for host: ${hostId}`);
         return null;
       }
 
-      const hostGames = Object.values(snapshot.val()) as GameData[];
+      const hostGames = Object.values(gamesSnapshot.val()) as GameData[];
+      console.log(`📊 Found ${hostGames.length} games for host: ${hostId}`);
       
       if (hostGames.length === 0) {
         return null;
       }
 
-      // Return the most recent game
-      const latestGame = hostGames.reduce((latest, current) => 
-        new Date(current.createdAt) > new Date(latest.createdAt) ? current : latest
+      // Sort by creation date, newest first
+      const sortedGames = hostGames.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-
-      return latestGame;
+      
+      // Return the most recent game
+      const currentGame = sortedGames[0];
+      console.log(`🎯 Returning most recent game: ${currentGame.gameId} (${currentGame.gameState.gameOver ? 'completed' : 'active'})`);
+      
+      return currentGame;
     } catch (error: any) {
       console.error('Error getting host current game:', error);
       return null;
+    }
+  }
+
+  private async getAllGamesByHost(hostId: string): Promise<GameData[]> {
+    try {
+      console.log(`🔍 Fetching all games for host: ${hostId}`);
+      
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('hostId'),
+        equalTo(hostId)
+      );
+      
+      const gamesSnapshot = await get(gamesQuery);
+      
+      if (!gamesSnapshot.exists()) {
+        console.log(`📭 No games found for host: ${hostId}`);
+        return [];
+      }
+
+      const hostGames = Object.values(gamesSnapshot.val()) as GameData[];
+      console.log(`📊 Found ${hostGames.length} games for host: ${hostId}`);
+      
+      return hostGames;
+    } catch (error: any) {
+      console.error(`❌ Error fetching games for host ${hostId}:`, error);
+      return [];
+    }
+  }
+
+  private async cleanupOldCompletedGames(hostId: string, currentGameId: string): Promise<void> {
+    if (this.cleanupInProgress.has(hostId)) {
+      console.log(`🔄 Cleanup already running for host: ${hostId}`);
+      return;
+    }
+
+    this.cleanupInProgress.add(hostId);
+    
+    try {
+      console.log(`🧹 Starting cleanup for host: ${hostId}, excluding: ${currentGameId}`);
+      
+      const allHostGames = await this.getAllGamesByHost(hostId);
+      
+      if (allHostGames.length === 0) {
+        console.log(`ℹ️ No games found for cleanup check: ${hostId}`);
+        return;
+      }
+
+      const completedGames = allHostGames
+        .filter(game => game.gameState.gameOver && game.gameId !== currentGameId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      if (completedGames.length <= 1) {
+        console.log(`ℹ️ Host ${hostId} has ${completedGames.length} completed games - no cleanup needed`);
+        return;
+      }
+
+      const gamesToDelete = completedGames.slice(1);
+      console.log(`🗑️ Scheduling cleanup of ${gamesToDelete.length} old games for host: ${hostId}`);
+
+      for (const game of gamesToDelete) {
+        try {
+          await this.deleteGame(game.gameId);
+          console.log(`✅ Cleaned up old game: ${game.gameId}`);
+        } catch (error: any) {
+          console.error(`⚠️ Failed to cleanup game ${game.gameId}:`, error);
+        }
+      }
+
+      console.log(`✅ Cleanup completed for host: ${hostId}`);
+
+    } catch (error: any) {
+      console.error(`❌ Error during cleanup for host ${hostId}:`, error);
+    } finally {
+      this.cleanupInProgress.delete(hostId);
+    }
+  }
+
+  async getAllActiveGames(): Promise<GameData[]> {
+    try {
+      console.log('🔍 Fetching all games for active game filtering');
+      
+      const gamesSnapshot = await get(ref(database, 'games'));
+      
+      if (!gamesSnapshot.exists()) {
+        console.log('📭 No games found in database');
+        return [];
+      }
+
+      const allGames = Object.values(gamesSnapshot.val()) as GameData[];
+      console.log(`📊 Found ${allGames.length} total games`);
+      
+      const gamesByHost = new Map<string, GameData[]>();
+      
+      allGames.forEach(game => {
+        if (!game.hostId) return;
+        
+        if (!gamesByHost.has(game.hostId)) {
+          gamesByHost.set(game.hostId, []);
+        }
+        gamesByHost.get(game.hostId)!.push(game);
+      });
+
+      console.log(`👥 Processing games for ${gamesByHost.size} hosts`);
+
+      const publicGames: GameData[] = [];
+      
+      gamesByHost.forEach((hostGames) => {
+        const activeGame = hostGames.find(game => !game.gameState.gameOver);
+        
+        if (activeGame) {
+          publicGames.push(activeGame);
+          return;
+        }
+        
+        const completedGames = hostGames
+          .filter(game => game.gameState.gameOver && game.createdAt)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+        if (completedGames.length > 0) {
+          publicGames.push(completedGames[0]);
+        }
+      });
+
+      const sortedGames = publicGames.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      return sortedGames;
+    } catch (error) {
+      console.error('❌ Error fetching active games:', error);
+      return [];
     }
   }
 
@@ -449,71 +738,92 @@ export class FirebaseGame {
     }
   }
 
-  async expandTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
-    return this.withGameLock(gameId, async () => {
-      try {
-        console.log(`🎫 Expanding tickets for game ${gameId} from set ${ticketSetId} to ${newMaxTickets}`);
-        
-        const gameData = await firebaseCore.getGameData(gameId);
-        
-        if (!gameData) {
-          throw new Error('Game not found');
-        }
-
-        if (gameData.gameState.isActive) {
-          throw new Error('Cannot expand tickets while game is active');
-        }
-
-        const currentMaxTickets = gameData.maxTickets;
-        
-        if (newMaxTickets <= currentMaxTickets) {
-          throw new Error(`New max tickets (${newMaxTickets}) must be greater than current (${currentMaxTickets})`);
-        }
-
-        if (newMaxTickets > 600) {
-          throw new Error('Maximum allowed tickets is 600');
-        }
-
-        // Load all tickets up to new max
-        const allTickets = await this.loadTicketsFromSet(ticketSetId, newMaxTickets);
-        
-        // Preserve existing bookings
-        const currentTickets = gameData.tickets || {};
-        for (const [ticketId, currentTicket] of Object.entries(currentTickets)) {
-          if (allTickets[ticketId] && currentTicket.isBooked) {
-            allTickets[ticketId] = {
-              ...allTickets[ticketId],
-              isBooked: currentTicket.isBooked,
-              playerName: currentTicket.playerName,
-              playerPhone: currentTicket.playerPhone,
-              bookedAt: currentTicket.bookedAt,
-              markedNumbers: currentTicket.markedNumbers || []
-            };
-          }
-        }
-
-        const gameRef = ref(database, `games/${gameId}`);
-        await update(gameRef, {
-          maxTickets: newMaxTickets,
-          tickets: allTickets,
-          updatedAt: new Date().toISOString()
-        });
-
-        console.log(`✅ Successfully expanded game ${gameId} to ${newMaxTickets} tickets`);
-        
-      } catch (error: any) {
-        console.error('❌ Error expanding tickets:', error);
-        throw new Error(error.message || 'Failed to expand tickets');
-      }
-    });
-  }
-
   async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
-    // Alias for expandTickets to maintain compatibility
-    return this.expandTickets(gameId, newMaxTickets, ticketSetId);
+    try {
+      console.log(`📈 Expanding game ${gameId} tickets to ${newMaxTickets} from set ${ticketSetId}`);
+      
+      // ✅ STEP 1: Get current game data to understand current state
+      const currentGameData = await firebaseCore.getGameData(gameId);
+      if (!currentGameData) {
+        throw new Error(`Game ${gameId} not found for ticket expansion`);
+      }
+      
+      const currentMaxTickets = currentGameData.maxTickets;
+      const currentTickets = currentGameData.tickets || {};
+      
+      // ✅ STEP 2: Validate this is a valid expansion
+      if (newMaxTickets <= currentMaxTickets) {
+        throw new Error(`Can only expand tickets. Current: ${currentMaxTickets}, Requested: ${newMaxTickets}. To reduce tickets, create a new game.`);
+      }
+      
+      if (newMaxTickets > 600) {
+        throw new Error(`Maximum ticket limit is 600. Requested: ${newMaxTickets}`);
+      }
+      
+      // ✅ STEP 3: Check game state - can't expand during active game
+      if (currentGameData.gameState.isActive || currentGameData.gameState.isCountdown) {
+        throw new Error('Cannot expand tickets while game is active or starting');
+      }
+      
+      if (currentGameData.gameState.gameOver) {
+        throw new Error('Cannot expand tickets for completed games');
+      }
+      
+      const numbersCalledCount = currentGameData.gameState.calledNumbers?.length || 0;
+      if (numbersCalledCount > 0) {
+        throw new Error('Cannot expand tickets after numbers have been called');
+      }
+      
+      console.log(`📊 Current state: ${currentMaxTickets} tickets, expanding to ${newMaxTickets} (+${newMaxTickets - currentMaxTickets} new)`);
+      
+      // ✅ STEP 4: Load complete ticket set (we'll extract only what we need)
+      const allTicketsFromSet = await this.loadTicketsFromSet(ticketSetId, newMaxTickets);
+      
+      // ✅ STEP 5: Extract ONLY the new tickets we need to add
+      const newTicketsToAdd: { [ticketId: string]: TambolaTicket } = {};
+      const ticketsToAddCount = newMaxTickets - currentMaxTickets;
+      
+      for (let i = currentMaxTickets + 1; i <= newMaxTickets; i++) {
+        const ticketId = i.toString();
+        if (allTicketsFromSet[ticketId]) {
+          newTicketsToAdd[ticketId] = allTicketsFromSet[ticketId];
+        } else {
+          throw new Error(`Ticket ${ticketId} not found in set ${ticketSetId}`);
+        }
+      }
+      
+      console.log(`🎫 Adding ${ticketsToAddCount} new tickets: ${Object.keys(newTicketsToAdd).join(', ')}`);
+      
+      // ✅ STEP 6: Atomic update - combine existing and new tickets
+      const updatedTickets = {
+        ...currentTickets,     // Preserve ALL existing tickets and bookings
+        ...newTicketsToAdd     // Add only the new tickets
+      };
+      
+      const updates = {
+        maxTickets: newMaxTickets,
+        tickets: updatedTickets,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await update(ref(database, `games/${gameId}`), removeUndefinedValues(updates));
+      
+      console.log(`✅ Successfully expanded game ${gameId} from ${currentMaxTickets} to ${newMaxTickets} tickets`);
+      console.log(`📋 Total tickets now: ${Object.keys(updatedTickets).length}`);
+      console.log(`👥 Existing bookings preserved: ${Object.values(updatedTickets).filter(t => t.isBooked).length}`);
+      
+    } catch (error: any) {
+      console.error(`❌ Error expanding game tickets for ${gameId}:`, error);
+      throw new Error(error.message || 'Failed to expand tickets');
+    }
   }
 
-  async bookTicket(gameId: string, ticketId: string, playerName: string, playerPhone: string): Promise<void> {
+  async expandTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
+    // Alias for expandGameTickets to maintain compatibility
+    return this.expandGameTickets(gameId, newMaxTickets, ticketSetId);
+  }
+
+  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string): Promise<void> {
     try {
       console.log(`🎫 Booking ticket ${ticketId} for ${playerName} in game ${gameId}`);
       
@@ -525,61 +835,105 @@ export class FirebaseGame {
         throw new Error('Player phone is required');
       }
 
-      const gameData = await firebaseCore.getGameData(gameId);
+      const currentTicketSnapshot = await get(ref(database, `games/${gameId}/tickets/${ticketId}`));
       
-      if (!gameData) {
-        throw new Error('Game not found');
-      }
-
-      if (gameData.gameState.isActive) {
-        throw new Error('Cannot book tickets while game is active');
-      }
-
-      const ticket = gameData.tickets[ticketId];
-      
-      if (!ticket) {
-        throw new Error('Ticket not found');
-      }
-
-      if (ticket.isBooked) {
-        throw new Error('Ticket is already booked');
-      }
-
-      const ticketRef = ref(database, `games/${gameId}/tickets/${ticketId}`);
-      await update(ticketRef, {
+      const ticketData = {
         isBooked: true,
         playerName: playerName.trim(),
         playerPhone: playerPhone.trim(),
         bookedAt: new Date().toISOString()
-      });
+      };
 
-      console.log(`✅ Ticket ${ticketId} booked successfully for ${playerName}`);
+      if (currentTicketSnapshot.exists()) {
+        const currentTicket = currentTicketSnapshot.val();
+        if (currentTicket.metadata) {
+          (ticketData as any).metadata = currentTicket.metadata;
+        }
+        if (currentTicket.setId) {
+          (ticketData as any).setId = currentTicket.setId;
+        }
+        if (currentTicket.positionInSet) {
+          (ticketData as any).positionInSet = currentTicket.positionInSet;
+        }
+      }
+
+      await update(
+        ref(database, `games/${gameId}/tickets/${ticketId}`),
+        removeUndefinedValues(ticketData)
+      );
       
+      console.log(`✅ Ticket ${ticketId} booked successfully - metadata preserved`);
     } catch (error: any) {
       console.error('❌ Error booking ticket:', error);
       throw new Error(error.message || 'Failed to book ticket');
     }
   }
 
+  async unbookTicket(gameId: string, ticketId: string): Promise<void> {
+    try {
+      const ticketData = {
+        isBooked: false,
+        playerName: null,
+        playerPhone: null,
+        bookedAt: null
+      };
+
+      await update(
+        ref(database, `games/${gameId}/tickets/${ticketId}`),
+        ticketData
+      );
+      
+      console.log(`✅ Ticket ${ticketId} unbooked successfully`);
+    } catch (error: any) {
+      console.error('❌ Error unbooking ticket:', error);
+      throw new Error(error.message || 'Failed to unbook ticket');
+    }
+  }
+
+  async updateTicket(gameId: string, ticketId: string, updates: Partial<TambolaTicket>): Promise<void> {
+    try {
+      const cleanUpdates = removeUndefinedValues(updates);
+      await update(
+        ref(database, `games/${gameId}/tickets/${ticketId}`),
+        cleanUpdates
+      );
+      console.log(`✅ Ticket ${ticketId} updated successfully`);
+    } catch (error: any) {
+      console.error('❌ Error updating ticket:', error);
+      throw new Error(error.message || 'Failed to update ticket');
+    }
+  }
+
   // ================== PRIZE LOGIC ==================
 
-  generatePrizes(selectedPrizes: string[]): { [prizeId: string]: Prize } {
+  /**
+   * ✅ HELPER: Create prize configuration from selected prize IDs
+   */
+  createPrizeConfiguration(selectedPrizes: string[]): { [prizeId: string]: Prize } {
     const availablePrizes = {
-      firstHouse: {
-        id: 'firstHouse',
-        name: 'First House',
-        pattern: 'All numbers',
-        description: 'First to mark all numbers on the ticket',
+      earlyFive: {
+        id: 'earlyFive',
+        name: 'Early Five',
+        pattern: 'First 5 numbers',
+        description: 'First to mark any 5 numbers on the ticket',
         won: false,
         order: 1
       },
       corners: {
         id: 'corners',
-        name: 'Corners',
+        name: 'Four Corners',
         pattern: '4 corners',
-        description: 'Mark all 4 corner positions of any ticket',
+        description: 'Mark all 4 corner positions',
         won: false,
         order: 2
+      },
+      halfSheet: {
+        id: 'halfSheet',
+        name: 'Half Sheet',
+        pattern: '3 consecutive tickets from same set',
+        description: 'Complete half of a traditional 6-ticket sheet',
+        won: false,
+        order: 2.5
       },
       topLine: {
         id: 'topLine',
@@ -631,6 +985,11 @@ export class FirebaseGame {
     }
 
     return prizes;
+  }
+
+  generatePrizes(selectedPrizes: string[]): { [prizeId: string]: Prize } {
+    // Alias for createPrizeConfiguration to maintain compatibility
+    return this.createPrizeConfiguration(selectedPrizes);
   }
 
   async validateTicketsForPrizes(
@@ -761,6 +1120,38 @@ export class FirebaseGame {
   }
 
   // ================== NUMBER CALLING LOGIC ==================
+
+  async callNextNumber(gameId: string): Promise<{
+    success: boolean;
+    number?: number;
+    winners?: { [prizeId: string]: any };
+    announcements?: string[];
+    gameEnded?: boolean;
+  }> {
+    try {
+      const gameData = await firebaseCore.getGameData(gameId);
+      if (!gameData) {
+        throw new Error('Game not found');
+      }
+
+      const calledNumbers = gameData.gameState.calledNumbers || [];
+      const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+        .filter(num => !calledNumbers.includes(num));
+
+      if (availableNumbers.length === 0) {
+        console.log('🏁 No more numbers to call - game should end');
+        return { success: false };
+      }
+
+      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      const number = availableNumbers[randomIndex];
+
+      return await this.processNumberCall(gameId, number);
+    } catch (error: any) {
+      console.error('❌ Error calling next number:', error);
+      throw new Error(error.message || 'Failed to call next number');
+    }
+  }
 
   async processNumberCall(gameId: string, number: number): Promise<any> {
     return this.withGameLock(gameId, async () => {
