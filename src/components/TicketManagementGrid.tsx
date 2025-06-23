@@ -206,7 +206,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   };
 
   const getTicketClassName = (ticket: TicketInfo) => {
-    const baseClasses = "relative border-2 rounded-lg p-4 cursor-pointer transition-all duration-200 text-center";
+    const baseClasses = "aspect-square flex items-center justify-center border-2 rounded-lg cursor-pointer transition-all duration-200";
     
     if (ticket.isBooked) {
       return `${baseClasses} border-green-500 bg-green-200 text-black`;
@@ -358,9 +358,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                     onClick={() => handleTicketClick(ticket.ticketId, ticket.isBooked)}
                     title={`Ticket ${ticket.ticketId}${ticket.isBooked ? ` - Booked by ${ticket.playerName}` : selectedTickets.includes(ticket.ticketId) ? ' - Selected' : ' - Available'}`}
                   >
-                    <div className="font-bold text-2xl">
+                    <span className="font-bold text-lg">
                       {ticket.ticketId}
-                    </div>
+                    </span>
                   </div>
                 ))}
               </div>
