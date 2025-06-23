@@ -14,7 +14,7 @@ import {
 } from './firebase-core';
 
 // ✅ NEW: Import prize engine for all prize-related operations
-import { prizeEngine } from './prize-engine';
+import { prizeEngine, computeTicketMetadata } from './prize-engine';
 
 import { 
   ref, 
@@ -222,6 +222,189 @@ export class FirebaseGame {
       playerName: '',
       playerPhone: ''
     };
+  }
+
+  // ================== TICKET LOADING FROM JSON FILES ==================
+
+  async loadTicketsFromSet(ticketSetId: string, maxTickets: number): Promise<{ [ticketId: string]: TambolaTicket }> {
+    try {
+      console.log(`📁 Loading tickets from set ${ticketSetId}, maxTickets: ${maxTickets}`);
+      
+      if (!['1', '2'].includes(ticketSetId)) {
+        throw new Error(`Invalid ticket set ID: ${ticketSetId}. Must be "1" or "2".`);
+      }
+      
+      if (!maxTickets || maxTickets < 1 || maxTickets > 600) {
+        throw new Error(`Invalid maxTickets: ${maxTickets}. Must be between 1 and 600.`);
+      }
+
+      const response = await fetch(`/data/${ticketSetId}.json`);
+      
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`Ticket set file not found: ${ticketSetId}.json. Please check if the file exists in public/data/`);
+        }
+        throw new Error(`Failed to load ticket set ${ticketSetId}: HTTP ${response.status} ${response.statusText}`);
+      }
+
+      const rawData: TicketRowData[] = await response.json();
+      
+      if (!Array.isArray(rawData)) {
+        throw new Error(`Invalid ticket data format: Expected array, got ${typeof rawData}`);
+      }
+      
+      if (rawData.length === 0) {
+        throw new Error(`Empty ticket set: ${ticketSetId}.json contains no data`);
+      }
+
+      console.log(`📊 Loaded ${rawData.length} ticket rows from set ${ticketSetId}`);
+
+      const filteredData = rawData.filter(row => row.ticketId >= 1 && row.ticketId <= maxTickets);
+      
+      if (filteredData.length === 0) {
+        throw new Error(`No valid tickets found in range 1-${maxTickets} for set ${ticketSetId}`);
+      }
+
+      const uniqueTicketIds = new Set(filteredData.map(row => row.ticketId));
+      const availableTickets = uniqueTicketIds.size;
+      
+      if (availableTickets < maxTickets) {
+        throw new Error(`Insufficient tickets in set ${ticketSetId}: Found ${availableTickets}, requested ${maxTickets}`);
+      }
+
+      console.log(`🎯 Filtered to ${filteredData.length} rows covering ${availableTickets} tickets`);
+
+      const ticketGroups = new Map<number, TicketRowData[]>();
+      
+      for (const row of filteredData) {
+        if (!row.ticketId || !row.rowId || !Array.isArray(row.numbers)) {
+          console.warn(`⚠️ Invalid row structure:`, row);
+          continue;
+        }
+        
+        if (row.numbers.length !== 9) {
+          console.warn(`⚠️ Invalid row length for ticket ${row.ticketId} row ${row.rowId}: expected 9, got ${row.numbers.length}`);
+          continue;
+        }
+
+        if (!ticketGroups.has(row.ticketId)) {
+          ticketGroups.set(row.ticketId, []);
+        }
+        ticketGroups.get(row.ticketId)!.push(row);
+      }
+
+      const tickets: { [ticketId: string]: TambolaTicket } = {};
+      
+      for (const [ticketId, rows] of ticketGroups) {
+        if (rows.length !== 3) {
+          console.warn(`⚠️ Ticket ${ticketId} has ${rows.length} rows, expected 3. Skipping.`);
+          continue;
+        }
+
+        rows.sort((a, b) => a.rowId - b.rowId);
+        
+        const expectedRowIds = [1, 2, 3];
+        const actualRowIds = rows.map(r => r.rowId);
+        
+        if (!expectedRowIds.every((id, index) => actualRowIds[index] === id)) {
+          console.warn(`⚠️ Ticket ${ticketId} has invalid row IDs: expected [1,2,3], got [${actualRowIds.join(',')}]. Skipping.`);
+          continue;
+        }
+
+        const ticket: TambolaTicket = {
+          ticketId: ticketId.toString(),
+          setId: rows[0].setId,
+          positionInSet: ((ticketId - 1) % 6) + 1,
+          rows: rows.map(row => row.numbers),
+          markedNumbers: [],
+          isBooked: false,
+          playerName: '',
+          playerPhone: '',
+          bookedAt: ''
+        };
+
+        // ✅ UPDATED: Use computeTicketMetadata for ticket loading
+        ticket.metadata = computeTicketMetadata(ticket);
+        tickets[ticketId.toString()] = ticket;
+      }
+
+      const createdTicketCount = Object.keys(tickets).length;
+      
+      if (createdTicketCount < maxTickets) {
+        throw new Error(`Failed to create enough valid tickets: created ${createdTicketCount}, requested ${maxTickets}. Check ticket data integrity.`);
+      }
+
+      console.log(`✅ Successfully created ${createdTicketCount} tickets from set ${ticketSetId}`);
+      console.log(`🎫 Ticket IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${createdTicketCount > 5 ? '...' : ''}`);
+      
+      return tickets;
+      
+    } catch (error: any) {
+      console.error('❌ Error loading tickets from set:', error);
+      throw new Error(error.message || 'Failed to load tickets from set');
+    }
+  }
+
+  async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
+    try {
+      console.log(`📈 Expanding game ${gameId} tickets to ${newMaxTickets} from set ${ticketSetId}`);
+      
+      const currentGameData = await this.getGameData(gameId);
+      if (!currentGameData) {
+        throw new Error(`Game ${gameId} not found for ticket expansion`);
+      }
+      
+      const currentMaxTickets = currentGameData.maxTickets;
+      const currentTickets = currentGameData.tickets || {};
+      
+      if (newMaxTickets <= currentMaxTickets) {
+        throw new Error(`Can only expand tickets. Current: ${currentMaxTickets}, Requested: ${newMaxTickets}. To reduce tickets, create a new game.`);
+      }
+      
+      if (newMaxTickets > 600) {
+        throw new Error(`Maximum ticket limit is 600. Requested: ${newMaxTickets}`);
+      }
+
+      const newTickets = await this.loadTicketsFromSet(ticketSetId, newMaxTickets);
+      
+      const updatedTickets: { [ticketId: string]: TambolaTicket } = {};
+      
+      // Preserve existing tickets
+      for (const [ticketId, ticket] of Object.entries(currentTickets)) {
+        if (parseInt(ticketId) <= newMaxTickets) {
+          updatedTickets[ticketId] = ticket;
+        }
+      }
+      
+      // Add new tickets
+      for (const [ticketId, ticket] of Object.entries(newTickets)) {
+        if (!updatedTickets[ticketId]) {
+          updatedTickets[ticketId] = ticket;
+        }
+      }
+
+      const updates = removeUndefinedValues({
+        maxTickets: newMaxTickets,
+        tickets: updatedTickets,
+        updatedAt: new Date().toISOString()
+      });
+
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, updates);
+      
+      console.log(`✅ Successfully expanded game ${gameId} from ${currentMaxTickets} to ${newMaxTickets} tickets`);
+      console.log(`📋 Total tickets now: ${Object.keys(updatedTickets).length}`);
+      console.log(`👥 Existing bookings preserved: ${Object.values(updatedTickets).filter(t => t.isBooked).length}`);
+      
+    } catch (error: any) {
+      console.error(`❌ Error expanding game tickets for ${gameId}:`, error);
+      throw new Error(error.message || 'Failed to expand tickets');
+    }
+  }
+
+  async expandTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
+    // Alias for expandGameTickets to maintain compatibility
+    return this.expandGameTickets(gameId, newMaxTickets, ticketSetId);
   }
 
   // ================== GAME DATA RETRIEVAL ==================
