@@ -260,14 +260,14 @@
 
   /* UPDATED: Mobile-Optimized Ticket Management Grid Styles for 6-Column Layout */
   .ticket-management-grid {
-    @apply grid gap-3;
+    @apply grid gap-4;
   }
 
   /* UPDATED: Consistent sizing for 3-digit numbers with monospace font */
   .ticket-slot {
-    @apply relative w-full h-16 rounded-lg border-2 transition-all duration-200 
-           flex flex-col items-center justify-center font-mono font-bold text-base cursor-pointer
-           hover:scale-105 transform min-w-[70px];
+    @apply relative w-full h-14 rounded-lg border-2 transition-all duration-200 
+           flex flex-col items-center justify-center font-mono font-bold text-sm cursor-pointer
+           hover:scale-105 transform min-w-[60px];
   }
 
   /* UPDATED: Available ticket styling with monospace font */
@@ -372,8 +372,8 @@
 
   /* NEW: Touch-friendly button sizing for mobile */
   .ticket-slot {
-    min-height: 64px; /* Ensures 44px+ touch target */
-    min-width: 70px;   /* Consistent width for 3-digit numbers */
+    min-height: 56px; /* Ensures 44px+ touch target (h-14 = 56px) */
+    min-width: 60px;   /* Consistent width for 3-digit numbers */
     padding: 0.5rem;
   }
 
@@ -407,7 +407,7 @@
   /* Responsive adjustments with mobile-first 6-column support */
   @screen sm {
     .ticket-slot {
-      @apply h-20 text-lg min-w-[80px];
+      @apply h-16 text-base min-w-[70px];
     }
 
     .number-cell {
@@ -417,7 +417,7 @@
 
   @screen lg {
     .ticket-slot {
-      @apply h-24 text-lg min-w-[90px];
+      @apply h-20 text-lg min-w-[80px];
     }
 
     .number-cell {
@@ -440,14 +440,14 @@
       scroll-behavior: smooth;
     }
     
-    /* Ensure grid maintains 6 columns exactly with proper spacing */
+    /* Ensure grid maintains 6 columns exactly with increased horizontal spacing */
     .ticket-management-grid {
       grid-template-columns: repeat(6, 1fr);
-      gap: 0.9rem; /* Increased gap for mobile */
+      gap: 1rem; /* Increased horizontal gap for mobile */
     }
 
     .ticket-slot {
-      @apply h-16 text-base min-w-[70px];
+      @apply h-14 text-sm min-w-[60px];
       font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     }
   }
@@ -455,7 +455,7 @@
   /* Tablet optimization - maintain 6 columns but allow larger cells */
   @media (min-width: 768px) and (max-width: 1024px) {
     .ticket-slot {
-      @apply h-20 text-lg min-w-[80px];
+      @apply h-16 text-base min-w-[70px];
       font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     }
   }
@@ -463,7 +463,7 @@
   /* Desktop optimization - larger cells for better host interaction */
   @media (min-width: 1024px) {
     .ticket-slot {
-      @apply h-24 text-lg min-w-[90px];
+      @apply h-20 text-lg min-w-[80px];
       font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     }
   }
