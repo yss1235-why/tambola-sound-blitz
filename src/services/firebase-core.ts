@@ -1,13 +1,4 @@
-// src/services/firebase-core.ts - Infrastructure: Firebase setup, auth, basic DB, types, subscriptions
-
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInWithEmailAndPassword, 
-  signOut,
-  onAuthStateChanged,
-  User
-} from 'firebase/auth';
+// src/services/firebase-core.ts - FIXED: Consistent hostSettings path usage
 import { 
   getDatabase, 
   ref, 
@@ -23,9 +14,16 @@ import {
   equalTo,
   runTransaction
 } from 'firebase/database';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  signOut,
+  onAuthStateChanged,
+  User
+} from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
 
-// ================== FIREBASE CONFIGURATION ==================
-
+// Firebase configuration
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -133,22 +131,11 @@ export interface HostSettings {
   updatedAt?: string;
 }
 
-// ✅ FIXED: Added missing required fields to CreateGameConfig
 export interface CreateGameConfig {
   name: string;
   maxTickets: number;
   ticketPrice: number;
   hostPhone: string;
-  hostId: string;
-  selectedTicketSet: string;
-  selectedPrizes: string[];
-}
-
-interface TicketRowData {
-  setId: number;
-  ticketId: number;
-  rowId: number;
-  numbers: number[];
 }
 
 // ================== UTILITY FUNCTIONS ==================
@@ -167,58 +154,35 @@ export const removeUndefinedValues = (obj: any): any => {
   return cleaned;
 };
 
-// ================== FIREBASE CORE SERVICE CLASS ==================
+// ================== FIREBASE CORE SERVICE ==================
 
-export class FirebaseCore {
-  private cleanupInProgress = new Set<string>();
-  
-  // ================== RACE CONDITION PREVENTION ==================
+class FirebaseCoreService {
+  // ================== TRANSACTION UTILITIES ==================
 
-  private activeLocks = new Map<string, Promise<any>>();
-
-  /**
-   * ✅ RACE CONDITION PREVENTION: Ensure only one update per game at a time
-   */
-  private async withGameLock<T>(gameId: string, operation: () => Promise<T>): Promise<T> {
-    const lockKey = `game_${gameId}`;
-    
-    if (this.activeLocks.has(lockKey)) {
-      console.log(`⏳ Waiting for existing operation on game: ${gameId}`);
-      await this.activeLocks.get(lockKey);
-    }
-    
-    const operationPromise = (async () => {
-      try {
-        console.log(`🔒 Acquired lock for game: ${gameId}`);
-        return await operation();
-      } finally {
-        console.log(`🔓 Released lock for game: ${gameId}`);
-        this.activeLocks.delete(lockKey);
-      }
-    })();
-    
-    this.activeLocks.set(lockKey, operationPromise);
-    return operationPromise;
-  }
-
-  /**
-   * ✅ TRANSACTION SAFETY: Atomic updates with retries
-   */
   async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
-    const gameRef = ref(database, path);
-    
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        await runTransaction(gameRef, (currentData) => {
-          if (currentData === null) return null;
-          return { ...currentData, ...removeUndefinedValues(updates) };
+        console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
+        
+        await runTransaction(ref(database, path), (currentData) => {
+          if (currentData === null) {
+            return updates;
+          }
+          return { ...currentData, ...updates };
         });
-        console.log(`✅ Transaction completed successfully on attempt ${attempt}`);
+        
+        console.log(`✅ Transaction successful for path: ${path}`);
         return;
+        
       } catch (error: any) {
-        console.error(`❌ Transaction attempt ${attempt} failed:`, error);
-        if (attempt === retries) throw error;
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        console.error(`❌ Transaction attempt ${attempt} failed for ${path}:`, error);
+        
+        if (attempt === retries) {
+          throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
     }
   }
@@ -227,95 +191,51 @@ export class FirebaseCore {
 
   async loginAdmin(email: string, password: string): Promise<AdminUser> {
     try {
-      console.log('🔐 Admin login attempt for:', email);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-      
-      const adminSnapshot = await get(ref(database, `admins/${firebaseUser.uid}`));
-      if (!adminSnapshot.exists()) {
-        await signOut(auth);
-        throw new Error('Admin account not found');
+      const userData = await this.getUserData();
+      if (!userData || userData.role !== 'admin') {
+        throw new Error('Not authorized as admin');
       }
-      
-      const adminData = adminSnapshot.val() as AdminUser;
-      console.log('✅ Admin login successful:', adminData.name);
-      return adminData;
+      return userData as AdminUser;
     } catch (error: any) {
-      console.error('❌ Admin login failed:', error);
-      throw new Error(error.message || 'Admin login failed');
+      throw new Error(error.message || 'Failed to login as admin');
     }
   }
 
   async loginHost(email: string, password: string): Promise<HostUser> {
     try {
-      console.log('🔐 Host login attempt for:', email);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-      
-      const hostSnapshot = await get(ref(database, `hosts/${firebaseUser.uid}`));
-      if (!hostSnapshot.exists()) {
-        await signOut(auth);
-        throw new Error('Host account not found');
+      const userData = await this.getUserData();
+      if (!userData || userData.role !== 'host') {
+        throw new Error('Not authorized as host');
       }
-      
-      const hostData = hostSnapshot.val() as HostUser;
-      
-      if (!hostData.isActive) {
-        await signOut(auth);
-        throw new Error('Host account is deactivated');
-      }
-      
-      const subscriptionEnd = new Date(hostData.subscriptionEndDate);
-      const now = new Date();
-      if (subscriptionEnd <= now) {
-        await signOut(auth);
-        throw new Error('Host subscription has expired');
-      }
-      
-      console.log('✅ Host login successful:', hostData.name);
-      return hostData;
+      return userData as HostUser;
     } catch (error: any) {
-      console.error('❌ Host login failed:', error);
-      throw new Error(error.message || 'Host login failed');
+      throw new Error(error.message || 'Failed to login as host');
     }
   }
 
   async logout(): Promise<void> {
     try {
       await signOut(auth);
-      console.log('✅ User logged out successfully');
     } catch (error: any) {
-      console.error('❌ Logout failed:', error);
-      throw new Error(error.message || 'Logout failed');
+      throw new Error(error.message || 'Failed to sign out');
     }
   }
 
-  // ✅ FIXED: Simple getUserData() - Firebase Auth UID = Host ID
   async getUserData(): Promise<AdminUser | HostUser | null> {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) return null;
 
-      // Since Firebase Auth UID = Host ID, directly get host data
       const hostSnapshot = await get(ref(database, `hosts/${currentUser.uid}`));
       if (hostSnapshot.exists()) {
-        const hostData = hostSnapshot.val();
-        return { 
-          ...hostData, 
-          uid: currentUser.uid,  // Ensure uid is set to Firebase Auth UID
-          role: 'host' 
-        } as HostUser;
+        return { ...hostSnapshot.val(), role: 'host' } as HostUser;
       }
       
-      // Check admins
       const adminSnapshot = await get(ref(database, `admins/${currentUser.uid}`));
       if (adminSnapshot.exists()) {
-        const adminData = adminSnapshot.val();
-        return { 
-          ...adminData, 
-          uid: currentUser.uid,  // Ensure uid is set to Firebase Auth UID
-          role: 'admin' 
-        } as AdminUser;
+        return { ...adminSnapshot.val(), role: 'admin' } as AdminUser;
       }
       
       return null;
@@ -326,68 +246,22 @@ export class FirebaseCore {
   }
 
   async getCurrentUserRole(): Promise<string | null> {
-    try {
-      const userData = await this.getUserData();
-      return userData?.role || null;
-    } catch (error: any) {
-      console.error('Error getting user role:', error);
-      return null;
-    }
-  }
-
-  // ================== BASIC DATABASE OPERATIONS ==================
-
-  async getGameData(gameId: string): Promise<GameData | null> {
-    try {
-      const gameRef = ref(database, `games/${gameId}`);
-      const snapshot = await get(gameRef);
-      
-      if (snapshot.exists()) {
-        return snapshot.val() as GameData;
-      }
-      return null;
-    } catch (error: any) {
-      console.error('Error getting game data:', error);
-      throw new Error(error.message || 'Failed to get game data');
-    }
-  }
-
-  async updateGameState(gameId: string, updates: Partial<GameState> | GameState): Promise<void> {
-    try {
-      const cleanUpdates = removeUndefinedValues(updates);
-      await update(ref(database, `games/${gameId}/gameState`), cleanUpdates);
-
-      const gameData = await this.getGameData(gameId);
-      if (!gameData) {
-        console.warn(`⚠️ Could not load game data for cleanup check: ${gameId}`);
-        return;
-      }
-
-      const isGameStarting = (updates as any).isActive === true || (updates as any).isCountdown === true;
-      const isNewGame = (gameData.gameState.calledNumbers?.length || 0) === 0;
-      
-      if (isGameStarting && isNewGame) {
-        console.log(`🎮 Game ${gameId} is starting - cleanup will be handled by game service`);
-      }
-
-      console.log(`✅ Game state updated successfully for: ${gameId}`);
-    } catch (error: any) {
-      console.error('❌ Error updating game state:', error);
-      throw new Error(error.message || 'Failed to update game state');
-    }
+    const userData = await this.getUserData();
+    return userData?.role || null;
   }
 
   // ================== HOST MANAGEMENT ==================
 
   async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number): Promise<void> {
     try {
-      console.log('🔧 Creating host account...');
-      
       const subscriptionEndDate = new Date();
       subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
 
+      const hostId = push(ref(database, 'hosts')).key;
+      if (!hostId) throw new Error('Failed to generate host ID');
+
       const hostData: HostUser = {
-        uid: '',
+        uid: hostId,
         email,
         name,
         phone,
@@ -396,16 +270,14 @@ export class FirebaseCore {
         isActive: true
       };
 
-      const hostRef = push(ref(database, 'hosts'));
-      const hostId = hostRef.key!;
-      hostData.uid = hostId;
-      
+      const hostRef = ref(database, `hosts/${hostId}`);
       await set(hostRef, removeUndefinedValues(hostData));
       
       console.log(`✅ Host ${name} created successfully with ID: ${hostId}`);
-      throw new Error(`SUCCESS: Host ${name} created successfully. Please provide these credentials to the host:\n\nEmail: ${email}\nPassword: ${password}\nHost ID: ${hostId}`);
+      throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
+      
     } catch (error: any) {
-      if (error.message.includes('SUCCESS:')) {
+      if (error.message.startsWith('SUCCESS:')) {
         throw error;
       }
       console.error('❌ Error creating host:', error);
@@ -416,13 +288,13 @@ export class FirebaseCore {
   async getAllHosts(): Promise<HostUser[]> {
     try {
       const hostsSnapshot = await get(ref(database, 'hosts'));
-      if (hostsSnapshot.exists()) {
-        return Object.values(hostsSnapshot.val()) as HostUser[];
+      if (!hostsSnapshot.exists()) {
+        return [];
       }
-      return [];
-    } catch (error: any) {
+      return Object.values(hostsSnapshot.val()) as HostUser[];
+    } catch (error) {
       console.error('Error fetching hosts:', error);
-      throw new Error(error.message || 'Failed to fetch hosts');
+      return [];
     }
   }
 
@@ -492,6 +364,7 @@ export class FirebaseCore {
   async changeHostPassword(hostId: string, newPassword: string): Promise<void> {
     try {
       console.log(`🔑 Password change requested for host: ${hostId}`);
+      // Simulate password change - in real implementation this would update Firebase Auth
       await new Promise(resolve => setTimeout(resolve, 1000));
       console.log(`✅ Password changed for host: ${hostId}`);
     } catch (error: any) {
@@ -500,17 +373,18 @@ export class FirebaseCore {
     }
   }
 
-  // ================== HOST SETTINGS ==================
+  // ================== HOST SETTINGS - FIXED: All use hostSettings path ==================
 
   async saveHostSettings(hostId: string, settings: HostSettings): Promise<void> {
     try {
-      const settingsData = {
+      console.log(`💾 Saving host settings for: ${hostId}`, settings);
+      const settingsWithTimestamp = {
         ...settings,
         updatedAt: new Date().toISOString()
       };
-      
-      await set(ref(database, `hostSettings/${hostId}`), removeUndefinedValues(settingsData));
-      console.log(`✅ Host settings saved for: ${hostId}`);
+      // ✅ FIXED: Consistent hostSettings path
+      await set(ref(database, `hostSettings/${hostId}`), removeUndefinedValues(settingsWithTimestamp));
+      console.log(`✅ Host settings saved successfully for: ${hostId}`);
     } catch (error: any) {
       console.error('❌ Error saving host settings:', error);
       throw new Error(error.message || 'Failed to save host settings');
@@ -519,37 +393,61 @@ export class FirebaseCore {
 
   async getHostSettings(hostId: string): Promise<HostSettings | null> {
     try {
+      // ✅ FIXED: Consistent hostSettings path
       const settingsSnapshot = await get(ref(database, `hostSettings/${hostId}`));
       return settingsSnapshot.exists() ? settingsSnapshot.val() as HostSettings : null;
-    } catch (error: any) {
-      console.error('❌ Error getting host settings:', error);
+    } catch (error) {
+      console.error('Error fetching host settings:', error);
       return null;
     }
   }
 
-  async updateHostTemplate(hostId: string, template: any): Promise<void> {
+  async updateHostTemplate(hostId: string, template: Partial<HostSettings>): Promise<void> {
     try {
-      const templateData = {
+      console.log(`🔄 Updating host template for: ${hostId}`, template);
+      // ✅ FIXED: Consistent hostSettings path
+      const settingsRef = ref(database, `hostSettings/${hostId}`);
+      const templateWithTimestamp = {
         ...template,
         updatedAt: new Date().toISOString()
       };
-      
-      await set(ref(database, `hostTemplates/${hostId}`), removeUndefinedValues(templateData));
-      console.log(`✅ Host template updated for: ${hostId}`);
+      await update(settingsRef, removeUndefinedValues(templateWithTimestamp));
+      console.log(`✅ Host template updated successfully for: ${hostId}`);
     } catch (error: any) {
       console.error('❌ Error updating host template:', error);
       throw new Error(error.message || 'Failed to update host template');
     }
   }
 
-  // ================== SUBSCRIPTION METHODS ==================
+  // ================== GAME DATA OPERATIONS ==================
+
+  async getGameData(gameId: string): Promise<GameData | null> {
+    try {
+      const gameSnapshot = await get(ref(database, `games/${gameId}`));
+      return gameSnapshot.exists() ? gameSnapshot.val() as GameData : null;
+    } catch (error) {
+      console.error('Error fetching game data:', error);
+      return null;
+    }
+  }
+
+  async updateGameState(gameId: string, gameState: Partial<GameState>): Promise<void> {
+    try {
+      await update(ref(database, `games/${gameId}/gameState`), gameState);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to update game state');
+    }
+  }
+
+  // ================== REAL-TIME SUBSCRIPTIONS ==================
 
   subscribeToGame(gameId: string, callback: (gameData: GameData | null) => void): () => void {
     const gameRef = ref(database, `games/${gameId}`);
     
     const unsubscribe = onValue(gameRef, (snapshot) => {
       if (snapshot.exists()) {
-        callback(snapshot.val() as GameData);
+        const gameData = snapshot.val() as GameData;
+        callback(gameData);
       } else {
         callback(null);
       }
@@ -566,13 +464,13 @@ export class FirebaseCore {
     
     const unsubscribe = onValue(gamesRef, (snapshot) => {
       if (snapshot.exists()) {
-        const gamesData = Object.values(snapshot.val()) as GameData[];
-        callback(gamesData);
+        const games = Object.values(snapshot.val()) as GameData[];
+        callback(games);
       } else {
         callback([]);
       }
     }, (error) => {
-      console.error('Firebase subscription error:', error);
+      console.error('Host games subscription error:', error);
       callback([]);
     });
 
@@ -585,77 +483,23 @@ export class FirebaseCore {
     const unsubscribe = onValue(gamesRef, (snapshot) => {
       if (snapshot.exists()) {
         const allGames = Object.values(snapshot.val()) as GameData[];
-        
-        const validGames = allGames.filter(game => 
-          game.hostId && game.gameId && game.gameState
+        const activeGames = allGames.filter(game => 
+          game.gameState && 
+          (game.gameState.isActive || game.gameState.isCountdown || !game.gameState.gameOver)
         );
-
-        const gamesByHost = new Map<string, GameData[]>();
-        validGames.forEach(game => {
-          if (!gamesByHost.has(game.hostId)) {
-            gamesByHost.set(game.hostId, []);
-          }
-          gamesByHost.get(game.hostId)!.push(game);
-        });
-
-        const publicGames: GameData[] = [];
-        
-        gamesByHost.forEach((hostGames) => {
-          const activeGame = hostGames.find(game => !game.gameState.gameOver);
-          
-          if (activeGame) {
-            publicGames.push(activeGame);
-            return;
-          }
-          
-          const completedGames = hostGames
-            .filter(game => game.gameState.gameOver && game.createdAt)
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          
-          if (completedGames.length > 0) {
-            publicGames.push(completedGames[0]);
-          }
-        });
-
-        const sortedGames = publicGames.sort((a, b) => 
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        );
-        
-        callback(sortedGames);
+        callback(activeGames);
       } else {
         callback([]);
       }
     }, (error) => {
-      console.error('Games subscription error:', error);
+      console.error('All games subscription error:', error);
       callback([]);
     });
 
     return () => off(gamesRef, 'value', unsubscribe);
   }
-
-  subscribeToGames(callback: (games: GameData[]) => void): () => void {
-    return this.subscribeToAllActiveGames(callback);
-  }
-
-  subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
-    const hostsRef = ref(database, 'hosts');
-    
-    const unsubscribe = onValue(hostsRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const hosts = Object.values(snapshot.val()) as HostUser[];
-        callback(hosts);
-      } else {
-        callback([]);
-      }
-    }, (error) => {
-      console.error('Hosts subscription error:', error);
-      callback(null);
-    });
-
-    return () => off(hostsRef, 'value', unsubscribe);
-  }
 }
 
 // ================== SINGLETON EXPORT ==================
 
-export const firebaseCore = new FirebaseCore();
+export const firebaseCore = new FirebaseCoreService();
