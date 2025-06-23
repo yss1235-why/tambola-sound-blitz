@@ -94,31 +94,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 1,
     difficulty: 'easy'
   },
-  {
-    id: 'corners',
-    name: 'Four Corners',
-    pattern: '4 corners',
-    description: 'Mark all 4 corner positions',
-    order: 2,
-    difficulty: 'easy'
-  },
-  {
-    id: 'halfSheet',
-    name: 'Half Sheet',
-    pattern: '3 consecutive tickets from same set',
-    description: 'Complete half of a traditional 6-ticket sheet',
-    order: 2.5,
-    difficulty: 'medium'
-  },
-  {
-    id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
-    name: 'Full Sheet',
-    pattern: 'Complete 6-ticket set',
-    description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)',
-    order: 2.8,
-    difficulty: 'hard'
-  },
-  {
+    {
     id: 'topLine',
     name: 'Top Line',
     pattern: 'Complete top row',
@@ -143,11 +119,35 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     difficulty: 'medium'
   },
   {
+    id: 'corners',
+    name: 'Four Corners',
+    pattern: '4 corners',
+    description: 'Mark all 4 corner positions',
+    order: 2,
+    difficulty: 'easy'
+  },
+  {
     id: 'starCorner',
     name: 'Star Corner',
     pattern: '4 corners + center',
     description: 'Mark all 4 corner positions plus center position',
     order: 6,
+    difficulty: 'hard'
+  },
+  {
+    id: 'halfSheet',
+    name: 'Half Sheet',
+    pattern: '3 consecutive tickets from same set',
+    description: 'Complete half of a traditional 6-ticket sheet',
+    order: 2.5,
+    difficulty: 'medium'
+  },
+  {
+    id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
+    name: 'Full Sheet',
+    pattern: 'Complete 6-ticket set',
+    description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)',
+    order: 2.8,
     difficulty: 'hard'
   },
   {
