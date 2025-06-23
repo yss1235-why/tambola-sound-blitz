@@ -1,4 +1,4 @@
-// src/services/index.ts - Export all Firebase services and utilities
+// src/services/index.ts - FIXED: Export all Firebase services and utilities with consistent paths
 export { 
   firebaseService, 
   database, 
