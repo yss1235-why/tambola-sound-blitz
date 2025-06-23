@@ -91,14 +91,6 @@ export const getStarCorners = (ticket: TambolaTicket): number[] => {
  */
 export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: string]: Prize } => {
   const availablePrizes = {
-    quickFive: {
-      id: 'quickFive',
-      name: 'Quick Five',
-      pattern: 'First 5 numbers',
-      description: 'First player to mark 5 numbers',
-      won: false,
-      order: 1
-    },
     earlyFive: {
       id: 'earlyFive',
       name: 'Early Five',
@@ -130,14 +122,6 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)',
       won: false,
       order: 2.8
-    },
-    anyLine: {
-      id: 'anyLine',
-      name: 'Any Line',
-      pattern: 'Complete any row',
-      description: 'Complete any single row of your ticket',
-      won: false,
-      order: 3
     },
     topLine: {
       id: 'topLine',
@@ -178,14 +162,6 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       description: 'Mark all 4 corner positions plus center position',
       won: false,
       order: 5.5
-    },
-    firstHouse: {
-      id: 'firstHouse',
-      name: 'First House',
-      pattern: 'All numbers (first)',
-      description: 'First to mark all numbers on the ticket',
-      won: false,
-      order: 6
     },
     fullHouse: {
       id: 'fullHouse',
@@ -384,7 +360,6 @@ export const validateTicketsForPrizes = async (
 
         try {
           switch (prizeId) {
-            case 'quickFive':
             case 'earlyFive':
               const markedCount = ticket.metadata?.allNumbers.filter(num => 
                 calledNumbers.includes(num)
@@ -393,7 +368,6 @@ export const validateTicketsForPrizes = async (
               break;
 
             case 'fullHouse':
-            case 'firstHouse':
               const allNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
               hasWon = allNumbers.every(num => calledNumbers.includes(num));
               break;
@@ -408,19 +382,6 @@ export const validateTicketsForPrizes = async (
               const starCorners = getStarCorners(ticket);
               hasWon = starCorners.every(corner => calledNumbers.includes(corner));
               console.log(`⭐ Star corners check:`, { ticketId, starCorners, hasWon });
-              break;
-
-            case 'anyLine':
-              hasWon = ticket.rows.some(row => 
-                row.filter(num => num > 0).every(num => calledNumbers.includes(num))
-              );
-              break;
-
-            case 'twoLines':
-              const completedLines = ticket.rows.filter(row => 
-                row.filter(num => num > 0).every(num => calledNumbers.includes(num))
-              );
-              hasWon = completedLines.length >= 2;
               break;
 
             case 'topLine':
