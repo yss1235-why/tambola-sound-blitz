@@ -443,7 +443,7 @@
     /* Ensure grid maintains 6 columns exactly with proper spacing */
     .ticket-management-grid {
       grid-template-columns: repeat(6, 1fr);
-      gap: 0.75rem; /* Increased gap for mobile */
+      gap: 0.9rem; /* Increased gap for mobile */
     }
 
     .ticket-slot {
