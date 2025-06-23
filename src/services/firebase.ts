@@ -137,8 +137,8 @@ class FirebaseService {
   }
 
   async expandTickets(gameId: string, newMaxTickets: number, ticketSetId: string) {
-    return this.game.expandTickets(gameId, newMaxTickets, ticketSetId);
-  }
+  return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);  // ✅ CORRECT
+}
 
   async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string) {
     return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);
