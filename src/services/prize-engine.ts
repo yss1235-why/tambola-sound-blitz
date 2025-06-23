@@ -244,39 +244,28 @@ const validateHalfSheetTraditional = (
     for (const [setId, setTickets] of Object.entries(sets)) {
       const setIdNum = parseInt(setId);
       
-      // Check for first half [1,2,3]
-      const firstHalf = setTickets.filter(t => t.positionInSet && [1, 2, 3].includes(t.positionInSet));
-      if (firstHalf.length === 3) {
-        // Verify each ticket has 2+ marked numbers
-        const allHave2Plus = firstHalf.every(t => {
-          const markedCount = t.metadata?.allNumbers.filter(num => calledNumbers.includes(num)).length || 0;
-          return markedCount >= 2;
-        });
+      // Check if player has exactly 3 tickets
+      if (setTickets.length === 3) {
+        const positions = setTickets.map(t => t.positionInSet).sort();
         
-        if (allHave2Plus) {
-          winners[playerName] = {
-            ticketIds: firstHalf.map(t => t.ticketId),
-            setId: setIdNum,
-            positions: [1, 2, 3]
-          };
-        }
-      }
-
-      // Check for second half [4,5,6]
-      const secondHalf = setTickets.filter(t => t.positionInSet && [4, 5, 6].includes(t.positionInSet));
-      if (secondHalf.length === 3) {
-        // Verify each ticket has 2+ marked numbers
-        const allHave2Plus = secondHalf.every(t => {
-          const markedCount = t.metadata?.allNumbers.filter(num => calledNumbers.includes(num)).length || 0;
-          return markedCount >= 2;
-        });
+        // Check for consecutive positions [1,2,3] OR [4,5,6]
+        const isFirstHalf = JSON.stringify(positions) === JSON.stringify([1, 2, 3]);
+        const isSecondHalf = JSON.stringify(positions) === JSON.stringify([4, 5, 6]);
         
-        if (allHave2Plus) {
-          winners[playerName] = {
-            ticketIds: secondHalf.map(t => t.ticketId),
-            setId: setIdNum,
-            positions: [4, 5, 6]
-          };
+        if (isFirstHalf || isSecondHalf) {
+          // Verify each ticket has 2+ marked numbers
+          const allHave2Plus = setTickets.every(t => {
+            const markedCount = t.metadata?.allNumbers.filter(num => calledNumbers.includes(num)).length || 0;
+            return markedCount >= 2;
+          });
+          
+          if (allHave2Plus) {
+            winners[playerName] = {
+              ticketIds: setTickets.map(t => t.ticketId),
+              setId: setIdNum,
+              positions
+            };
+          }
         }
       }
     }
@@ -367,39 +356,29 @@ export const validateTicketsForPrizes = async (
 
     const prizeWinners: { name: string; ticketId: string; phone?: string }[] = [];
 
-    // ✅ SPECIAL HANDLING: Traditional Half Sheet and Full Sheet logic
+    // ✅ FIXED: Handle special prize validation
     if (prizeId === 'halfSheet') {
       const halfSheetWinners = validateHalfSheetTraditional(tickets, calledNumbers);
-      
       for (const [playerName, winData] of Object.entries(halfSheetWinners)) {
-        // Find player phone from any of their tickets
-        const playerPhone = tickets[winData.ticketIds[0]]?.playerPhone || '';
-        
         prizeWinners.push({
           name: playerName,
-          ticketId: `Set ${winData.setId} [${winData.positions.join(',')}]`,
-          phone: playerPhone
+          ticketId: winData.ticketIds.join(','),
+          phone: tickets[winData.ticketIds[0]]?.playerPhone
         });
       }
     } else if (prizeId === 'fullSheet') {
       const fullSheetWinners = validateFullSheetTraditional(tickets, calledNumbers);
-      
       for (const [playerName, winData] of Object.entries(fullSheetWinners)) {
-        // Find player phone from any of their tickets
-        const playerPhone = tickets[winData.ticketIds[0]]?.playerPhone || '';
-        
         prizeWinners.push({
           name: playerName,
-          ticketId: `Set ${winData.setId} [1,2,3,4,5,6]`,
-          phone: playerPhone
+          ticketId: winData.ticketIds.join(','),
+          phone: tickets[winData.ticketIds[0]]?.playerPhone
         });
       }
     } else {
-      // ✅ REGULAR LOGIC: Individual ticket validation
+      // Standard ticket-by-ticket validation
       for (const [ticketId, ticket] of Object.entries(tickets)) {
-        if (!ticket.isBooked || !ticket.rows || !Array.isArray(ticket.rows)) {
-          continue;
-        }
+        if (!ticket.isBooked) continue;
 
         let hasWon = false;
 
@@ -547,14 +526,3 @@ export class PrizeEngine {
 
 // Export singleton instance
 export const prizeEngine = new PrizeEngine();
-
-// ================== EXPORT INDIVIDUAL FUNCTIONS FOR DIRECT USE ==================
-
-// Export individual functions for when you need them outside the class
-export { 
-  computeTicketMetadata, 
-  getTicketCorners, 
-  getStarCorners, 
-  createPrizeConfiguration, 
-  validateTicketsForPrizes 
-};
