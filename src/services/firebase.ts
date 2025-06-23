@@ -1,50 +1,78 @@
-// src/services/firebase.ts - MAIN COORDINATOR FILE
-// Re-export everything so existing components don't break
+// src/services/firebase.ts - Firebase Service Coordinator: delegates to specialized services
 
-// Import from both split files
-import { firebaseCore, database, auth } from './firebase-core';
+import {
+  initializeApp,
+  getApps,
+  getApp,
+  type FirebaseApp
+} from 'firebase/app';
+
+import {
+  getDatabase,
+  type Database
+} from 'firebase/database';
+
+import {
+  getAuth,
+  type Auth
+} from 'firebase/auth';
+
+// ✅ FIXED: Import specialized services for delegation
+import { firebaseCore } from './firebase-core';
 import { firebaseGame } from './firebase-game';
 
-// ✅ Re-export all types and utilities (no changes to existing imports)
-export { database, auth } from './firebase-core';
-export * from './firebase-core'; // Re-export all types
+// Re-export types for external consumption
+export type {
+  AdminUser,
+  HostUser,
+  GameData,
+  TambolaTicket,
+  Prize,
+  GameState,
+  HostSettings,
+  CreateGameConfig
+} from './firebase-core';
 
-// ✅ Main service class that coordinates both
+// ================== FIREBASE CONFIGURATION ==================
+
+const firebaseConfig = {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  databaseURL: process.env.REACT_APP_FIREBASE_DATABASE_URL,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID
+};
+
+// Initialize Firebase
+let app: FirebaseApp;
+if (!getApps().length) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
+}
+
+export const database: Database = getDatabase(app);
+export const auth: Auth = getAuth(app);
+
+// Re-export utility functions
+export { removeUndefinedValues, getCurrentUserRole } from './firebase-core';
+
+// ================== FIREBASE COORDINATOR SERVICE ==================
+
+/**
+ * Main Firebase Service - Coordinates between specialized services
+ * This class delegates operations to the appropriate specialized service:
+ * - Core operations (users, hosts, settings) → firebaseCore
+ * - Game operations (games, tickets, prizes) → firebaseGame
+ */
 class FirebaseService {
   private core = firebaseCore;
   private game = firebaseGame;
 
-  // ========== AUTHENTICATION (delegate to core) ==========
-  async loginAdmin(email: string, password: string) {
-    return this.core.loginAdmin(email, password);
-  }
-
-  async loginHost(email: string, password: string) {
-    return this.core.loginHost(email, password);
-  }
-
-  async logout() {
-    return this.core.logout();
-  }
-
-  async getUserData() {
-    return this.core.getUserData();
-  }
-
-  async getCurrentUserRole() {
-    return this.core.getCurrentUserRole();
-  }
-
-  // ========== BASIC DATABASE (delegate to core) ==========
-  async getGameData(gameId: string) {
-    return this.core.getGameData(gameId);
-  }
-
-  async updateGameState(gameId: string, gameState: any) {
-    return this.core.updateGameState(gameId, gameState);
-  }
-
-  async safeTransactionUpdate(path: string, updates: any, retries?: number) {
+  // ========== CORE OPERATIONS (delegate to core) ==========
+  async safeTransactionUpdate(path: string, updates: any, retries: number = 3) {
     return this.core.safeTransactionUpdate(path, updates, retries);
   }
 
@@ -127,10 +155,6 @@ class FirebaseService {
     return this.game.updateGameAndTemplate(gameId, hostId, settings);
   }
 
-  async updateHostTemplate(hostId: string, templateSettings: any) {
-    return this.game.updateHostTemplate(hostId, templateSettings);
-  }
-
   // ========== TICKET OPERATIONS (delegate to game) ==========
   async loadTicketsFromSet(ticketSetId: string, maxTickets: number) {
     return this.game.loadTicketsFromSet(ticketSetId, maxTickets);
@@ -152,58 +176,62 @@ class FirebaseService {
     return this.game.unbookTicket(gameId, ticketId);
   }
 
-  async updateTicket(gameId: string, ticketId: string, updates: any) {
-    return this.game.updateTicket(gameId, ticketId, updates);
+  // ========== GAME STATE OPERATIONS (delegate to game) ==========
+  async startGame(gameId: string) {
+    return this.game.startGame(gameId);
   }
 
-  // ========== PRIZE OPERATIONS (delegate to game) ==========
-  generatePrizes(selectedPrizes: string[]) {
-    return this.game.generatePrizes(selectedPrizes);
+  async pauseGame(gameId: string) {
+    return this.game.pauseGame(gameId);
   }
 
-  async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any) {
-    return this.game.validateTicketsForPrizes(tickets, calledNumbers, prizes);
+  async resumeGame(gameId: string) {
+    return this.game.resumeGame(gameId);
   }
 
-  async processNumberCall(gameId: string, number: number) {
-    return this.game.processNumberCall(gameId, number);
-  }
-
-  async callNumberWithPrizeValidation(gameId: string, number: number) {
-    return this.game.callNumberWithPrizeValidation(gameId, number);
+  async endGame(gameId: string) {
+    return this.game.endGame(gameId);
   }
 
   async callNextNumber(gameId: string) {
     return this.game.callNextNumber(gameId);
   }
 
-  // ========== SUBSCRIPTIONS (delegate to core) ==========
-  subscribeToGame(gameId: string, callback: any) {
+  async processNumberCall(gameId: string, number: number) {
+    return this.game.processNumberCall(gameId, number);
+  }
+
+  async announceWinners(gameId: string, winners: any) {
+    return this.game.announceWinners(gameId, winners);
+  }
+
+  // ========== SUBSCRIPTION METHODS (delegate to appropriate service) ==========
+  subscribeToGame(gameId: string, callback: (gameData: any) => void) {
     return this.core.subscribeToGame(gameId, callback);
   }
 
-  subscribeToAllActiveGames(callback: any) {
+  subscribeToHostGames(hostId: string, callback: (games: any[]) => void) {
+    return this.core.subscribeToHostGames(hostId, callback);
+  }
+
+  subscribeToAllActiveGames(callback: (games: any[]) => void) {
     return this.core.subscribeToAllActiveGames(callback);
   }
 
-  subscribeToGames(callback: any) {
-    return this.core.subscribeToGames(callback);
+  // ========== UTILITY METHODS (delegate to game) ==========
+  async getGameData(gameId: string) {
+    return this.game.getGameData(gameId);
   }
 
-  subscribeToHosts(callback: any) {
-    return this.core.subscribeToHosts(callback);
+  async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any) {
+    return this.game.validateTicketsForPrizes(tickets, calledNumbers, prizes);
+  }
+
+  generatePrizes(selectedPrizes: string[]) {
+    return this.game.generatePrizes(selectedPrizes);
   }
 }
 
-// ✅ Export singleton exactly as before
+// ================== SINGLETON EXPORT ==================
+
 export const firebaseService = new FirebaseService();
-
-// ✅ Export standalone functions exactly as before
-export const getCurrentUserRole = async (): Promise<string | null> => {
-  return firebaseService.getCurrentUserRole();
-};
-
-// ✅ Re-export removeUndefinedValues utility
-export { removeUndefinedValues } from './firebase-core';
-
-export default firebaseService;
