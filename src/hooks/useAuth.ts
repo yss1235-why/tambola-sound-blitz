@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, getCurrentUserRole, firebaseService, AdminUser, HostUser } from '@/services/firebase';
+import { cleanupAllSubscriptions } from './useFirebaseSubscription'; // ✅ ADDED: Import cleanup function
 
 interface AuthState {
   user: AdminUser | HostUser | null;
@@ -33,6 +34,7 @@ interface AuthActions {
  * - No more loading state hangs
  * - No more unexpected logouts
  * - Reliable, predictable authentication flow
+ * - ✅ ADDED: Subscription cleanup before logout to prevent permission errors
  */
 export const useAuth = (): AuthState & AuthActions => {
   const [state, setState] = useState<AuthState>({
@@ -170,11 +172,17 @@ export const useAuth = (): AuthState & AuthActions => {
     }
   }, []);
 
+  // ✅ FIXED: Logout with subscription cleanup to prevent permission errors
   const logout = useCallback(async () => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
       console.log('🔐 Logout initiated...');
+      
+      // ✅ ADDED: Cleanup all subscriptions BEFORE logout to prevent permission errors
+      console.log('🧹 Cleaning up all subscriptions before logout...');
+      cleanupAllSubscriptions();
+      
       await firebaseService.logout();
       console.log('✅ Logout successful - auth state will update automatically');
       // State will be updated by onAuthStateChanged listener
