@@ -209,6 +209,11 @@ class FirebaseService {
     return this.core.subscribeToAllActiveGames(callback);
   }
 
+  // 🔧 FIX: Added missing delegation to fix admin dashboard blank page
+  subscribeToHosts(callback: (hosts: any) => void) {
+    return this.core.subscribeToHosts(callback);
+  }
+
   // ========== UTILITY METHODS (delegate to game) ==========
   async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any) {
     return this.game.validateTicketsForPrizes(tickets, calledNumbers, prizes);
