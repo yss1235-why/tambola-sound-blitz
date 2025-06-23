@@ -48,6 +48,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   const [isBooking, setIsBooking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isExpanding, setIsExpanding] = useState(false);
+  const [isScrolledDown, setIsScrolledDown] = useState(false);
   
   const [bookingForm, setBookingForm] = useState<BookingForm>({
     playerName: '',
@@ -224,6 +225,17 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     };
   }, [gameData.gameId]);
 
+  // Smart scroll detection for floating position
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrolled = window.scrollY > 300; // Adjust threshold as needed
+      setIsScrolledDown(scrolled);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   return (
     <div className="space-y-6 relative">
       {/* Loading State */}
@@ -369,50 +381,60 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </CardContent>
       </Card>
 
-      {/* 🆕 FLOATING BOOKING SUMMARY - ONLY NEW ADDITION */}
+      {/* 🆕 COMPACT HORIZONTAL FLOATING BOOKING SUMMARY */}
       {selectedTickets.length > 0 && (
-        <div className="fixed bottom-4 left-4 sm:bottom-6 sm:left-6 z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-4 max-w-xs sm:max-w-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-medium text-sm">
-              {selectedTickets.length} ticket{selectedTickets.length > 1 ? 's' : ''} selected
+        <div 
+          className={`fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-3 transition-all duration-300 ${
+            isScrolledDown 
+              ? 'bottom-4 left-1/2 transform -translate-x-1/2' 
+              : 'bottom-4 left-4'
+          }`}
+          style={{
+            maxWidth: '500px'
+          }}
+        >
+          <div className="flex items-center space-x-3">
+            {/* Selection count */}
+            <span className="font-medium text-sm whitespace-nowrap">
+              {selectedTickets.length} sel
             </span>
+            
+            {/* Name input */}
+            <input
+              type="text"
+              placeholder="Name *"
+              value={bookingForm.playerName}
+              onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
+              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              required
+            />
+            
+            {/* Phone input */}
+            <input
+              type="text"
+              placeholder="Phone"
+              value={bookingForm.playerPhone}
+              onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
+              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            
+            {/* Book button */}
+            <Button
+              onClick={handleBookTickets}
+              disabled={!bookingForm.playerName.trim() || isBooking}
+              className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 h-7"
+            >
+              {isBooking ? 'Booking...' : 'Book'}
+            </Button>
+            
+            {/* Close button */}
             <Button
               variant="ghost"
               size="sm"
               onClick={deselectAll}
               className="h-6 w-6 p-0 hover:bg-gray-100"
             >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-          
-          <div className="space-y-3">
-            <div>
-              <input
-                type="text"
-                placeholder="Player Name *"
-                value={bookingForm.playerName}
-                onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-            </div>
-            <div>
-              <input
-                type="text"
-                placeholder="Phone Number (optional)"
-                value={bookingForm.playerPhone}
-                onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <Button
-              onClick={handleBookTickets}
-              disabled={!bookingForm.playerName.trim() || isBooking}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm"
-            >
-              <UserPlus className="w-4 h-4 mr-2" />
-              {isBooking ? 'Booking...' : `Book ${selectedTickets.length} Ticket${selectedTickets.length > 1 ? 's' : ''}`}
+              <X className="h-3 w-3" />
             </Button>
           </div>
         </div>
