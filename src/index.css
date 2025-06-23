@@ -1,4 +1,4 @@
-/* src/index.css - Fixed contrast and visibility issues + NEW pattern highlighting */
+/* src/index.css - Complete file with Mobile 6-Column Grid Updates */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -258,29 +258,33 @@
     @apply bg-orange-50 border-orange-200 text-orange-800;
   }
 
-  /* Ticket Management Grid Styles with proper contrast */
+  /* UPDATED: Mobile-Optimized Ticket Management Grid Styles for 6-Column Layout */
   .ticket-management-grid {
     @apply grid gap-2;
   }
 
+  /* UPDATED: Consistent sizing for 3-digit numbers with monospace font */
   .ticket-slot {
     @apply relative w-full h-16 rounded-lg border-2 transition-all duration-200 
-           flex flex-col items-center justify-center text-sm font-medium cursor-pointer
-           hover:scale-105 transform;
+           flex flex-col items-center justify-center font-mono font-bold text-base cursor-pointer
+           hover:scale-105 transform min-w-[70px];
   }
 
+  /* UPDATED: Available ticket styling with monospace font */
   .ticket-slot.available {
     @apply bg-white border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-700
-           hover:shadow-md;
+           hover:shadow-md font-mono;
   }
 
+  /* UPDATED: Selected ticket styling with monospace font */
   .ticket-slot.selected {
-    @apply bg-blue-100 border-blue-400 text-blue-800 shadow-md scale-105;
+    @apply bg-blue-100 border-blue-400 text-blue-800 shadow-md scale-105 font-mono;
   }
 
+  /* UPDATED: Booked ticket styling with monospace font */
   .ticket-slot.booked {
     @apply bg-green-50 border-green-300 hover:border-green-400 text-green-800
-           hover:shadow-md;
+           hover:shadow-md font-mono;
   }
 
   .ticket-slot.booked:hover {
@@ -308,78 +312,7 @@
     100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
   }
 
-  /* Enhanced number calling animation */
-  @keyframes number-call-enhanced {
-    0% {
-      transform: scale(1);
-      background: linear-gradient(to bottom right, #f59e0b, #d97706);
-      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
-    }
-    25% {
-      transform: scale(1.2);
-      background: linear-gradient(to bottom right, #fbbf24, #f59e0b);
-      box-shadow: 0 0 0 10px rgba(245, 158, 11, 0.4);
-    }
-    50% {
-      transform: scale(1.3);
-      background: linear-gradient(to bottom right, #fde047, #facc15);
-      box-shadow: 0 0 0 20px rgba(245, 158, 11, 0.2);
-    }
-    75% {
-      transform: scale(1.2);
-      background: linear-gradient(to bottom right, #10b981, #059669);
-      box-shadow: 0 0 0 15px rgba(16, 185, 129, 0.3);
-    }
-    100% {
-      transform: scale(1.05);
-      background: linear-gradient(to bottom right, #10b981, #059669);
-      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-    }
-  }
-
-  .animate-number-call-enhanced {
-    animation: number-call-enhanced 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-  }
-  
-  /* FIXED: Prize badge with proper contrast */
-  .prize-badge {
-    @apply inline-flex items-center px-4 py-2 rounded-full text-sm font-medium
-           bg-gradient-to-r from-slate-600 to-slate-700 text-white
-           shadow-lg transform transition-transform hover:scale-105;
-  }
-  
-  .prize-badge.won {
-    @apply from-green-500 to-green-600 text-white animate-prize-win;
-  }
-
-  @keyframes prize-win-enhanced {
-    0% {
-      transform: scale(1);
-      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7);
-    }
-    25% {
-      transform: scale(1.1);
-      box-shadow: 0 0 0 10px rgba(245, 158, 11, 0.5);
-    }
-    50% {
-      transform: scale(1.2);
-      box-shadow: 0 0 0 20px rgba(245, 158, 11, 0.3);
-    }
-    75% {
-      transform: scale(1.1);
-      box-shadow: 0 0 0 15px rgba(245, 158, 11, 0.1);
-    }
-    100% {
-      transform: scale(1);
-      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
-    }
-  }
-
-  .animate-prize-win-enhanced {
-    animation: prize-win-enhanced 2s ease-out;
-  }
-
-  /* Loading states */
+  /* Loading and animation styles */
   .loading-spinner {
     @apply animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600;
   }
@@ -430,14 +363,51 @@
     @apply bg-gray-800 text-white;
   }
 
-  /* Responsive adjustments */
+  /* NEW: Enhanced monospace font fallback chain for number consistency */
+  .font-mono {
+    font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Courier New', monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.025em;
+  }
+
+  /* NEW: Touch-friendly button sizing for mobile */
+  .ticket-slot {
+    min-height: 64px; /* Ensures 44px+ touch target */
+    min-width: 70px;   /* Consistent width for 3-digit numbers */
+    padding: 0.5rem;
+  }
+
+  /* NEW: High contrast for better readability */
+  .ticket-slot.available {
+    border-width: 2px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  .ticket-slot.selected {
+    border-width: 3px;
+    box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
+  }
+
+  .ticket-slot.booked {
+    border-width: 2px;
+    box-shadow: 0 2px 4px rgba(34, 197, 94, 0.2);
+  }
+
+  /* NEW: Performance optimization - Reduce repaints during scrolling */
+  .ticket-management-grid {
+    contain: layout style;
+  }
+
+  /* NEW: Accessibility - Focus states for keyboard navigation */
+  .ticket-slot:focus {
+    outline: 3px solid #3b82f6;
+    outline-offset: 2px;
+  }
+
+  /* Responsive adjustments with mobile-first 6-column support */
   @screen sm {
-    .ticket-management-grid {
-      @apply gap-3;
-    }
-    
     .ticket-slot {
-      @apply h-20 text-base;
+      @apply h-18 text-lg min-w-[80px];
     }
 
     .number-cell {
@@ -447,7 +417,7 @@
 
   @screen lg {
     .ticket-slot {
-      @apply h-24 text-lg;
+      @apply h-20 text-lg min-w-[90px];
     }
 
     .number-cell {
@@ -460,6 +430,41 @@
 
     .countdown-number {
       @apply text-[10rem];
+    }
+  }
+
+  /* NEW: Mobile-specific optimizations */
+  @media (max-width: 768px) {
+    .ticket-management-container {
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+    }
+    
+    /* Ensure grid maintains 6 columns exactly */
+    .ticket-management-grid {
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0.5rem;
+    }
+
+    .ticket-slot {
+      @apply h-16 text-base min-w-[70px];
+      font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    }
+  }
+
+  /* Tablet optimization - maintain 6 columns but allow larger cells */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    .ticket-slot {
+      @apply h-18 text-lg min-w-[80px];
+      font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
+    }
+  }
+
+  /* Desktop optimization - larger cells for better host interaction */
+  @media (min-width: 1024px) {
+    .ticket-slot {
+      @apply h-20 text-lg min-w-[90px];
+      font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', monospace;
     }
   }
 
@@ -480,5 +485,18 @@
     .ticket-cell.marked {
       @apply from-emerald-600 to-emerald-700 text-white border-emerald-600;
     }
+  }
+
+  /* Custom animations */
+  @keyframes number-call {
+    0% { transform: scale(1) rotate(0deg); }
+    25% { transform: scale(1.1) rotate(-5deg); }
+    50% { transform: scale(1.2) rotate(0deg); }
+    75% { transform: scale(1.1) rotate(5deg); }
+    100% { transform: scale(1) rotate(0deg); }
+  }
+
+  .animate-number-call {
+    animation: number-call 0.6s ease-in-out;
   }
 }
