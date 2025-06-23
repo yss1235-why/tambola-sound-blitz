@@ -1,5 +1,5 @@
-// src/components/AdminDashboard.tsx - Complete file with Option 1 implementation
-import React, { useState, useEffect, useCallback } from 'react';
+// src/components/AdminDashboard.tsx - Complete file with subscription cleanup fix
+import React, { useState, useEffect, useCallback, useRef } from 'react'; // ✅ ADDED: useRef
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -72,6 +72,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
   const [newPassword, setNewPassword] = useState('');
 
+  // ✅ ADDED: Subscription ref for immediate cleanup
+  const subscriptionRef = useRef<(() => void) | null>(null);
+
   // Load hosts
   const loadHosts = useCallback(async () => {
     setIsLoading(true);
@@ -85,9 +88,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     }
   }, []);
 
-  // Load hosts on component mount
+  // ✅ FIXED: Load hosts on component mount with robust subscription cleanup
   useEffect(() => {
     loadHosts();
+    
+    // ✅ FIXED: Clean up existing subscription first
+    if (subscriptionRef.current) {
+      subscriptionRef.current();
+    }
     
     // Subscribe to real-time hosts updates
     const unsubscribe = firebaseService.subscribeToHosts((updatedHosts) => {
@@ -96,8 +104,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       }
     });
 
-    return () => unsubscribe();
+    // ✅ FIXED: Store subscription ref for immediate cleanup
+    subscriptionRef.current = unsubscribe;
+
+    // ✅ FIXED: More robust cleanup
+    return () => {
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+    };
   }, [loadHosts]);
+
+  // ✅ ADDED: Final cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      // Final cleanup when component unmounts
+      if (subscriptionRef.current) {
+        subscriptionRef.current();
+        subscriptionRef.current = null;
+      }
+    };
+  }, []);
 
   // OPTION 1 IMPLEMENTATION: Handle create host with credential switch
   const handleCreateHost = async () => {
@@ -282,10 +310,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Hosts</p>
-                  <p className="text-2xl font-bold">{hosts.length}</p>
+                  <p className="text-sm font-medium text-gray-600">Total Hosts</p>
+                  <p className="text-2xl font-bold text-gray-900">{hosts.length}</p>
                 </div>
-                <Users className="w-8 h-8 text-blue-500" />
+                <Users className="w-8 h-8 text-blue-600" />
               </div>
             </CardContent>
           </Card>
@@ -294,10 +322,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Active Hosts</p>
+                  <p className="text-sm font-medium text-gray-600">Active Hosts</p>
                   <p className="text-2xl font-bold text-green-600">{activeHosts}</p>
                 </div>
-                <UserCheck className="w-8 h-8 text-green-500" />
+                <UserCheck className="w-8 h-8 text-green-600" />
               </div>
             </CardContent>
           </Card>
@@ -306,10 +334,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Inactive Hosts</p>
+                  <p className="text-sm font-medium text-gray-600">Inactive Hosts</p>
                   <p className="text-2xl font-bold text-gray-600">{hosts.length - activeHosts}</p>
                 </div>
-                <UserX className="w-8 h-8 text-gray-500" />
+                <UserX className="w-8 h-8 text-gray-600" />
               </div>
             </CardContent>
           </Card>
@@ -318,19 +346,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Expired</p>
+                  <p className="text-sm font-medium text-gray-600">Expired</p>
                   <p className="text-2xl font-bold text-red-600">{expiredHosts}</p>
                 </div>
-                <Calendar className="w-8 h-8 text-red-500" />
+                <Calendar className="w-8 h-8 text-red-600" />
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Hosts Table */}
+        {/* Hosts Management */}
         <Card>
           <CardHeader>
-            <CardTitle>Host Management</CardTitle>
+            <CardTitle className="flex items-center justify-between">
+              <span>Host Management</span>
+              <Badge variant="outline">{hosts.length} total</Badge>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             {hosts.length === 0 ? (
@@ -423,7 +454,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                           </td>
                           <td className="p-3">
                             <p className="text-sm text-gray-600">
-                              {new Date(host.createdAt).toLocaleDateString()}
+                              {host.createdAt ? new Date(host.createdAt).toLocaleDateString() : 'N/A'}
                             </p>
                           </td>
                           <td className="p-3">
@@ -469,68 +500,70 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               <DialogTitle>Create New Host</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <Alert>
-                <AlertDescription>
-                  After creating the host, you will be logged out automatically. Please log back in as admin to continue.
-                </AlertDescription>
-              </Alert>
               <div>
-                <Label htmlFor="host-name">Name</Label>
+                <Label htmlFor="name">Full Name</Label>
                 <Input
-                  id="host-name"
-                  placeholder="Enter host name"
+                  id="name"
                   value={createForm.name}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                  placeholder="Enter host's full name"
                 />
               </div>
               <div>
-                <Label htmlFor="host-email">Email</Label>
+                <Label htmlFor="email">Email Address</Label>
                 <Input
-                  id="host-email"
+                  id="email"
                   type="email"
-                  placeholder="Enter email"
                   value={createForm.email}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, email: e.target.value }))}
+                  onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                  placeholder="Enter email address"
                 />
               </div>
               <div>
-                <Label htmlFor="host-phone">Phone Number</Label>
+                <Label htmlFor="phone">Phone Number</Label>
                 <Input
-                  id="host-phone"
-                  type="tel"
-                  placeholder="Enter phone number (e.g., 919876543210)"
+                  id="phone"
                   value={createForm.phone}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, phone: e.target.value }))}
+                  onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+                  placeholder="Enter phone number"
                 />
               </div>
               <div>
-                <Label htmlFor="host-password">Password</Label>
+                <Label htmlFor="password">Password</Label>
                 <Input
-                  id="host-password"
+                  id="password"
                   type="password"
-                  placeholder="Enter password"
                   value={createForm.password}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, password: e.target.value }))}
+                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                  placeholder="Enter password"
                 />
               </div>
               <div>
-                <Label htmlFor="subscription-months">Subscription (Months)</Label>
+                <Label htmlFor="subscription">Subscription (Months)</Label>
                 <Input
-                  id="subscription-months"
+                  id="subscription"
                   type="number"
                   min="1"
-                  max="60"
+                  max="36"
                   value={createForm.subscriptionMonths}
-                  onChange={(e) => setCreateForm(prev => ({ ...prev, subscriptionMonths: parseInt(e.target.value) || 12 }))}
+                  onChange={(e) => setCreateForm({ ...createForm, subscriptionMonths: parseInt(e.target.value) || 12 })}
                 />
               </div>
-              <Button
-                onClick={handleCreateHost}
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading ? 'Creating Host...' : 'Create Host Account'}
-              </Button>
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCreateDialog(false)}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateHost}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Creating...' : 'Create Host'}
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -543,40 +576,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="edit-name">Name</Label>
+                <Label htmlFor="edit-name">Full Name</Label>
                 <Input
                   id="edit-name"
                   value={editForm.name}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                 />
               </div>
               <div>
-                <Label htmlFor="edit-email">Email</Label>
+                <Label htmlFor="edit-email">Email Address</Label>
                 <Input
                   id="edit-email"
                   type="email"
                   value={editForm.email}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                 />
               </div>
               <div>
                 <Label htmlFor="edit-phone">Phone Number</Label>
                 <Input
                   id="edit-phone"
-                  type="tel"
                   value={editForm.phone}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                 />
               </div>
               <div>
-                <Label htmlFor="edit-subscription">Subscription (Months from now)</Label>
+                <Label htmlFor="edit-subscription">Subscription (Months)</Label>
                 <Input
                   id="edit-subscription"
                   type="number"
-                  min="1"
-                  max="60"
+                  min="0"
+                  max="36"
                   value={editForm.subscriptionMonths}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, subscriptionMonths: parseInt(e.target.value) || 12 }))}
+                  onChange={(e) => setEditForm({ ...editForm, subscriptionMonths: parseInt(e.target.value) || 0 })}
                 />
               </div>
               <div className="flex items-center space-x-2">
@@ -584,17 +616,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                   type="checkbox"
                   id="edit-active"
                   checked={editForm.isActive}
-                  onChange={(e) => setEditForm(prev => ({ ...prev, isActive: e.target.checked }))}
+                  onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
                 />
-                <Label htmlFor="edit-active">Active Account</Label>
+                <Label htmlFor="edit-active">Active</Label>
               </div>
-              <Button
-                onClick={handleEditHost}
-                disabled={isLoading}
-                className="w-full"
-              >
-                {isLoading ? 'Updating...' : 'Update Host'}
-              </Button>
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowEditDialog(false)}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleEditHost}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Updating...' : 'Update Host'}
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
@@ -606,28 +646,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               <DialogTitle>Change Password</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <Alert>
-                <AlertDescription>
-                  Changing password for: <strong>{selectedHost?.name}</strong>
-                </AlertDescription>
-              </Alert>
               <div>
                 <Label htmlFor="new-password">New Password</Label>
                 <Input
                   id="new-password"
                   type="password"
-                  placeholder="Enter new password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
                 />
               </div>
-              <Button
-                onClick={handleChangePassword}
-                disabled={isLoading || !newPassword.trim()}
-                className="w-full"
-              >
-                {isLoading ? 'Changing...' : 'Change Password'}
-              </Button>
+              <div className="flex justify-end space-x-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowPasswordDialog(false)}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleChangePassword}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Changing...' : 'Change Password'}
+                </Button>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
