@@ -7,7 +7,7 @@ import {
   signOut,
   onAuthStateChanged,
   User,
-  createUserWithEmailAndPassword  // ← ADD THIS IMPORT
+  createUserWithEmailAndPassword  // ✅ ADDED: Import for creating Firebase Auth accounts
 } from 'firebase/auth';
 import { 
   getDatabase, 
@@ -139,16 +139,24 @@ export interface CreateGameConfig {
   maxTickets: number;
   ticketPrice: number;
   hostPhone: string;
+  hostId: string;
   selectedTicketSet: string;
   selectedPrizes: string[];
+}
+
+interface TicketRowData {
+  setId: number;
+  ticketId: number;
+  rowId: number;
+  numbers: number[];
 }
 
 // ================== UTILITY FUNCTIONS ==================
 
 export const removeUndefinedValues = (obj: any): any => {
-  if (obj === null || obj === undefined) return obj;
+  if (obj === null || obj === undefined) return null;
   if (typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) return obj.map(removeUndefinedValues);
+  if (Array.isArray(obj)) return obj.map(removeUndefinedValues).filter(item => item !== undefined);
   
   const cleaned: any = {};
   for (const [key, value] of Object.entries(obj)) {
@@ -159,12 +167,43 @@ export const removeUndefinedValues = (obj: any): any => {
   return cleaned;
 };
 
-// ================== FIREBASE CORE SERVICE ==================
+// ================== FIREBASE CORE SERVICE CLASS ==================
 
-class FirebaseCoreService {
+export class FirebaseCore {
+  private cleanupInProgress = new Set<string>();
+  
+  // ================== RACE CONDITION PREVENTION ==================
 
-  // ================== SAFE TRANSACTION HELPER ==================
+  private activeLocks = new Map<string, Promise<any>>();
 
+  /**
+   * ✅ RACE CONDITION PREVENTION: Ensure only one update per game at a time
+   */
+  private async withGameLock<T>(gameId: string, operation: () => Promise<T>): Promise<T> {
+    const lockKey = `game_${gameId}`;
+    
+    if (this.activeLocks.has(lockKey)) {
+      console.log(`⏳ Waiting for existing operation on game: ${gameId}`);
+      await this.activeLocks.get(lockKey);
+    }
+    
+    const operationPromise = (async () => {
+      try {
+        console.log(`🔒 Acquired lock for game: ${gameId}`);
+        return await operation();
+      } finally {
+        console.log(`🔓 Released lock for game: ${gameId}`);
+        this.activeLocks.delete(lockKey);
+      }
+    })();
+    
+    this.activeLocks.set(lockKey, operationPromise);
+    return operationPromise;
+  }
+
+  /**
+   * ✅ TRANSACTION WRAPPER: Safely handle Firebase transactions with retries
+   */
   async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
@@ -487,7 +526,7 @@ class FirebaseCoreService {
       callback(null);
     });
 
-    return () => unsubscribe();
+    return () => off(gameRef, 'value', unsubscribe);
   }
 
   subscribeToHostGames(hostId: string, callback: (games: GameData[]) => void): () => void {
@@ -505,7 +544,7 @@ class FirebaseCoreService {
       callback([]);
     });
 
-    return () => unsubscribe();
+    return () => off(gamesRef, 'value', unsubscribe);
   }
 
   subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
@@ -514,20 +553,77 @@ class FirebaseCoreService {
     const unsubscribe = onValue(gamesRef, (snapshot) => {
       if (snapshot.exists()) {
         const allGames = Object.values(snapshot.val()) as GameData[];
-        const activeGames = allGames.filter(game => game.gameState?.isActive === true);
-        callback(activeGames);
+        
+        const validGames = allGames.filter(game => 
+          game.hostId && game.gameId && game.gameState
+        );
+
+        const gamesByHost = new Map<string, GameData[]>();
+        validGames.forEach(game => {
+          if (!gamesByHost.has(game.hostId)) {
+            gamesByHost.set(game.hostId, []);
+          }
+          gamesByHost.get(game.hostId)!.push(game);
+        });
+
+        const publicGames: GameData[] = [];
+        
+        gamesByHost.forEach((hostGames) => {
+          const activeGame = hostGames.find(game => !game.gameState.gameOver);
+          
+          if (activeGame) {
+            publicGames.push(activeGame);
+            return;
+          }
+          
+          const completedGames = hostGames
+            .filter(game => game.gameState.gameOver && game.createdAt)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          
+          if (completedGames.length > 0) {
+            publicGames.push(completedGames[0]);
+          }
+        });
+
+        const sortedGames = publicGames.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        
+        callback(sortedGames);
       } else {
         callback([]);
       }
     }, (error) => {
-      console.error('Firebase subscription error:', error);
+      console.error('Games subscription error:', error);
       callback([]);
     });
 
-    return () => unsubscribe();
+    return () => off(gamesRef, 'value', unsubscribe);
+  }
+
+  subscribeToGames(callback: (games: GameData[]) => void): () => void {
+    return this.subscribeToAllActiveGames(callback);
+  }
+
+  subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
+    const hostsRef = ref(database, 'hosts');
+    
+    const unsubscribe = onValue(hostsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const hosts = Object.values(snapshot.val()) as HostUser[];
+        callback(hosts);
+      } else {
+        callback([]);
+      }
+    }, (error) => {
+      console.error('Hosts subscription error:', error);
+      callback(null);
+    });
+
+    return () => off(hostsRef, 'value', unsubscribe);
   }
 }
 
 // ================== SINGLETON EXPORT ==================
 
-export const firebaseCore = new FirebaseCoreService();
+export const firebaseCore = new FirebaseCore();
