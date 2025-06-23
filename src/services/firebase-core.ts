@@ -563,7 +563,7 @@ export class FirebaseCore {
     return this.subscribeToAllActiveGames(callback);
   }
 
-  // 🔧 FIXED: Improved subscribeToHosts with permission error handling
+  // 🔧 FIXED: Improved subscribeToHosts with permission error handling for logout fix
   subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
     const hostsRef = ref(database, 'hosts');
     let isSubscriptionActive = true;
