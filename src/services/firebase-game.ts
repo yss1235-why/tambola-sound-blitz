@@ -669,50 +669,74 @@ class FirebaseGameService {
   // ================== PRIZE CONFIGURATION ==================
 
   createPrizeConfiguration(selectedPrizes: string[]): { [prizeId: string]: Prize } {
-    const prizes: { [prizeId: string]: Prize } = {};
-    
-    selectedPrizes.forEach((prizeId, index) => {
-      const prizeConfigs: { [key: string]: Omit<Prize, 'id' | 'won' | 'order'> } = {
-        quickFive: {
-          name: 'Quick Five',
-          pattern: 'First 5 numbers',
-          description: 'First player to mark any 5 numbers'
-        },
-        topLine: {
-          name: 'Top Line',
-          pattern: 'Complete top row',
-          description: 'Complete the top row of any ticket'
-        },
-        middleLine: {
-          name: 'Middle Line',
-          pattern: 'Complete middle row',
-          description: 'Complete the middle row of any ticket'
-        },
-        bottomLine: {
-          name: 'Bottom Line',
-          pattern: 'Complete bottom row',
-          description: 'Complete the bottom row of any ticket'
-        },
-        fullHouse: {
-          name: 'Full House',
-          pattern: 'All numbers',
-          description: 'Mark all numbers on the ticket'
-        }
-      };
-
-      const config = prizeConfigs[prizeId];
-      if (config) {
-        prizes[prizeId] = {
-          id: prizeId,
-          ...config,
-          won: false,
-          order: index + 1
-        };
+  const prizes: { [prizeId: string]: Prize } = {};
+  
+  selectedPrizes.forEach((prizeId, index) => {
+    const prizeConfigs: { [key: string]: Omit<Prize, 'id' | 'won' | 'order'> } = {
+      earlyFive: {
+        name: 'Early Five', 
+        pattern: 'Any 5 numbers',
+        description: 'Mark any 5 numbers on your ticket'
+      },
+       topLine: {
+        name: 'Top Line',
+        pattern: 'Complete top row',
+        description: 'Complete the top row of any ticket'
+      },
+      middleLine: {
+        name: 'Middle Line',
+        pattern: 'Complete middle row', 
+        description: 'Complete the middle row of any ticket'
+      },
+      bottomLine: {
+        name: 'Bottom Line',
+        pattern: 'Complete bottom row',
+        description: 'Complete the bottom row of any ticket'
+      },
+      corners: {
+        name: 'Four Corners',
+        pattern: '4 corner numbers', 
+        description: 'Mark all 4 corner positions'
+      },
+      halfSheet: {
+        name: 'Half Sheet',
+        pattern: '3 consecutive tickets from same set',
+        description: 'Complete half of a traditional 6-ticket sheet (positions 1,2,3 or 4,5,6)'
+      },
+      fullSheet: {
+        name: 'Full Sheet', 
+        pattern: 'Complete 6-ticket set',
+        description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)'
+      },
+      fullHouse: {
+        name: 'Full House',
+        pattern: 'All numbers', 
+        description: 'Mark all numbers on the ticket'
       }
-    });
+    };
 
-    return prizes;
-  }
+    const config = prizeConfigs[prizeId];
+    if (config) {
+      prizes[prizeId] = {
+        id: prizeId,
+        ...config,
+        won: false,
+        order: index + 1
+      };
+    } else {
+      // ✅ DEBUG: Log unrecognized prizes to help identify issues
+      console.warn(`❌ Unrecognized prize ID during game creation: ${prizeId}`);
+      console.warn(`Available prize IDs:`, Object.keys(prizeConfigs));
+    }
+  });
+
+  console.log(`🎯 Prize Creation Summary:`);
+  console.log(`   Selected: [${selectedPrizes.join(', ')}]`);
+  console.log(`   Created: [${Object.keys(prizes).join(', ')}]`); 
+  console.log(`   Count: ${Object.keys(prizes).length}/${selectedPrizes.length}`);
+  
+  return prizes;
+}
 
   generatePrizes(selectedPrizes: string[]): { [prizeId: string]: Prize } {
     return this.createPrizeConfiguration(selectedPrizes);
