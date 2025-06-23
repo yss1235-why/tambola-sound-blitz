@@ -7,7 +7,7 @@ import {
   signOut,
   onAuthStateChanged,
   User,
-  createUserWithEmailAndPassword  // ✅ ADDED: Import for creating Firebase Auth accounts
+  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import { 
   getDatabase, 
@@ -183,16 +183,13 @@ export class FirebaseCore {
     const lockKey = `game_${gameId}`;
     
     if (this.activeLocks.has(lockKey)) {
-      console.log(`⏳ Waiting for existing operation on game: ${gameId}`);
       await this.activeLocks.get(lockKey);
     }
     
     const operationPromise = (async () => {
       try {
-        console.log(`🔒 Acquired lock for game: ${gameId}`);
         return await operation();
       } finally {
-        console.log(`🔓 Released lock for game: ${gameId}`);
         this.activeLocks.delete(lockKey);
       }
     })();
@@ -257,21 +254,56 @@ export class FirebaseCore {
     }
   }
 
+  // ✅ FIXED: Enhanced getUserData() with robust fallback logic
   async getUserData(): Promise<AdminUser | HostUser | null> {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) return null;
 
-      // Check hosts path first
+      // Method 1: Check hosts by Firebase Auth UID (standard approach)
       const hostSnapshot = await get(ref(database, `hosts/${currentUser.uid}`));
       if (hostSnapshot.exists()) {
         return { ...hostSnapshot.val(), role: 'host' } as HostUser;
       }
       
-      // Check admins path
+      // Method 2: Check admins by Firebase Auth UID
       const adminSnapshot = await get(ref(database, `admins/${currentUser.uid}`));
       if (adminSnapshot.exists()) {
         return { ...adminSnapshot.val(), role: 'admin' } as AdminUser;
+      }
+      
+      // Method 3: Fallback - Search hosts by email (for existing hosts)
+      const allHostsSnapshot = await get(ref(database, 'hosts'));
+      if (allHostsSnapshot.exists()) {
+        const allHosts = allHostsSnapshot.val();
+        
+        // Look for host with matching email
+        for (const [hostId, hostData] of Object.entries(allHosts)) {
+          const host = hostData as any;
+          if (host.email === currentUser.email) {
+            
+            // Auto-migrate to correct location for future logins
+            try {
+              // Store at Firebase Auth UID location
+              await set(ref(database, `hosts/${currentUser.uid}`), {
+                ...host,
+                uid: currentUser.uid
+              });
+              
+              return { ...host, uid: currentUser.uid, role: 'host' } as HostUser;
+            } catch (migrationError) {
+              return { ...host, role: 'host' } as HostUser;
+            }
+          }
+        }
+        
+        // Method 4: Look for host where the uid field matches Firebase Auth UID
+        for (const [hostId, hostData] of Object.entries(allHosts)) {
+          const host = hostData as any;
+          if (host.uid === currentUser.uid) {
+            return { ...host, role: 'host' } as HostUser;
+          }
+        }
       }
       
       return null;
@@ -352,11 +384,11 @@ export class FirebaseCore {
         isActive: true
       };
 
-      // ✅ FIXED: Create Firebase Auth account first
+      // Create Firebase Auth account first
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseAuthUid = userCredential.user.uid;
 
-      // ✅ FIXED: Use Firebase Auth UID as both the database key AND the uid field
+      // Use Firebase Auth UID as both the database key AND the uid field
       hostData.uid = firebaseAuthUid;
       const hostRef = ref(database, `hosts/${firebaseAuthUid}`);
       await set(hostRef, removeUndefinedValues(hostData));
