@@ -278,9 +278,12 @@ export class FirebaseGame {
       console.log(`🎮 Creating game for host ${hostId} with ${config.maxTickets} tickets from set ${ticketSetId}`);
       console.log('🏆 Selected prizes:', selectedPrizes);
 
-      if (!config.name || !config.maxTickets || !config.ticketPrice || !config.hostPhone) {
-        throw new Error('Missing required game configuration');
-      }
+    if (!config.name || 
+    config.maxTickets === undefined || config.maxTickets === null || 
+    config.ticketPrice === undefined || config.ticketPrice === null || 
+    !config.hostPhone) {
+  throw new Error('Missing required game configuration');
+}
 
       if (config.maxTickets < 1 || config.maxTickets > 600) {
         throw new Error('Max tickets must be between 1 and 600');
