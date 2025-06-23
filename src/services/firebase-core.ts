@@ -6,8 +6,7 @@ import {
   signInWithEmailAndPassword, 
   signOut,
   onAuthStateChanged,
-  User,
-  createUserWithEmailAndPassword
+  User
 } from 'firebase/auth';
 import { 
   getDatabase, 
@@ -139,9 +138,6 @@ export interface CreateGameConfig {
   maxTickets: number;
   ticketPrice: number;
   hostPhone: string;
-  hostId: string;
-  selectedTicketSet: string;
-  selectedPrizes: string[];
 }
 
 interface TicketRowData {
@@ -183,13 +179,16 @@ export class FirebaseCore {
     const lockKey = `game_${gameId}`;
     
     if (this.activeLocks.has(lockKey)) {
+      console.log(`⏳ Waiting for existing operation on game: ${gameId}`);
       await this.activeLocks.get(lockKey);
     }
     
     const operationPromise = (async () => {
       try {
+        console.log(`🔒 Acquired lock for game: ${gameId}`);
         return await operation();
       } finally {
+        console.log(`🔓 Released lock for game: ${gameId}`);
         this.activeLocks.delete(lockKey);
       }
     })();
@@ -254,56 +253,32 @@ export class FirebaseCore {
     }
   }
 
-  // ✅ FIXED: Enhanced getUserData() with robust fallback logic
+  // ✅ FIXED: Simple getUserData() - Firebase Auth UID = Host ID
   async getUserData(): Promise<AdminUser | HostUser | null> {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) return null;
 
-      // Method 1: Check hosts by Firebase Auth UID (standard approach)
+      // Since Firebase Auth UID = Host ID, directly get host data
       const hostSnapshot = await get(ref(database, `hosts/${currentUser.uid}`));
       if (hostSnapshot.exists()) {
-        return { ...hostSnapshot.val(), role: 'host' } as HostUser;
+        const hostData = hostSnapshot.val();
+        return { 
+          ...hostData, 
+          uid: currentUser.uid,  // Ensure uid is set to Firebase Auth UID
+          role: 'host' 
+        } as HostUser;
       }
       
-      // Method 2: Check admins by Firebase Auth UID
+      // Check admins
       const adminSnapshot = await get(ref(database, `admins/${currentUser.uid}`));
       if (adminSnapshot.exists()) {
-        return { ...adminSnapshot.val(), role: 'admin' } as AdminUser;
-      }
-      
-      // Method 3: Fallback - Search hosts by email (for existing hosts)
-      const allHostsSnapshot = await get(ref(database, 'hosts'));
-      if (allHostsSnapshot.exists()) {
-        const allHosts = allHostsSnapshot.val();
-        
-        // Look for host with matching email
-        for (const [hostId, hostData] of Object.entries(allHosts)) {
-          const host = hostData as any;
-          if (host.email === currentUser.email) {
-            
-            // Auto-migrate to correct location for future logins
-            try {
-              // Store at Firebase Auth UID location
-              await set(ref(database, `hosts/${currentUser.uid}`), {
-                ...host,
-                uid: currentUser.uid
-              });
-              
-              return { ...host, uid: currentUser.uid, role: 'host' } as HostUser;
-            } catch (migrationError) {
-              return { ...host, role: 'host' } as HostUser;
-            }
-          }
-        }
-        
-        // Method 4: Look for host where the uid field matches Firebase Auth UID
-        for (const [hostId, hostData] of Object.entries(allHosts)) {
-          const host = hostData as any;
-          if (host.uid === currentUser.uid) {
-            return { ...host, role: 'host' } as HostUser;
-          }
-        }
+        const adminData = adminSnapshot.val();
+        return { 
+          ...adminData, 
+          uid: currentUser.uid,  // Ensure uid is set to Firebase Auth UID
+          role: 'admin' 
+        } as AdminUser;
       }
       
       return null;
@@ -384,33 +359,21 @@ export class FirebaseCore {
         isActive: true
       };
 
-      // Create Firebase Auth account first
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseAuthUid = userCredential.user.uid;
-
-      // Use Firebase Auth UID as both the database key AND the uid field
-      hostData.uid = firebaseAuthUid;
-      const hostRef = ref(database, `hosts/${firebaseAuthUid}`);
+      const hostRef = push(ref(database, 'hosts'));
+      const hostId = hostRef.key!;
+      hostData.uid = hostId;
+      
       await set(hostRef, removeUndefinedValues(hostData));
       
-      console.log(`✅ Host ${name} created successfully with Firebase Auth UID: ${firebaseAuthUid}`);
+      console.log(`✅ Host ${name} created successfully with ID: ${hostId}`);
       throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
       
     } catch (error: any) {
-      // Handle Firebase Auth errors specifically
-      if (error.code === 'auth/email-already-in-use') {
-        throw new Error('Email already exists. Please use a different email address.');
-      } else if (error.code === 'auth/weak-password') {
-        throw new Error('Password is too weak. Please use a stronger password.');
-      } else if (error.code === 'auth/invalid-email') {
-        throw new Error('Invalid email address format.');
-      } else if (error.message.startsWith('SUCCESS:')) {
-        // Re-throw success messages
+      if (error.message.startsWith('SUCCESS:')) {
         throw error;
-      } else {
-        console.error('❌ Error creating host:', error);
-        throw new Error(error.message || 'Failed to create host');
       }
+      console.error('❌ Error creating host:', error);
+      throw new Error(error.message || 'Failed to create host');
     }
   }
 
