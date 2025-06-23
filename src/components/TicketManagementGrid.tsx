@@ -1,4 +1,4 @@
-// src/components/TicketManagementGrid.tsx - VERIFIED: Compatible with simple numeric ticket IDs + EXPANSION-ONLY Implementation
+// src/components/TicketManagementGrid.tsx - MOBILE 6-COLUMN FIX: Optimized for 3-digit numbers
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +37,8 @@ interface TicketInfo {
 }
 
 export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({ 
-  gameData
+  gameData,
+  onRefreshGame
 }) => {
   const [selectedTickets, setSelectedTickets] = useState<string[]>([]);
   const [showBookingDialog, setShowBookingDialog] = useState(false);
@@ -45,7 +46,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   const [editingTicket, setEditingTicket] = useState<TicketInfo | null>(null);
   const [isBooking, setIsBooking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isExpanding, setIsExpanding] = useState(false); // ✅ NEW: Track expansion state
+  const [isExpanding, setIsExpanding] = useState(false);
   
   const [bookingForm, setBookingForm] = useState<BookingForm>({
     playerName: '',
@@ -57,32 +58,27 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     playerPhone: ''
   });
 
-  // ✅ NEW: Detect when tickets are being expanded
+  // Detect when tickets are being expanded
   useEffect(() => {
     const currentTicketCount = Object.keys(gameData.tickets || {}).length;
     const expectedTicketCount = gameData.maxTickets;
     
-    // If ticket count doesn't match maxTickets, expansion might be in progress
-    const isExpansionInProgress = currentTicketCount < expectedTicketCount;
-    setIsExpanding(isExpansionInProgress);
-    
-    if (isExpansionInProgress) {
-      console.log(`📈 Ticket expansion detected: have ${currentTicketCount}, expect ${expectedTicketCount}`);
-    } else if (currentTicketCount === expectedTicketCount && isExpanding) {
-      console.log(`✅ Ticket expansion completed: ${currentTicketCount} tickets loaded`);
+    if (currentTicketCount > 0 && currentTicketCount < expectedTicketCount) {
+      setIsExpanding(true);
+    } else {
+      setIsExpanding(false);
     }
-  }, [gameData.tickets, gameData.maxTickets, isExpanding]);
+  }, [gameData.tickets, gameData.maxTickets]);
 
-  // ✅ VERIFIED: Generate ticket info with simple numeric IDs (1, 2, 3...)
+  // Generate ticket information
   const ticketInfo = useMemo(() => {
-    const info: TicketInfo[] = [];
-    const tickets = gameData.tickets || {};
+    const tickets: TicketInfo[] = [];
     
     for (let i = 1; i <= gameData.maxTickets; i++) {
-      const ticketId = i.toString(); // ✅ Simple numeric format matches creation
-      const ticket = tickets[ticketId];
+      const ticketId = i.toString();
+      const ticket = gameData.tickets?.[ticketId];
       
-      info.push({
+      tickets.push({
         ticketId,
         isBooked: ticket?.isBooked || false,
         playerName: ticket?.playerName,
@@ -91,19 +87,23 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       });
     }
     
-    console.log(`🎫 Generated ticket info for ${info.length} tickets with IDs: ${info.slice(0, 5).map(t => t.ticketId).join(', ')}...`);
-    return info;
+    return tickets;
   }, [gameData.tickets, gameData.maxTickets]);
 
-  // Calculate counts
   const bookedCount = ticketInfo.filter(t => t.isBooked).length;
-  const availableCount = gameData.maxTickets - bookedCount;
+  const availableCount = ticketInfo.length - bookedCount;
+
+  // UPDATED: Create 6-column rows instead of 10-column
+  const ticketRows = useMemo(() => {
+    const rows: TicketInfo[][] = [];
+    for (let i = 0; i < ticketInfo.length; i += 6) {
+      rows.push(ticketInfo.slice(i, i + 6));
+    }
+    return rows;
+  }, [ticketInfo]);
 
   const handleTicketClick = (ticketId: string, isBooked: boolean) => {
-    console.log(`🖱️ Ticket clicked: ${ticketId} (booked: ${isBooked})`);
-    
     if (isBooked) {
-      // If ticket is booked, open edit dialog
       const ticket = ticketInfo.find(t => t.ticketId === ticketId);
       if (ticket) {
         setEditingTicket(ticket);
@@ -114,89 +114,11 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         setShowEditDialog(true);
       }
     } else {
-      // If ticket is available, toggle selection
       setSelectedTickets(prev => 
         prev.includes(ticketId) 
           ? prev.filter(id => id !== ticketId)
           : [...prev, ticketId]
       );
-    }
-  };
-
-  const handleBookSelectedTickets = async () => {
-    if (selectedTickets.length === 0 || !bookingForm.playerName.trim()) {
-      alert('Please select tickets and enter player name');
-      return;
-    }
-
-    setIsBooking(true);
-    try {
-      // Book each selected ticket
-      for (const ticketId of selectedTickets) {
-        await firebaseService.bookTicket(
-          ticketId,
-          bookingForm.playerName.trim(),
-          bookingForm.playerPhone.trim(),
-          gameData.gameId
-        );
-      }
-      
-      console.log(`✅ Booked ${selectedTickets.length} tickets for ${bookingForm.playerName}`);
-      
-      // Reset state
-      setSelectedTickets([]);
-      setBookingForm({ playerName: '', playerPhone: '' });
-      setShowBookingDialog(false);
-      
-    } catch (error: any) {
-      console.error('Booking error:', error);
-      alert(error.message || 'Failed to book tickets');
-    } finally {
-      setIsBooking(false);
-    }
-  };
-
-  const handleEditTicket = async () => {
-    if (!editingTicket || !editForm.playerName.trim()) {
-      alert('Please enter player name');
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      await firebaseService.updateTicket(gameData.gameId, editingTicket.ticketId, {
-        playerName: editForm.playerName.trim(),
-        playerPhone: editForm.playerPhone.trim()
-      });
-      
-      console.log(`✅ Updated ticket ${editingTicket.ticketId}`);
-      setShowEditDialog(false);
-      setEditingTicket(null);
-      setEditForm({ playerName: '', playerPhone: '' });
-      
-    } catch (error: any) {
-      console.error('Update error:', error);
-      alert(error.message || 'Failed to update ticket');
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleUnbookTicket = async (ticketId: string) => {
-    const confirmed = window.confirm(`Are you sure you want to unbook ticket ${ticketId}?`);
-    if (!confirmed) return;
-
-    setIsUpdating(true);
-    try {
-      await firebaseService.unbookTicket(gameData.gameId, ticketId);
-      console.log(`✅ Unbooked ticket ${ticketId}`);
-      setShowEditDialog(false);
-      setEditingTicket(null);
-    } catch (error: any) {
-      console.error('Unbook error:', error);
-      alert(error.message || 'Failed to unbook ticket');
-    } finally {
-      setIsUpdating(false);
     }
   };
 
@@ -211,17 +133,71 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     setSelectedTickets([]);
   };
 
-  // ✅ PERFORMANCE: Create ticket rows efficiently
-  const ticketRows = useMemo(() => {
-    const rows: TicketInfo[][] = [];
-    for (let i = 0; i < ticketInfo.length; i += 10) {
-      rows.push(ticketInfo.slice(i, i + 10));
-    }
-    return rows;
-  }, [ticketInfo]);
+  const handleBookTickets = async () => {
+    if (selectedTickets.length === 0 || !bookingForm.playerName.trim()) return;
 
+    setIsBooking(true);
+    try {
+      for (const ticketId of selectedTickets) {
+        await firebaseService.bookTicket(
+          ticketId,
+          bookingForm.playerName.trim(),
+          bookingForm.playerPhone.trim(),
+          gameData.gameId
+        );
+      }
+
+      setSelectedTickets([]);
+      setBookingForm({ playerName: '', playerPhone: '' });
+      setShowBookingDialog(false);
+      onRefreshGame();
+    } catch (error) {
+      console.error('Error booking tickets:', error);
+    } finally {
+      setIsBooking(false);
+    }
+  };
+
+  const handleUpdateTicket = async () => {
+    if (!editingTicket || !editForm.playerName.trim()) return;
+
+    setIsUpdating(true);
+    try {
+      await firebaseService.bookTicket(
+        editingTicket.ticketId,
+        editForm.playerName.trim(),
+        editForm.playerPhone.trim(),
+        gameData.gameId
+      );
+
+      setEditingTicket(null);
+      setEditForm({ playerName: '', playerPhone: '' });
+      setShowEditDialog(false);
+      onRefreshGame();
+    } catch (error) {
+      console.error('Error updating ticket:', error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleCancelBooking = async (ticketId: string) => {
+    setIsUpdating(true);
+    try {
+      await firebaseService.unbookTicket(gameData.gameId, ticketId);
+      setEditingTicket(null);
+      setShowEditDialog(false);
+      onRefreshGame();
+    } catch (error) {
+      console.error('Error canceling booking:', error);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // UPDATED: Mobile-optimized cell styling for 3-digit numbers with monospace font
   const getTicketClassName = (ticket: TicketInfo) => {
-    const baseClasses = "w-full h-12 sm:h-14 border-2 rounded-lg cursor-pointer transition-all duration-200 text-xs sm:text-sm font-medium flex items-center justify-center";
+    const baseClasses = "w-full h-16 border-2 rounded-lg cursor-pointer transition-all duration-200 font-mono font-bold text-base flex items-center justify-center min-w-[70px]";
     
     if (ticket.isBooked) {
       return `${baseClasses} bg-green-500 border-green-600 text-white hover:bg-green-600`;
@@ -234,7 +210,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* ✅ LOADING OVERLAY - Updated to include expansion state */}
+      {/* Loading Overlay */}
       {(isBooking || isUpdating || isExpanding) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 flex items-center space-x-4">
@@ -322,26 +298,26 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </CardContent>
       </Card>
 
-      {/* Tickets Grid */}
+      {/* UPDATED: 6-Column Tickets Grid for Mobile */}
       <Card>
         <CardHeader>
           <CardTitle>
-            Tickets Grid - Simple Numeric IDs ({ticketInfo.length} tickets)
+            Tickets Grid - 6 Column Mobile Layout ({ticketInfo.length} tickets)
           </CardTitle>
           <p className="text-sm text-gray-600">
-            ✅ Using standardized format: Ticket 1, Ticket 2, Ticket 3...
+            ✅ Optimized for mobile with consistent 3-digit number spacing
           </p>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2 sm:space-y-3">
+          <div className="space-y-3">
             {ticketRows.map((row, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-10 gap-1 sm:gap-2">
+              <div key={rowIndex} className="grid grid-cols-6 gap-2">
                 {row.map((ticket) => (
                   <div
                     key={ticket.ticketId}
                     className={getTicketClassName(ticket)}
                     onClick={() => handleTicketClick(ticket.ticketId, ticket.isBooked)}
-                    title={`Ticket ${ticket.ticketId}${ticket.isBooked ? ` - ${ticket.playerName}` : ' - Available'}`}
+                    title={`Ticket ${ticket.ticketId}${ticket.isBooked ? ` - ${ticket.playerName}` : ''}`}
                   >
                     {ticket.ticketId}
                   </div>
@@ -352,55 +328,47 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </CardContent>
       </Card>
 
-      {/* Book Selected Tickets Dialog */}
+      {/* Booking Dialog */}
       <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Book {selectedTickets.length} Ticket(s)</DialogTitle>
+            <DialogTitle>Book Selected Tickets</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="p-3 bg-blue-50 rounded-lg">
-              <p className="text-sm text-blue-800">
-                Selected Tickets: {selectedTickets.slice(0, 10).join(', ')}
-                {selectedTickets.length > 10 && ` ... and ${selectedTickets.length - 10} more`}
+            <div>
+              <p className="text-sm text-gray-600 mb-2">
+                Booking {selectedTickets.length} tickets: {selectedTickets.join(', ')}
               </p>
             </div>
-            
             <div>
-              <Label htmlFor="player-name">Player Name *</Label>
+              <Label htmlFor="playerName">Player Name *</Label>
               <Input
-                id="player-name"
-                placeholder="Enter player's name"
+                id="playerName"
                 value={bookingForm.playerName}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-                className="border-2 border-gray-200 focus:border-blue-400"
-                disabled={isBooking}
+                placeholder="Enter player name"
               />
             </div>
-            
             <div>
-              <Label htmlFor="player-phone">Player Phone (Optional)</Label>
+              <Label htmlFor="playerPhone">Phone Number</Label>
               <Input
-                id="player-phone"
-                placeholder="Enter player's phone number"
+                id="playerPhone"
                 value={bookingForm.playerPhone}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                className="border-2 border-gray-200 focus:border-blue-400"
-                disabled={isBooking}
+                placeholder="Enter phone number (optional)"
               />
             </div>
-
-            <div className="flex space-x-2">
-              <Button
-                onClick={handleBookSelectedTickets}
-                disabled={isBooking || !bookingForm.playerName.trim()}
+            <div className="flex space-x-3 pt-4">
+              <Button 
+                onClick={handleBookTickets}
+                disabled={!bookingForm.playerName.trim() || isBooking}
                 className="flex-1"
               >
-                {isBooking ? 'Booking...' : `Book ${selectedTickets.length} Ticket(s)`}
+                {isBooking ? 'Booking...' : 'Book Tickets'}
               </Button>
-              <Button
+              <Button 
+                variant="outline" 
                 onClick={() => setShowBookingDialog(false)}
-                variant="outline"
                 disabled={isBooking}
               >
                 Cancel
@@ -410,67 +378,57 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Edit Ticket Dialog */}
+      {/* Edit Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Ticket {editingTicket?.ticketId}</DialogTitle>
+            <DialogTitle>
+              Edit Ticket {editingTicket?.ticketId}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="edit-player-name">Player Name *</Label>
+              <Label htmlFor="editPlayerName">Player Name *</Label>
               <Input
-                id="edit-player-name"
-                placeholder="Enter player's name"
+                id="editPlayerName"
                 value={editForm.playerName}
                 onChange={(e) => setEditForm(prev => ({ ...prev, playerName: e.target.value }))}
-                className="border-2 border-gray-200 focus:border-blue-400"
-                disabled={isUpdating}
+                placeholder="Enter player name"
               />
             </div>
-            
             <div>
-              <Label htmlFor="edit-player-phone">Player Phone (Optional)</Label>
+              <Label htmlFor="editPlayerPhone">Phone Number</Label>
               <Input
-                id="edit-player-phone"
-                placeholder="Enter player's phone number"
+                id="editPlayerPhone"
                 value={editForm.playerPhone}
                 onChange={(e) => setEditForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                className="border-2 border-gray-200 focus:border-blue-400"
-                disabled={isUpdating}
+                placeholder="Enter phone number (optional)"
               />
             </div>
-
-            <div className="flex space-x-2">
-              <Button
-                onClick={handleEditTicket}
-                disabled={isUpdating || !editForm.playerName.trim()}
+            <div className="flex space-x-3 pt-4">
+              <Button 
+                onClick={handleUpdateTicket}
+                disabled={!editForm.playerName.trim() || isUpdating}
                 className="flex-1"
               >
                 {isUpdating ? 'Updating...' : 'Update Ticket'}
               </Button>
-              <Button
-                onClick={() => setShowEditDialog(false)}
-                variant="outline"
+              <Button 
+                variant="destructive"
+                onClick={() => editingTicket && handleCancelBooking(editingTicket.ticketId)}
                 disabled={isUpdating}
               >
-                Cancel
+                <Trash2 className="w-4 h-4 mr-2" />
+                Cancel Booking
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowEditDialog(false)}
+                disabled={isUpdating}
+              >
+                Close
               </Button>
             </div>
-
-            {editingTicket && (
-              <div className="pt-4 border-t">
-                <Button
-                  onClick={() => handleUnbookTicket(editingTicket.ticketId)}
-                  variant="destructive"
-                  disabled={isUpdating}
-                  className="w-full"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {isUpdating ? 'Unbooking...' : 'Unbook Ticket'}
-                </Button>
-              </div>
-            )}
           </div>
         </DialogContent>
       </Dialog>
