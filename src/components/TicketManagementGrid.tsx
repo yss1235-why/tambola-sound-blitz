@@ -311,7 +311,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         <CardContent>
           <div className="space-y-4">
             {ticketRows.map((row, rowIndex) => (
-              <div key={rowIndex} className="grid grid-cols-6 gap-3 sm:gap-2">
+              <div key={rowIndex} className="grid grid-cols-6 gap-5 sm:gap-2">
                 {row.map((ticket) => (
                   <div
                     key={ticket.ticketId}
