@@ -95,8 +95,12 @@ class FirebaseService {
   }
 
   // ========== GAME OPERATIONS (delegate to game) ==========
-  async createGame(config: any, hostId: string, selectedPrizes: string[]) {
-    return this.game.createGame(config, hostId, selectedPrizes);
+  async createGame(config: any, hostId: string, ticketSetId: string, selectedPrizes: string[]) {
+    return this.game.createGame(config, hostId, ticketSetId, selectedPrizes);
+  }
+
+  async updateGameData(gameId: string, updates: any) {
+    return this.game.updateGameData(gameId, updates);
   }
 
   async deleteGame(gameId: string) {
@@ -115,6 +119,18 @@ class FirebaseService {
     return this.game.getHostCurrentGame(hostId);
   }
 
+  async getAllActiveGames() {
+    return this.game.getAllActiveGames();
+  }
+
+  async updateGameAndTemplate(gameId: string, hostId: string, settings: any) {
+    return this.game.updateGameAndTemplate(gameId, hostId, settings);
+  }
+
+  async updateHostTemplate(hostId: string, templateSettings: any) {
+    return this.game.updateHostTemplate(hostId, templateSettings);
+  }
+
   // ========== TICKET OPERATIONS (delegate to game) ==========
   async loadTicketsFromSet(ticketSetId: string, maxTickets: number) {
     return this.game.loadTicketsFromSet(ticketSetId, maxTickets);
@@ -128,8 +144,16 @@ class FirebaseService {
     return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);
   }
 
-  async bookTicket(gameId: string, ticketId: string, playerName: string, playerPhone: string) {
-    return this.game.bookTicket(gameId, ticketId, playerName, playerPhone);
+  async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string) {
+    return this.game.bookTicket(ticketId, playerName, playerPhone, gameId);
+  }
+
+  async unbookTicket(gameId: string, ticketId: string) {
+    return this.game.unbookTicket(gameId, ticketId);
+  }
+
+  async updateTicket(gameId: string, ticketId: string, updates: any) {
+    return this.game.updateTicket(gameId, ticketId, updates);
   }
 
   // ========== PRIZE OPERATIONS (delegate to game) ==========
@@ -147,6 +171,10 @@ class FirebaseService {
 
   async callNumberWithPrizeValidation(gameId: string, number: number) {
     return this.game.callNumberWithPrizeValidation(gameId, number);
+  }
+
+  async callNextNumber(gameId: string) {
+    return this.game.callNextNumber(gameId);
   }
 
   // ========== SUBSCRIPTIONS (delegate to core) ==========
