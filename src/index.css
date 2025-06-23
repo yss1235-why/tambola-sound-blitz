@@ -260,7 +260,7 @@
 
   /* UPDATED: Mobile-Optimized Ticket Management Grid Styles for 6-Column Layout */
   .ticket-management-grid {
-    @apply grid gap-2;
+    @apply grid gap-3;
   }
 
   /* UPDATED: Consistent sizing for 3-digit numbers with monospace font */
@@ -440,10 +440,10 @@
       scroll-behavior: smooth;
     }
     
-    /* Ensure grid maintains 6 columns exactly */
+    /* Ensure grid maintains 6 columns exactly with proper spacing */
     .ticket-management-grid {
       grid-template-columns: repeat(6, 1fr);
-      gap: 0.5rem;
+      gap: 0.75rem; /* Increased gap for mobile */
     }
 
     .ticket-slot {
