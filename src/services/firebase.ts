@@ -1,27 +1,11 @@
 // src/services/firebase.ts - Firebase Service Coordinator: delegates to specialized services
 
-import {
-  initializeApp,
-  getApps,
-  getApp,
-  type FirebaseApp
-} from 'firebase/app';
-
-import {
-  getDatabase,
-  type Database
-} from 'firebase/database';
-
-import {
-  getAuth,
-  type Auth
-} from 'firebase/auth';
-
-// ✅ FIXED: Import specialized services for delegation
-import { firebaseCore } from './firebase-core';
+// ✅ Import from firebase-core (both types and instance)
+import { database, auth, firebaseCore } from './firebase-core';
 import { firebaseGame } from './firebase-game';
 
-// Re-export types for external consumption
+// Re-export types and database/auth for external consumption
+export { database, auth } from './firebase-core';
 export type {
   AdminUser,
   HostUser,
@@ -33,31 +17,8 @@ export type {
   CreateGameConfig
 } from './firebase-core';
 
-// ================== FIREBASE CONFIGURATION ==================
-
-const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.REACT_APP_FIREBASE_DATABASE_URL,
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.REACT_APP_FIREBASE_APP_ID
-};
-
-// Initialize Firebase
-let app: FirebaseApp;
-if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
-} else {
-  app = getApp();
-}
-
-export const database: Database = getDatabase(app);
-export const auth: Auth = getAuth(app);
-
 // Re-export utility functions
-export { removeUndefinedValues, getCurrentUserRole } from './firebase-core';
+export { removeUndefinedValues } from './firebase-core';
 
 // ================== FIREBASE COORDINATOR SERVICE ==================
 
@@ -74,6 +35,36 @@ class FirebaseService {
   // ========== CORE OPERATIONS (delegate to core) ==========
   async safeTransactionUpdate(path: string, updates: any, retries: number = 3) {
     return this.core.safeTransactionUpdate(path, updates, retries);
+  }
+
+  // ========== AUTHENTICATION (delegate to core) ==========
+  async loginAdmin(email: string, password: string) {
+    return this.core.loginAdmin(email, password);
+  }
+
+  async loginHost(email: string, password: string) {
+    return this.core.loginHost(email, password);
+  }
+
+  async logout() {
+    return this.core.logout();
+  }
+
+  async getUserData() {
+    return this.core.getUserData();
+  }
+
+  async getCurrentUserRole() {
+    return this.core.getCurrentUserRole();
+  }
+
+  // ========== GAME DATA (delegate to core) ==========
+  async getGameData(gameId: string) {
+    return this.core.getGameData(gameId);
+  }
+
+  async updateGameState(gameId: string, gameState: any) {
+    return this.core.updateGameState(gameId, gameState);
   }
 
   // ========== HOST MANAGEMENT (delegate to core) ==========
@@ -161,8 +152,8 @@ class FirebaseService {
   }
 
   async expandTickets(gameId: string, newMaxTickets: number, ticketSetId: string) {
-  return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);  // ✅ CORRECT
-}
+    return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);
+  }
 
   async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string) {
     return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);
@@ -219,10 +210,6 @@ class FirebaseService {
   }
 
   // ========== UTILITY METHODS (delegate to game) ==========
-  async getGameData(gameId: string) {
-    return this.game.getGameData(gameId);
-  }
-
   async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any) {
     return this.game.validateTicketsForPrizes(tickets, calledNumbers, prizes);
   }
@@ -235,3 +222,8 @@ class FirebaseService {
 // ================== SINGLETON EXPORT ==================
 
 export const firebaseService = new FirebaseService();
+
+// ✅ Export standalone getCurrentUserRole function
+export const getCurrentUserRole = async (): Promise<string | null> => {
+  return firebaseService.getCurrentUserRole();
+};
