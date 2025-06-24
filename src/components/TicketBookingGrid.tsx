@@ -175,24 +175,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
         <CardHeader>
           <CardTitle className="text-2xl text-gray-800 text-center">Available Tickets</CardTitle>
-          <div className="text-center space-y-2">
-            <p className="text-gray-600">Click on any available ticket to book via WhatsApp</p>
-            {isLoadingHost ? (
-              <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Loading host contact...</span>
-              </div>
-            ) : hostPhone ? (
-              <p className="text-sm text-blue-600 flex items-center justify-center space-x-1">
-                <Phone className="w-4 h-4" />
-                <span>WhatsApp booking: +{hostPhone}</span>
-              </p>
-            ) : (
-              <p className="text-sm text-red-600">
-                Host contact information not available
-              </p>
-            )}
-          </div>
+         
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
