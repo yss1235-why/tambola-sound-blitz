@@ -488,7 +488,14 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       // If we have cached winner data, delete the old game BEFORE creating new one
      // ✅ FIXED: Only clear UI cache, cleanup will happen after successful creation
 if (cachedWinnerData) {
-  console.log('🎯 Clearing winner display from UI (database cleanup will happen after successful creation)');
+  console.log('🗑️ Deleting previous completed game immediately before creating new one:', cachedWinnerData.gameId);
+  try {
+    await firebaseService.deleteGame(cachedWinnerData.gameId);
+    console.log('✅ Previous game deleted successfully');
+  } catch (deleteError) {
+    console.error('⚠️ Error deleting previous game (continuing with creation):', deleteError);
+    // Continue with creation even if deletion fails
+  }
   setCachedWinnerData(null);
 }
       
