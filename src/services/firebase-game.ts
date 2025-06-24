@@ -13,6 +13,7 @@ import {
   equalTo
 } from 'firebase/database';
 import { database, removeUndefinedValues } from './firebase-core';
+import { prizeEngine } from './prize-engine';
 import type { 
   GameData, 
   TambolaTicket, 
@@ -1078,10 +1079,9 @@ class FirebaseGameService {
 
   // ================== VALIDATION ==================
 
-  async validateTicketsForPrizes(tickets: { [ticketId: string]: TambolaTicket }, calledNumbers: number[], prizes: { [prizeId: string]: Prize }): Promise<any> {
-    // Placeholder implementation - replace with your actual prize validation logic
-    // This should return { winners: { [prizeId]: { prizeName, winners: [...] } } }
-    return { winners: {} };
+  async validateTicketsForPrizes(tickets: { [ticketId: string]: TambolaTicket }, calledNumbers: number[], prizes: { [prizeId: string]: Prize }): Promise<{ winners: { [prizeId: string]: any } }> {
+    // Use the actual prize-engine validation logic
+    return await prizeEngine.validateTicketsForPrizes(tickets, calledNumbers, prizes);
   }
 }
 
