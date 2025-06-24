@@ -263,34 +263,7 @@ async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void
     const cleanUpdates = removeUndefinedValues(updates);
     await update(ref(database, `games/${gameId}/gameState`), cleanUpdates);
 
-    // ✅ FIXED: Only trigger cleanup when game ACTUALLY starts (not countdown)
-    const isGameActuallyStarting = updates.isActive === true && updates.isCountdown !== true;
-    
-    if (isGameActuallyStarting) {
-      const gameData = await this.getGameData(gameId);
-      if (!gameData) {
-        console.warn(`⚠️ Could not load game data for cleanup: ${gameId}`);
-        return;
-      }
-
-      const isNewGame = (gameData.gameState.calledNumbers?.length || 0) === 0;
-      
-      if (isNewGame) {
-        console.log(`🎮 New game ${gameId} actually started - scheduling cleanup for host: ${gameData.hostId}`);
-        
-        // ✅ FIXED: Delay cleanup to ensure game is fully initialized
-        setTimeout(async () => {
-          try {
-            await this.cleanupOldCompletedGames(gameData.hostId, gameId);
-          } catch (error: any) {
-            console.error(`❌ Background cleanup failed for host ${gameData.hostId}:`, error);
-            // Don't throw - this is background cleanup
-          }
-        }, 3000); // Wait 3 seconds after game starts
-      }
-    }
-
-    console.log(`✅ Game state updated: ${gameId}`);
+   console.log(`✅ Game state updated: ${gameId} - no automatic cleanup (handled during creation)`);
   } catch (error: any) {
     console.error('❌ Error updating game state:', error);
     throw new Error(error.message || 'Failed to update game state');
