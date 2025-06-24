@@ -190,7 +190,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     return (
       <GameDataProvider gameId={selectedGameId}>
         <div className="space-y-4">
-          <div className="p-4 bg-white">
+          <div className="p-4 text-white">
             <Button onClick={handleBackToList} variant="outline">
               ← Back to Games
             </Button>
