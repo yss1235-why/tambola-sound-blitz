@@ -162,12 +162,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
             </div>
           </div>
           {/* ✅ FIXED: Real-time status indicator */}
-          <div className="mt-4 flex justify-center">
-            <div className="flex items-center space-x-2 bg-green-50 px-3 py-1 rounded-full border border-green-200">
-              <Activity className="w-4 h-4 text-green-600" />
-              <span className="text-sm text-green-700 font-medium">Live Updates Active</span>
-            </div>
-          </div>
+         
         </CardHeader>
       </Card>
 
