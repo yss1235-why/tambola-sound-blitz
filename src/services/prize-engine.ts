@@ -224,7 +224,7 @@ const validateHalfSheetTraditional = (
           // Verify each ticket has 2+ marked numbers
           const allHave2Plus = setTickets.every(t => {
             const markedCount = t.metadata?.allNumbers.filter(num => calledNumbers.includes(num)).length || 0;
-            return markedCount >= 2;
+            return markedCount === 2;
           });
           
           if (allHave2Plus) {
