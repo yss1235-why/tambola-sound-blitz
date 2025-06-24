@@ -1009,11 +1009,7 @@ const CreateGameForm = ({
                     {prize.difficulty}
                   </Badge>
                   {/* ✅ MINIMAL CHANGE: Updated condition for Traditional badge */}
-                  {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
-                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
-                      Traditional
-                    </Badge>
-                  )}
+                  {(prize.id === 'halfSheet' || prize.id === 'fullSheet')}
                 </Label>
                 <p className="text-sm text-gray-600">{prize.pattern}</p>
                 <p className="text-xs text-gray-500">{prize.description}</p>
