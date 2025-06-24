@@ -287,15 +287,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
             ))}
           </div>
 
-          {/* ✅ FIXED: Real-time update notice */}
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center justify-center space-x-2 text-blue-800">
-              <Activity className="w-4 h-4" />
-              <p className="text-sm font-medium">
-                This page updates automatically when the host starts the game or other players book tickets
-              </p>
-            </div>
-          </div>
+         
         </CardContent>
       </Card>
     </div>
