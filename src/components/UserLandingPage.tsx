@@ -260,33 +260,54 @@ useEffect(() => {
     );
   }
 
+   if (currentView === 'booking' && selectedGameId) {
+  const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
+  
+  if (!selectedGame) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <Button onClick={handleBackToList} variant="outline">
-              ← Back to Games
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-gray-600">Game not found</p>
+            <Button onClick={handleBackToList} className="mt-4">
+              Back to Games
             </Button>
-            <div className="flex items-center space-x-2">
-              <Badge variant="default">Booking Phase</Badge>
-              <Badge variant="outline" className="text-green-600 border-green-400">
-                <Activity className="w-3 h-3 mr-1" />
-                Live Updates
-              </Badge>
-            </div>
-          </div>
-
-          <TicketBookingGrid 
-            tickets={selectedGame.tickets || {}}
-            gameData={selectedGame}
-            onBookTicket={handleBookTicket}
-            onGameStart={() => setCurrentView('game')}
-          />
-        </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
+
+  // ✅ NOTE: We removed the conflicting auto-switch logic here
+  // Our new useEffect handles all transitions automatically
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <Button onClick={handleBackToList} variant="outline">
+            ← Back to Games
+          </Button>
+          <div className="flex items-center space-x-2">
+            <Badge variant="default">Booking Phase</Badge>
+            <Badge variant="outline" className="text-green-600 border-green-400">
+              <Activity className="w-3 h-3 mr-1" />
+              Live Updates
+            </Badge>
+          </div>
+        </div>
+
+        <TicketBookingGrid 
+          tickets={selectedGame.tickets || {}}
+          gameData={selectedGame}
+          onBookTicket={handleBookTicket}
+          onGameStart={() => setCurrentView('game')}
+        />
+      </div>
+    </div>
+  );
+}
 
   // ✅ UNCHANGED: Loading and error states
   if (gameDataSource.loading && gameSummaries.length === 0) {
