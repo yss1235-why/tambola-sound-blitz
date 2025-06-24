@@ -246,6 +246,56 @@ private async cleanupOldCompletedGames(hostId: string, currentGameId: string): P
       }
     }
   }
+  // ================== GAME DATA OPERATIONS ==================
+
+async getGameData(gameId: string): Promise<GameData | null> {
+  try {
+    const gameSnapshot = await get(ref(database, `games/${gameId}`));
+    return gameSnapshot.exists() ? gameSnapshot.val() as GameData : null;
+  } catch (error) {
+    console.error('Error fetching game data:', error);
+    return null;
+  }
+}
+
+async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void> {
+  try {
+    const cleanUpdates = removeUndefinedValues(updates);
+    await update(ref(database, `games/${gameId}/gameState`), cleanUpdates);
+
+    // ✅ FIXED: Only trigger cleanup when game ACTUALLY starts (not countdown)
+    const isGameActuallyStarting = updates.isActive === true && updates.isCountdown !== true;
+    
+    if (isGameActuallyStarting) {
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) {
+        console.warn(`⚠️ Could not load game data for cleanup: ${gameId}`);
+        return;
+      }
+
+      const isNewGame = (gameData.gameState.calledNumbers?.length || 0) === 0;
+      
+      if (isNewGame) {
+        console.log(`🎮 New game ${gameId} actually started - scheduling cleanup for host: ${gameData.hostId}`);
+        
+        // ✅ FIXED: Delay cleanup to ensure game is fully initialized
+        setTimeout(async () => {
+          try {
+            await this.cleanupOldCompletedGames(gameData.hostId, gameId);
+          } catch (error: any) {
+            console.error(`❌ Background cleanup failed for host ${gameData.hostId}:`, error);
+            // Don't throw - this is background cleanup
+          }
+        }, 3000); // Wait 3 seconds after game starts
+      }
+    }
+
+    console.log(`✅ Game state updated: ${gameId}`);
+  } catch (error: any) {
+    console.error('❌ Error updating game state:', error);
+    throw new Error(error.message || 'Failed to update game state');
+  }
+}
   private async getAllGamesByHost(hostId: string): Promise<GameData[]> {
   try {
     console.log(`🔍 Fetching all games for host: ${hostId}`);
@@ -255,6 +305,7 @@ private async cleanupOldCompletedGames(hostId: string, currentGameId: string): P
       orderByChild('hostId'),
       equalTo(hostId)
     );
+    
     
     const gamesSnapshot = await get(gamesQuery);
     
@@ -272,6 +323,22 @@ private async cleanupOldCompletedGames(hostId: string, currentGameId: string): P
     return [];
   }
 }
+  private async deleteGame(gameId: string): Promise<void> {
+  try {
+    // Check if game exists before attempting delete
+    const gameSnapshot = await get(ref(database, `games/${gameId}`));
+    if (!gameSnapshot.exists()) {
+      console.log(`ℹ️ Game ${gameId} already deleted or doesn't exist`);
+      return;
+    }
+
+    await remove(ref(database, `games/${gameId}`));
+    console.log(`✅ Game ${gameId} deleted successfully`);
+  } catch (error: any) {
+    console.error(`❌ Error deleting game ${gameId}:`, error);    throw new Error(`Failed to delete game ${gameId}: ${error.message}`);
+  }
+}
+  
 
   // ================== AUTHENTICATION ==================
 
@@ -505,25 +572,7 @@ private async cleanupOldCompletedGames(hostId: string, currentGameId: string): P
     }
   }
 
-  // ================== GAME DATA OPERATIONS ==================
 
-  async getGameData(gameId: string): Promise<GameData | null> {
-    try {
-      const gameSnapshot = await get(ref(database, `games/${gameId}`));
-      return gameSnapshot.exists() ? gameSnapshot.val() as GameData : null;
-    } catch (error) {
-      console.error('Error fetching game data:', error);
-      return null;
-    }
-  }
-
-  async updateGameState(gameId: string, gameState: Partial<GameState>): Promise<void> {
-    try {
-      await update(ref(database, `games/${gameId}/gameState`), gameState);
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to update game state');
-    }
-  }
 
   // ================== REAL-TIME SUBSCRIPTIONS ==================
 
