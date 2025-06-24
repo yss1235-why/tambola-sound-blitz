@@ -1,4 +1,4 @@
-// src/services/firebase.ts - FIXED: Main Firebase Service Coordinator with consistent hostSettings usage
+// src/services/firebase.ts - COMPLETE: Main Firebase Service with Option A Support
 
 // ✅ Import from firebase-core (both types and instance)
 import { database, auth, firebaseCore } from './firebase-core';
@@ -28,7 +28,7 @@ export { removeUndefinedValues } from './firebase-core';
  * - Core operations (users, hosts, settings) → firebaseCore
  * - Game operations (games, tickets, prizes) → firebaseGame
  * 
- * ✅ FIXED: All hostSettings references now use consistent path
+ * ✅ ENHANCED: Now includes Option A methods for simplified HostControlsProvider
  */
 class FirebaseService {
   private core = firebaseCore;
@@ -94,28 +94,17 @@ class FirebaseService {
     return this.core.extendHostSubscription(hostId, additionalMonths);
   }
 
-  async toggleHostStatus(hostId: string, isActive: boolean) {
-    return this.core.toggleHostStatus(hostId, isActive);
-  }
-
-  async changeHostPassword(hostId: string, newPassword: string) {
-    return this.core.changeHostPassword(hostId, newPassword);
-  }
-
-  // ========== HOST SETTINGS - FIXED: All delegate to core with consistent hostSettings path ==========
+  // ========== HOST SETTINGS (delegate to core) ==========
   async saveHostSettings(hostId: string, settings: any) {
-    console.log(`🔄 FirebaseService: Delegating saveHostSettings to core for host: ${hostId}`);
     return this.core.saveHostSettings(hostId, settings);
   }
 
   async getHostSettings(hostId: string) {
-    console.log(`🔄 FirebaseService: Delegating getHostSettings to core for host: ${hostId}`);
     return this.core.getHostSettings(hostId);
   }
 
-  async updateHostTemplate(hostId: string, template: any) {
-    console.log(`🔄 FirebaseService: Delegating updateHostTemplate to core for host: ${hostId}`);
-    return this.core.updateHostTemplate(hostId, template);
+  async updateHostTemplate(hostId: string, templateSettings: any) {
+    return this.core.updateHostTemplate(hostId, templateSettings);
   }
 
   // ========== GAME OPERATIONS (delegate to game) ==========
@@ -123,21 +112,8 @@ class FirebaseService {
     return this.game.createGame(config, hostId, ticketSetId, selectedPrizes);
   }
 
-  async updateGameData(gameId: string, updates: any) {
-    return this.game.updateGameData?.(gameId, updates);
-  }
-
   async deleteGame(gameId: string) {
     return this.game.deleteGame(gameId);
-  }
-
-  async updateLiveGameSettings(gameId: string, updates: any) {
-    return this.game.updateLiveGameSettings(gameId, updates);
-  }
-
-  async updateGameAndHostSettings(gameId: string, gameUpdates: any, hostId: string, hostUpdates: any) {
-    // This method can be removed or updated based on your needs
-    return this.game.updateGameAndTemplate?.(gameId, hostId, { ...gameUpdates, ...hostUpdates });
   }
 
   async getHostCurrentGame(hostId: string) {
@@ -148,23 +124,19 @@ class FirebaseService {
     return this.game.getAllActiveGames();
   }
 
+  async updateLiveGameSettings(gameId: string, updates: any) {
+    return this.game.updateLiveGameSettings(gameId, updates);
+  }
+
   async updateGameAndTemplate(gameId: string, hostId: string, settings: any) {
     return this.game.updateGameAndTemplate(gameId, hostId, settings);
-  }
-
-  // ========== TICKET OPERATIONS (delegate to game) ==========
-  async loadTicketsFromSet(ticketSetId: string, maxTickets: number) {
-    return this.game.loadTicketsFromSet(ticketSetId, maxTickets);
-  }
-
-  async expandTickets(gameId: string, newMaxTickets: number, ticketSetId: string) {
-    return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);
   }
 
   async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string) {
     return this.game.expandGameTickets(gameId, newMaxTickets, ticketSetId);
   }
 
+  // ========== TICKET OPERATIONS (delegate to game) ==========
   async bookTicket(ticketId: string, playerName: string, playerPhone: string, gameId: string) {
     return this.game.bookTicket(ticketId, playerName, playerPhone, gameId);
   }
@@ -190,10 +162,60 @@ class FirebaseService {
     return this.game.endGame(gameId);
   }
 
-  async callNextNumber(gameId: string) {
-    return this.game.callNextNumber(gameId);
+  // ========== OPTION A: NEW METHODS FOR SIMPLIFIED HOSTCONTROLSPROVIDER ==========
+
+  /**
+   * 🎯 NEW: Main method for HostControlsProvider timer
+   * Complete number calling with simple boolean response
+   * 
+   * @param gameId - Game to call number for
+   * @returns boolean - true if game should continue, false if game should stop
+   */
+  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
+    return this.game.callNextNumberAndContinue(gameId);
   }
 
+  /**
+   * 🎯 NEW: Start game with countdown setup
+   * Sets up countdown state in database
+   */
+  async startGameWithCountdown(gameId: string): Promise<void> {
+    return this.game.startGameWithCountdown(gameId);
+  }
+
+  /**
+   * 🎯 NEW: Activate game after countdown completes
+   * Transitions from countdown to active state
+   */
+  async activateGameAfterCountdown(gameId: string): Promise<void> {
+    return this.game.activateGameAfterCountdown(gameId);
+  }
+
+  // ========== LEGACY NUMBER CALLING METHODS ==========
+
+  /**
+   * @deprecated Use callNextNumberAndContinue instead for Option A
+   * Kept for backward compatibility
+   */
+  async callNextNumber(gameId: string) {
+    // For backward compatibility, convert new method response to old format
+    try {
+      const shouldContinue = await this.game.callNextNumberAndContinue(gameId);
+      return { 
+        success: shouldContinue, 
+        gameEnded: !shouldContinue 
+      };
+    } catch (error) {
+      return { 
+        success: false, 
+        gameEnded: true 
+      };
+    }
+  }
+
+  /**
+   * @deprecated Use callNextNumberAndContinue instead
+   */
   async processNumberCall(gameId: string, number: number) {
     return this.game.processNumberCall(gameId, number);
   }
@@ -202,7 +224,7 @@ class FirebaseService {
     return this.game.announceWinners(gameId, winners);
   }
 
-  // ========== SUBSCRIPTION METHODS (delegate to appropriate service) ==========
+  // ========== SUBSCRIPTION METHODS (delegate to core) ==========
   subscribeToGame(gameId: string, callback: (gameData: any) => void) {
     return this.core.subscribeToGame(gameId, callback);
   }
@@ -222,6 +244,38 @@ class FirebaseService {
 
   generatePrizes(selectedPrizes: string[]) {
     return this.game.generatePrizes(selectedPrizes);
+  }
+
+  // ========== CONVENIENCE METHODS FOR BACKWARDS COMPATIBILITY ==========
+  
+  /**
+   * Legacy method for updating game state
+   * Delegates to core service
+   */
+  async updateGameState(gameId: string, gameState: any) {
+    return this.core.updateGameState(gameId, gameState);
+  }
+
+  /**
+   * Legacy method - kept for compatibility
+   * @deprecated Use callNextNumberAndContinue for new implementations
+   */
+  async callNumberWithPrizeValidation(gameId: string, number: number) {
+    // Legacy support - converts new method to old interface
+    try {
+      const shouldContinue = await this.game.callNextNumberAndContinue(gameId);
+      return {
+        success: true,
+        gameEnded: !shouldContinue,
+        number: number // Note: actual number is selected by firebase-game
+      };
+    } catch (error) {
+      return {
+        success: false,
+        gameEnded: true,
+        error: error.message
+      };
+    }
   }
 }
 
