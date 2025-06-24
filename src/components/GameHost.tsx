@@ -108,7 +108,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     pattern: '',
     description: '',
     order: 8,
-    difficulty: 'medium'
+    difficulty: ''
   },
   {
     id: 'bottomLine',
@@ -116,7 +116,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     pattern: '',
     description: '',
     order: 7,
-    difficulty: 'medium'
+    difficulty: ''
   },
   {
     id: 'corners',
@@ -124,7 +124,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     pattern: '',
     description: '',
     order: 6,
-    difficulty: 'easy'
+    difficulty: ''
   },
   {
     id: 'starCorner',
@@ -132,7 +132,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     pattern: '',
     description: '',
     order: 5,
-    difficulty: 'hard'
+    difficulty: ''
   },
   {
     id: 'halfSheet',
@@ -140,7 +140,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     pattern: '',
     description: '',
     order: 4,
-    difficulty: 'medium'
+    difficulty: ''
   },
   {
     id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
@@ -148,7 +148,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     pattern: '',
     description: '',
     order: 3,
-    difficulty: 'hard'
+    difficulty: ''
   },
   {
     id: 'fullHouse',
@@ -906,9 +906,6 @@ const CreateGameForm = ({
           placeholder="Enter your WhatsApp number"
           disabled={isCreating || operationInProgress}
         />
-        <p className="text-sm text-gray-600 mt-1">
-          Players will use this number to contact you
-        </p>
       </div>
 
       {/* Max Tickets */}
@@ -927,9 +924,6 @@ const CreateGameForm = ({
           placeholder="Enter maximum tickets (1-600)"
           disabled={isCreating || operationInProgress}
         />
-        <p className="text-sm text-gray-600 mt-1">
-          Total tickets available for booking
-        </p>
       </div>
 
       {/* Ticket Set Selection */}
@@ -1056,10 +1050,10 @@ const CreateGameForm = ({
       {createGameForm.selectedPrizes.includes('halfSheet') && (
         <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
           <p className="text-sm text-purple-800 font-medium">
-            🎯 Half Sheet Prize Enabled
+           
           </p>
           <p className="text-xs text-purple-600 mt-1">
-            Players who book exactly 3 consecutive tickets from the same traditional set (positions 1,2,3 or 4,5,6) can win when each ticket has ≥2 marked numbers.
+           
           </p>
         </div>
       )}
