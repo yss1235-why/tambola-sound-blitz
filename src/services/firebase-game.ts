@@ -1034,6 +1034,11 @@ class FirebaseGameService {
           pattern: '4 corner numbers', 
           description: 'Mark all 4 corner positions'
         },
+         StarCorners: {
+          name: 'Star Corners',
+          pattern: '4 corner numbers and 1 middle', 
+          description: 'Mark all 5 number'
+        },
         halfSheet: {
           name: 'Half Sheet',
           pattern: '3 consecutive tickets from same set',
