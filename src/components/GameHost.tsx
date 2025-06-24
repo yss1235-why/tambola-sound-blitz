@@ -131,7 +131,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     name: 'Top Line',
     pattern: '',
     description: '',
-    order: 9,
+    order: 7,
     difficulty: ''
   },
   {
@@ -147,7 +147,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     name: 'Bottom Line',
     pattern: '',
     description: '',
-    order: 7,
+    order: 9,
     difficulty: ''
   },
  
