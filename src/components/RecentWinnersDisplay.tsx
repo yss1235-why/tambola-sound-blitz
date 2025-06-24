@@ -35,7 +35,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
     if (gameData && gameData.gameState.gameOver) {
       setExpandedWinners(new Set()); // Start collapsed
     }
-  }, [gameData]);
+  },  [gameData?.gameState.gameOver]);
   
   // Toggle winner ticket display
   const toggleWinnerTicket = (winnerId: string) => {
