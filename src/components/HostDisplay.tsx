@@ -331,9 +331,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                   {callInterval}s
                 </span>
               </div>
-              <p className="text-xs text-gray-500">
-                Time between automatic number calls (system controlled)
-              </p>
+             
             </div>
           )}
 
