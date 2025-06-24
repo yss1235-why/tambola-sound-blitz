@@ -476,28 +476,108 @@ class FirebaseCoreService {
 
     return () => off(gamesRef, 'value', unsubscribe);
   }
-
-  subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
-    const gamesRef = ref(database, 'games');
-    
-    const unsubscribe = onValue(gamesRef, (snapshot) => {
+subscribeToAllActiveGames(callback: (games: GameData[]) => void): () => void {
+  console.log('🔄 Setting up enhanced active games subscription (includes winner display)');
+  const gamesRef = ref(database, 'games');
+  
+  const unsubscribe = onValue(gamesRef, (snapshot) => {
+    try {
       if (snapshot.exists()) {
         const allGames = Object.values(snapshot.val()) as GameData[];
-        const activeGames = allGames.filter(game => 
-          game.gameState && 
-          (game.gameState.isActive || game.gameState.isCountdown || !game.gameState.gameOver)
-        );
-        callback(activeGames);
+        console.log(`📊 Found ${allGames.length} total games in database`);
+        
+        // ✅ STEP 1: Filter valid games first
+        const validGames = allGames.filter(game => {
+          const isValid = game.hostId && game.gameId && game.gameState;
+          if (!isValid) {
+            console.warn(`⚠️ Invalid game structure: ${game.gameId || 'unknown'}`);
+          }
+          return isValid;
+        });
+
+        console.log(`✅ ${validGames.length} valid games after filtering`);
+
+        // ✅ STEP 2: Group games by host ID
+        const gamesByHost = new Map<string, GameData[]>();
+        validGames.forEach(game => {
+          if (!gamesByHost.has(game.hostId)) {
+            gamesByHost.set(game.hostId, []);
+          }
+          gamesByHost.get(game.hostId)!.push(game);
+        });
+
+        console.log(`👥 Processing games for ${gamesByHost.size} different hosts`);
+
+        const publicGames: GameData[] = [];
+        
+        // ✅ STEP 3: Smart game selection per host (THE KEY LOGIC!)
+        gamesByHost.forEach((hostGames, hostId) => {
+          console.log(`🎮 Processing ${hostGames.length} games for host: ${hostId}`);
+          
+          // Priority 1: Find active game (not finished)
+          const activeGame = hostGames.find(game => !game.gameState.gameOver);
+          
+          if (activeGame) {
+            console.log(`✅ Active game found: ${activeGame.gameId} for host: ${hostId}`);
+            publicGames.push(activeGame);
+            return; // Skip to next host
+          }
+          
+          // Priority 2: Find most recent completed game (FOR WINNER DISPLAY!)
+          const completedGames = hostGames
+            .filter(game => game.gameState.gameOver && game.createdAt)
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          
+          if (completedGames.length > 0) {
+            const recentCompleted = completedGames[0];
+            console.log(`🏆 Recent completed game found: ${recentCompleted.gameId} for host: ${hostId} (for winner display)`);
+            publicGames.push(recentCompleted);
+          } else {
+            console.log(`ℹ️ No games (active or completed) for host: ${hostId}`);
+          }
+        });
+
+        // ✅ STEP 4: Sort final games list
+        const sortedGames = publicGames.sort((a, b) => {
+          // Active games always come first
+          if (!a.gameState.gameOver && b.gameState.gameOver) return -1;
+          if (a.gameState.gameOver && !b.gameState.gameOver) return 1;
+          
+          // Within same category, sort by creation date (newest first)
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+        
+        const activeCount = sortedGames.filter(g => !g.gameState.gameOver).length;
+        const completedCount = sortedGames.filter(g => g.gameState.gameOver).length;
+        
+        console.log(`📡 Final subscription result: ${sortedGames.length} games (${activeCount} active, ${completedCount} completed)`);
+        console.log(`🎯 Games available for users:`, sortedGames.map(g => ({
+          gameId: g.gameId,
+          hostId: g.hostId,
+          gameOver: g.gameState.gameOver,
+          isActive: g.gameState.isActive
+        })));
+        
+        callback(sortedGames);
       } else {
+        console.log('📭 No games found in database');
         callback([]);
       }
-    }, (error) => {
-      console.error('All games subscription error:', error);
+    } catch (error) {
+      console.error('❌ Error in enhanced games subscription:', error);
       callback([]);
-    });
+    }
+  }, (error) => {
+    console.error('❌ Firebase subscription error:', error);
+    callback([]);
+  });
 
-    return () => off(gamesRef, 'value', unsubscribe);
-  }
+  return () => {
+    console.log('🧹 Cleaning up enhanced games subscription');
+    off(gamesRef, 'value', unsubscribe);
+  };
+}
+  
 }
 
 // ================== SINGLETON EXPORT ==================
