@@ -209,7 +209,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
         <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-gray-600">Game not found</p>
+              <p className="text-white-600">Game not found</p>
               <Button onClick={handleBackToList} className="mt-4">
                 Back to Games
               </Button>
