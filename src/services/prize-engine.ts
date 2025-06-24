@@ -147,14 +147,6 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 4.5
     },
-    twoLines: {
-      id: 'twoLines',
-      name: 'Two Lines',
-      pattern: 'Complete any two rows',
-      description: 'Complete any two rows of your ticket',
-      won: false,
-      order: 5
-    },
     starCorner: {
       id: 'starCorner',
       name: 'Star Corner',
