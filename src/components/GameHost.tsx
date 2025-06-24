@@ -90,9 +90,9 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     id: 'earlyFive',
     name: 'Early Five',
     pattern: 'First 5 numbers',
-    description: 'First to mark any 5 numbers on the ticket',
-    order: 1,
-    difficulty: 'easy'
+    description: '',
+    order: 10,
+    difficulty: ''
   },
     {
     id: 'topLine',
