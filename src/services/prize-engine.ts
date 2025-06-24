@@ -91,21 +91,21 @@ export const getStarCorners = (ticket: TambolaTicket): number[] => {
  */
 export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: string]: Prize } => {
   const availablePrizes = {
-    earlyFive: {
-      id: 'earlyFive',
-      name: 'Early Five',
-      pattern: 'Any 5 numbers',
-      description: 'Mark any 5 numbers on your ticket',
+    fullHouse: {
+      id: 'fullHouse',
+      name: 'Full House',
+      pattern: 'All numbers',
+      description: 'Mark all numbers on the ticket',
       won: false,
-      order: 1.5
+      order: 1
     },
-    corners: {
-      id: 'corners',
-      name: 'Corners',
-      pattern: '4 corner numbers',
-      description: 'Mark all 4 corner numbers',
+     fullSheet: {
+      id: 'fullSheet',
+      name: 'Full Sheet',
+      pattern: 'Complete 6-ticket set',
+      description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)',
       won: false,
-      order: 2
+      order: 3
     },
     halfSheet: {
       id: 'halfSheet',
@@ -113,15 +113,24 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       pattern: '3 consecutive tickets from same set',
       description: 'Complete half of a traditional 6-ticket sheet (positions 1,2,3 or 4,5,6)',
       won: false,
-      order: 2.5
+      order: 4
     },
-    fullSheet: {
-      id: 'fullSheet',
-      name: 'Full Sheet',
-      pattern: 'Complete 6-ticket set',
-      description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)',
+      starCorner: {
+      id: 'starCorner',
+      name: 'Star Corner',
+      pattern: '4 corners + center',
+      description: 'Mark all 4 corner positions plus center position',
       won: false,
-      order: 2.8
+      order: 5
+    },
+   
+    corners: {
+      id: 'corners',
+      name: 'Corners',
+      pattern: '4 corner numbers',
+      description: 'Mark all 4 corner numbers',
+      won: false,
+      order: 6
     },
     topLine: {
       id: 'topLine',
@@ -129,7 +138,7 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       pattern: 'Complete top row',
       description: 'Complete the top row of any ticket',
       won: false,
-      order: 3.5
+      order: 7
     },
     middleLine: {
       id: 'middleLine',
@@ -137,7 +146,7 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       pattern: 'Complete middle row',
       description: 'Complete the middle row of any ticket',
       won: false,
-      order: 4
+      order: 8
     },
     bottomLine: {
       id: 'bottomLine',
@@ -145,24 +154,18 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       pattern: 'Complete bottom row',
       description: 'Complete the bottom row of any ticket',
       won: false,
-      order: 4.5
+      order: 9
     },
-    starCorner: {
-      id: 'starCorner',
-      name: 'Star Corner',
-      pattern: '4 corners + center',
-      description: 'Mark all 4 corner positions plus center position',
+  
+   earlyFive: {
+      id: 'earlyFive',
+      name: 'Early Five',
+      pattern: 'Any 5 numbers',
+      description: 'Mark any 5 numbers on your ticket',
       won: false,
-      order: 5.5
-    },
-    fullHouse: {
-      id: 'fullHouse',
-      name: 'Full House',
-      pattern: 'All numbers',
-      description: 'Mark all numbers on the ticket',
-      won: false,
-      order: 7
+      order: 10
     }
+    
   };
 
   const prizes: { [prizeId: string]: Prize } = {};
