@@ -89,7 +89,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
   {
     id: 'earlyFive',
     name: 'Early Five',
-    pattern: 'First 5 numbers',
+    pattern: '',
     description: '',
     order: 10,
     difficulty: ''
@@ -97,66 +97,66 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     {
     id: 'topLine',
     name: 'Top Line',
-    pattern: 'Complete top row',
-    description: 'Complete the top row of any ticket',
-    order: 3,
-    difficulty: 'medium'
+    pattern: '',
+    description: '',
+    order: 9,
+    difficulty: ''
   },
   {
     id: 'middleLine',
     name: 'Middle Line',
-    pattern: 'Complete middle row',
-    description: 'Complete the middle row of any ticket',
-    order: 4,
+    pattern: '',
+    description: '',
+    order: 8,
     difficulty: 'medium'
   },
   {
     id: 'bottomLine',
     name: 'Bottom Line',
-    pattern: 'Complete bottom row',
-    description: 'Complete the bottom row of any ticket',
-    order: 5,
+    pattern: '',
+    description: '',
+    order: 7,
     difficulty: 'medium'
   },
   {
     id: 'corners',
     name: 'Four Corners',
-    pattern: '4 corners',
-    description: 'Mark all 4 corner positions',
-    order: 2,
+    pattern: '',
+    description: '',
+    order: 6,
     difficulty: 'easy'
   },
   {
     id: 'starCorner',
     name: 'Star Corner',
-    pattern: '4 corners + center',
-    description: 'Mark all 4 corner positions plus center position',
-    order: 6,
+    pattern: '',
+    description: '',
+    order: 5,
     difficulty: 'hard'
   },
   {
     id: 'halfSheet',
     name: 'Half Sheet',
-    pattern: '3 consecutive tickets from same set',
-    description: 'Complete half of a traditional 6-ticket sheet',
-    order: 2.5,
+    pattern: '',
+    description: '',
+    order: 4,
     difficulty: 'medium'
   },
   {
     id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
     name: 'Full Sheet',
-    pattern: 'Complete 6-ticket set',
-    description: 'Complete entire traditional 6-ticket sheet (positions 1,2,3,4,5,6)',
-    order: 2.8,
+    pattern: '',
+    description: '',
+    order: 3,
     difficulty: 'hard'
   },
   {
     id: 'fullHouse',
     name: 'Full House',
-    pattern: 'All numbers',
-    description: 'Mark all numbers on the ticket',
-    order: 7,
-    difficulty: 'expert'
+    pattern: '',
+    description: '',
+    order: 1,
+    difficulty: ''
   }
 ];
 
