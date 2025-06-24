@@ -305,31 +305,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
             <p className="text-gray-600 text-lg mt-2">
               Join the excitement! Book your tickets and play live Tambola games.
             </p>
-            <div className="flex justify-center items-center space-x-4 mt-4 text-sm">
-              {/* ✅ UPDATED: Performance indicators */}
-              <Badge variant="default" className="flex items-center bg-green-600">
-                {gameDataSource.source === 'preloaded' ? (
-                  <>
-                   
-                  </>
-                ) : (
-                  <>
-                    <Activity className="w-3 h-3 mr-1" />
-                    Live View
-                  </>
-                )}
-              </Badge>
-              <Badge variant="outline" className="flex items-center border-blue-400 text-blue-600">
-                <Clock className="w-3 h-3 mr-1" />
-                Auto-refresh
-              </Badge>
-              {gameDataSource.loading && (
-                <Badge variant="outline" className="flex items-center border-orange-400 text-orange-600">
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                  Updating
-                </Badge>
-              )}
-            </div>
+           
           </CardHeader>
         </Card>
 
