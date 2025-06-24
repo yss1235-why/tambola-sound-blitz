@@ -95,7 +95,9 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {Object.values(gameData.prizes).map((prize) => {
+            {Object.values(gameData.prizes)
+              .sort((a, b) => (a.order || 0) - (b.order || 0))
+              .map((prize) => {
               const displayInfo = getPrizeDisplayInfo(prize);
               
               return (
