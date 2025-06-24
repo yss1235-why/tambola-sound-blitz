@@ -355,9 +355,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
           <CardTitle>
             Tickets Grid - 6 Column Mobile Layout ({ticketInfo.length} tickets)
           </CardTitle>
-          <p className="text-sm text-gray-600">
-            ✅ Optimized for mobile with consistent 3-digit number spacing
-          </p>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
