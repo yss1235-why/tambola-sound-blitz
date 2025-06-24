@@ -337,15 +337,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </div>
           )}
 
-          {/* Status Messages */}
-          {currentPhase === 'booking' && bookedCount === 0 && (
-            <Alert>
-              <Users className="h-4 w-4" />
-              <AlertDescription>
-                Waiting for players to book tickets. Share your contact number: {gameData.hostPhone}
-              </AlertDescription>
-            </Alert>
-          )}
+         
 
           {currentPhase === 'playing' && gameData.gameState.isActive && (
             <Alert>
