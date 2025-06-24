@@ -247,14 +247,6 @@ class FirebaseService {
   }
 
   // ========== CONVENIENCE METHODS FOR BACKWARDS COMPATIBILITY ==========
-  
-  /**
-   * Legacy method for updating game state
-   * Delegates to core service
-   */
-  async updateGameState(gameId: string, gameState: any) {
-    return this.core.updateGameState(gameId, gameState);
-  }
 
   /**
    * Legacy method - kept for compatibility
