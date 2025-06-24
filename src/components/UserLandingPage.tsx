@@ -422,7 +422,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                         {game.hostPhone && (
                           <div className="flex items-center">
                             <Phone className="w-4 h-4 mr-2 text-green-600" />
-                            <span className="text-sm text-gray-600">+{game.hostPhone}</span>
+                            <span className="text-sm text-gray-600">{game.hostPhone}</span>
                           </div>
                         )}
                       </div>
