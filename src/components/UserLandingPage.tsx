@@ -310,8 +310,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               <Badge variant="default" className="flex items-center bg-green-600">
                 {gameDataSource.source === 'preloaded' ? (
                   <>
-                    <Zap className="w-3 h-3 mr-1" />
-                    Fast Load
+                   
                   </>
                 ) : (
                   <>
