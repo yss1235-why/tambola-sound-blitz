@@ -975,52 +975,57 @@ const CreateGameForm = ({
         </div>
       </div>
 
-      {/* Prize Selection */}
+     {/* Prize Selection */}
       <div>
         <Label className="flex items-center mb-3">
           <Crown className="w-4 h-4 mr-2" />
           Select Prizes
         </Label>
         <div className="grid grid-cols-1 gap-3">
-          {AVAILABLE_PRIZES.map(prize => (
-            <div key={prize.id} className="flex items-start space-x-3">
-              <Checkbox
-                id={prize.id}
-                checked={createGameForm.selectedPrizes.includes(prize.id)}
-                onCheckedChange={(checked) => {
-                  if (isCreating || operationInProgress) return;
-                  
-                  setCreateGameForm(prev => ({
-                    ...prev,
-                    selectedPrizes: checked
-                      ? [...prev.selectedPrizes, prize.id]
-                      : prev.selectedPrizes.filter(id => id !== prize.id)
-                  }));
-                }}
-                disabled={isCreating || operationInProgress}
-              />
-              <div className="flex-1">
-                <Label htmlFor={prize.id} className="flex items-center">
-                  {prize.name}
-                  <Badge
-                    variant="outline"
-                    className={`ml-2 text-xs ${
-                      prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
-                      prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                      prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                      'text-red-600 border-red-300'
-                    }`}
-                  >
-                    {prize.difficulty}
-                  </Badge>
-                  {/* ✅ MINIMAL CHANGE: Updated condition for Traditional badge */}
-                  {(prize.id === 'halfSheet' || prize.id === 'fullSheet')}
-                </Label>
-                <p className="text-sm text-gray-600">{prize.pattern}</p>
-                <p className="text-xs text-gray-500">{prize.description}</p>
+          {AVAILABLE_PRIZES
+            .sort((a, b) => a.order - b.order)
+            .map(prize => (
+              <div key={prize.id} className="flex items-start space-x-3">
+                <Checkbox
+                  id={prize.id}
+                  checked={createGameForm.selectedPrizes.includes(prize.id)}
+                  onCheckedChange={(checked) => {
+                    if (isCreating || operationInProgress) return;
+                    
+                    setCreateGameForm(prev => ({
+                      ...prev,
+                      selectedPrizes: checked
+                        ? [...prev.selectedPrizes, prize.id]
+                        : prev.selectedPrizes.filter(id => id !== prize.id)
+                    }));
+                  }}
+                  disabled={isCreating || operationInProgress}
+                />
+                <div className="flex-1">
+                  <Label htmlFor={prize.id} className="flex items-center">
+                    {prize.name}
+                    <Badge
+                      variant="outline"
+                      className={`ml-2 text-xs ${
+                        prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
+                        prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
+                        prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
+                        'text-red-600 border-red-300'
+                      }`}
+                    >
+                      {prize.difficulty}
+                    </Badge>
+                    {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
+                      <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                        Traditional
+                      </Badge>
+                    )}
+                  </Label>
+                  <p className="text-sm text-gray-600">{prize.pattern}</p>
+                  <p className="text-xs text-gray-500">{prize.description}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
       
@@ -1171,53 +1176,54 @@ const EditGameForm = ({
           Update Prizes
         </Label>
         <div className="grid grid-cols-1 gap-3">
-          {AVAILABLE_PRIZES.map(prize => (
-            <div key={prize.id} className="flex items-start space-x-3">
-              <Checkbox
-                id={`edit-${prize.id}`}
-                checked={createGameForm.selectedPrizes.includes(prize.id)}
-                onCheckedChange={(checked) => {
-                  if (isCreating || operationInProgress) return;
-                  
-                  setCreateGameForm(prev => ({
-                    ...prev,
-                    selectedPrizes: checked
-                      ? [...prev.selectedPrizes, prize.id]
-                      : prev.selectedPrizes.filter(id => id !== prize.id)
-                  }));
-                }}
-                disabled={isCreating || operationInProgress}
-              />
-              <div className="flex-1">
-                <Label htmlFor={`edit-${prize.id}`} className="flex items-center">
-                  {prize.name}
-                  <Badge
-                    variant="outline"
-                    className={`ml-2 text-xs ${
-                      prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
-                      prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                      prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                      'text-red-600 border-red-300'
-                    }`}
-                  >
-                    {prize.difficulty}
-                  </Badge>
-                  {/* ✅ MINIMAL CHANGE: Updated condition for Traditional badge */}
-                  {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
-                    <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
-                      Traditional
+          {AVAILABLE_PRIZES
+            .sort((a, b) => a.order - b.order)
+            .map(prize => (
+              <div key={prize.id} className="flex items-start space-x-3">
+                <Checkbox
+                  id={`edit-${prize.id}`}
+                  checked={createGameForm.selectedPrizes.includes(prize.id)}
+                  onCheckedChange={(checked) => {
+                    if (isCreating || operationInProgress) return;
+                    
+                    setCreateGameForm(prev => ({
+                      ...prev,
+                      selectedPrizes: checked
+                        ? [...prev.selectedPrizes, prize.id]
+                        : prev.selectedPrizes.filter(id => id !== prize.id)
+                    }));
+                  }}
+                  disabled={isCreating || operationInProgress}
+                />
+                <div className="flex-1">
+                  <Label htmlFor={`edit-${prize.id}`} className="flex items-center">
+                    {prize.name}
+                    <Badge
+                      variant="outline"
+                      className={`ml-2 text-xs ${
+                        prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
+                        prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
+                        prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
+                        'text-red-600 border-red-300'
+                      }`}
+                    >
+                      {prize.difficulty}
                     </Badge>
-                  )}
-                  {gameData.prizes[prize.id]?.won && (
-                    <Badge variant="default" className="ml-2 text-xs bg-green-600">
-                      Won
-                    </Badge>
-                  )}
-                </Label>
-                <p className="text-sm text-gray-600">{prize.pattern}</p>
+                    {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
+                      <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                        Traditional
+                      </Badge>
+                    )}
+                    {gameData.prizes[prize.id]?.won && (
+                      <Badge variant="default" className="ml-2 text-xs bg-green-600">
+                        Won
+                      </Badge>
+                    )}
+                  </Label>
+                  <p className="text-sm text-gray-600">{prize.pattern}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
         </div>
       </div>
       
