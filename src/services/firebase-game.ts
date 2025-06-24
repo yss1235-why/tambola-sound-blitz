@@ -452,3 +452,4 @@ export class FirebaseGameService {
 
 // Export singleton instance
 export const firebaseGameService = new FirebaseGameService();
+export const firebaseGame = new FirebaseGameService();
