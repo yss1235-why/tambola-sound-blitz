@@ -215,28 +215,45 @@ const validateHalfSheetTraditional = (
     for (const [setId, setTickets] of Object.entries(sets)) {
       const setIdNum = parseInt(setId);
       
-      // Check if player has exactly 3 tickets
-      if (setTickets.length === 3) {
-        const positions = setTickets.map(t => t.positionInSet).sort();
+      // ✅ Check FIRST HALF [1,2,3] independently
+      const firstHalfTickets = setTickets.filter(t => [1, 2, 3].includes(t.positionInSet));
+      if (firstHalfTickets.length === 3) {
+        // Verify each ticket has 2+ marked numbers
+        const allHave2Plus = firstHalfTickets.every(t => {
+          const allNumbers = t.metadata?.allNumbers || t.rows.flat().filter(n => n > 0);
+          const markedCount = allNumbers.filter(num => calledNumbers.includes(num)).length;
+          return markedCount >= 2;
+        });
         
-        // Check for consecutive positions [1,2,3] OR [4,5,6]
-        const isFirstHalf = JSON.stringify(positions) === JSON.stringify([1, 2, 3]);
-        const isSecondHalf = JSON.stringify(positions) === JSON.stringify([4, 5, 6]);
+        if (allHave2Plus) {
+          // Create unique key for multiple wins per player
+          const winnerKey = `${playerName}_Set${setId}_First`;
+          winners[winnerKey] = {
+            ticketIds: firstHalfTickets.map(t => t.ticketId),
+            setId: setIdNum,
+            positions: [1, 2, 3]
+          };
+        }
+      }
+      
+      // ✅ Check SECOND HALF [4,5,6] independently
+      const secondHalfTickets = setTickets.filter(t => [4, 5, 6].includes(t.positionInSet));
+      if (secondHalfTickets.length === 3) {
+        // Verify each ticket has 2+ marked numbers
+        const allHave2Plus = secondHalfTickets.every(t => {
+          const allNumbers = t.metadata?.allNumbers || t.rows.flat().filter(n => n > 0);
+          const markedCount = allNumbers.filter(num => calledNumbers.includes(num)).length;
+          return markedCount >= 2;
+        });
         
-        if (isFirstHalf || isSecondHalf) {
-          // Verify each ticket has 2+ marked numbers
-          const allHave2Plus = setTickets.every(t => {
-            const markedCount = t.metadata?.allNumbers.filter(num => calledNumbers.includes(num)).length || 0;
-            return markedCount  >= 2;
-          });
-          
-          if (allHave2Plus) {
-            winners[playerName] = {
-              ticketIds: setTickets.map(t => t.ticketId),
-              setId: setIdNum,
-              positions
-            };
-          }
+        if (allHave2Plus) {
+          // Create unique key for multiple wins per player
+          const winnerKey = `${playerName}_Set${setId}_Second`;
+          winners[winnerKey] = {
+            ticketIds: secondHalfTickets.map(t => t.ticketId),
+            setId: setIdNum,
+            positions: [4, 5, 6]
+          };
         }
       }
     }
@@ -330,10 +347,14 @@ export const validateTicketsForPrizes = async (
     // ✅ FIXED: Handle special prize validation
     if (prizeId === 'halfSheet') {
       const halfSheetWinners = validateHalfSheetTraditional(tickets, calledNumbers);
-      for (const [playerName, winData] of Object.entries(halfSheetWinners)) {
+      for (const [winnerKey, winData] of Object.entries(halfSheetWinners)) {
+        // Extract player name from winner key (format: "PlayerName_Set1_First")
+        const playerName = winnerKey.split('_')[0];
+        const setInfo = winnerKey.includes('_First') ? 'First Half' : 'Second Half';
+        
         prizeWinners.push({
-          name: playerName,
-          ticketId: winData.ticketIds.join(','),
+          name: `${playerName} (Set ${winData.setId} - ${setInfo})`,
+          ticketId: winData.ticketIds.join(','), 
           phone: tickets[winData.ticketIds[0]]?.playerPhone
         });
       }
