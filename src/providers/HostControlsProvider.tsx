@@ -1,353 +1,454 @@
-// src/providers/HostControlsProvider.tsx - Actions-only provider for host game controls
-import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react';
-import { firebaseService } from '@/services/firebase';
-import { useGameData } from './GameDataProvider';
+// src/services/firebase-game.ts - ENHANCED: Complete Business Logic Handler (Option A)
 
-interface HostControlsContextValue {
-  // Game flow controls
-  startGame: () => Promise<void>;
-  pauseGame: () => Promise<void>;
-  resumeGame: () => Promise<void>;
-  endGame: () => Promise<void>;
-  
-  // Configuration
-  updateCallInterval: (seconds: number) => void;
-  
-  // Status
-  isProcessing: boolean;
-}
-
-const HostControlsContext = createContext<HostControlsContextValue | null>(null);
-
-interface HostControlsProviderProps {
-  children: React.ReactNode;
-  userId: string;
-}
+import { database } from './firebase';
+import { ref, get, update } from 'firebase/database';
 
 /**
- * HostControlsProvider - Handles all host actions and automatic game management
- * Separated from data concerns for cleaner architecture
+ * Firebase-Game Service - ENHANCED for Option A Architecture
+ * 
+ * RESPONSIBILITIES:
+ * ✅ All number calling logic and validation
+ * ✅ All game state management and decisions
+ * ✅ All prize detection and winner announcements
+ * ✅ All game ending logic
+ * ✅ Clear, simple responses to HostControlsProvider
+ * 
+ * PROVIDES TO HOSTCONTROLS:
+ * ✅ Simple boolean responses (continue/stop)
+ * ✅ Consistent error handling
+ * ✅ Complete game flow management
  */
-export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
-  children,
-  userId
-}) => {
-  const { gameData } = useGameData();
-  
-  // Internal state for processing and timers
-  const [isProcessing, setIsProcessing] = React.useState(false);
-  const [callInterval, setCallInterval] = React.useState(5);
-  
-  // 🛡️ NEW: Pause state lock mechanism
-  const [pauseRequested, setPauseRequested] = React.useState(false);
-  
-  // Refs for stable timer management
-  const gameActiveRef = useRef(false);
-  const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // 🛡️ NEW: Ref for immediate access in timer callbacks (eliminates race condition)
-  const pauseRequestedRef = useRef(false);
-  const gameControllerRef = useRef<AbortController | null>(null);
+export class FirebaseGameService {
 
-  // 🛡️ ENHANCED: Update game active ref when game state changes, but respect manual pause
-  useEffect(() => {
-    if (gameData) {
-      const shouldBeActive = gameData.gameState.isActive && !gameData.gameState.gameOver;
-      
-      // Only sync from database if we're not in a manual pause state
-      if (!pauseRequested) {
-        gameActiveRef.current = shouldBeActive;
-        console.log(`🔄 Syncing gameActiveRef from database: ${shouldBeActive}`);
-      } else {
-        console.log(`🛡️ Manual pause active - ignoring database sync`);
-      }
-      
-      // If game is actually ended in database, clear pause request
-      if (gameData.gameState.gameOver) {
-        setPauseRequested(false);
-        pauseRequestedRef.current = false;
-        gameActiveRef.current = false;
-        console.log(`🏁 Game ended - clearing pause state`);
-      }
-    }
-  }, [gameData?.gameState.isActive, gameData?.gameState.gameOver, pauseRequested]);
+  // ================== MAIN CALLING METHOD FOR HOSTCONTROLS ==================
 
-  // Clear all timers on unmount or game end
-  const clearAllTimers = useCallback(() => {
-    if (gameTimerRef.current) {
-      clearTimeout(gameTimerRef.current);
-      gameTimerRef.current = null;
-    }
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
-    // Abort any running timer loop
-    if (gameControllerRef.current) {
-      gameControllerRef.current.abort();
-      gameControllerRef.current = null;
-    }
-    gameActiveRef.current = false;
-  }, []);
-
-  // Automatic number calling loop
-  const startNumberCallingLoop = useCallback(() => {
-    if (!gameData) return;
-    
-    // Create new AbortController for this timer loop
-    gameControllerRef.current = new AbortController();
-    const { signal } = gameControllerRef.current;
-    
-    const scheduleNextCall = () => {
-      // Check abort signal first, then existing checks
-      if (signal.aborted || !gameActiveRef.current || pauseRequestedRef.current) return;
-      
-      gameTimerRef.current = setTimeout(async () => {
-        // 🔧 CRITICAL: Check abort signal FIRST in callback
-        if (signal.aborted) {
-          console.log(`🚫 Timer callback aborted, stopping`);
-          return;
-        }
-        
-        // Then existing checks
-        if (!gameActiveRef.current || pauseRequestedRef.current || !gameData) return;
-        
-        try {
-          console.log(`🎯 Auto-calling next number for game ${gameData.gameId}`);
-          const result = await firebaseService.callNextNumber(gameData.gameId);
-          
-          // Check abort signal again after async operation
-          if (signal.aborted) {
-            console.log(`🚫 Timer loop aborted during async call, stopping`);
-            return;
-          }
-          
-          if (result.success && !result.gameEnded && gameActiveRef.current && !pauseRequestedRef.current) {
-            scheduleNextCall(); // Continue with same controller
-          } else {
-            clearAllTimers();
-          }
-        } catch (error) {
-          console.error('❌ Auto-call error:', error);
-          
-          // Check abort signal before retrying
-          if (!signal.aborted && gameActiveRef.current && !pauseRequestedRef.current) {
-            scheduleNextCall();
-          }
-        }
-      }, callInterval * 1000);
-    };
-
-    scheduleNextCall();
-  }, [gameData, callInterval, clearAllTimers]);
-
-  // Start game with countdown
-  const startGame = useCallback(async () => {
-    if (!gameData || isProcessing) return;
-    
-    setIsProcessing(true);
+  /**
+   * 🎯 KEY METHOD: Complete number calling with simple boolean response
+   * This is the ONLY method HostControlsProvider needs to call
+   * 
+   * @param gameId - Game to call number for
+   * @returns boolean - true if game should continue, false if game should stop
+   */
+  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
     try {
-      console.log(`🎮 Starting game with countdown: ${gameData.gameId}`);
+      console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
       
-      // 🛡️ Clear pause state when starting
-      setPauseRequested(false);
-      pauseRequestedRef.current = false;
+      // Step 1: Validate game can accept calls
+      const canCall = await this.validateGameForCalling(gameId);
+      if (!canCall.isValid) {
+        console.log(`🚫 Cannot call number: ${canCall.reason}`);
+        return false; // Stop the timer
+      }
       
-      // Clear any existing timers
-      clearAllTimers();
+      // Step 2: Call the number with full processing
+      const result = await this.processCompleteNumberCall(gameId);
       
-      // Start 10-second countdown
-      await firebaseService.updateGameState(gameData.gameId, {
-        isCountdown: true,
-        countdownTime: 10,
-        isActive: false
-      });
-
-      let timeLeft = 10;
-      countdownTimerRef.current = setInterval(async () => {
-        timeLeft--;
-        
-        if (timeLeft > 0) {
-          await firebaseService.updateGameState(gameData.gameId, {
-            countdownTime: timeLeft
-          });
-        } else {
-          // Countdown finished - activate game
-          clearInterval(countdownTimerRef.current!);
-          countdownTimerRef.current = null;
-          
-          await firebaseService.updateGameState(gameData.gameId, {
-            isActive: true,
-            isCountdown: false,
-            countdownTime: 0
-          });
-          
-          gameActiveRef.current = true;
-          startNumberCallingLoop();
-        }
-      }, 1000);
+      if (!result.success) {
+        console.log(`❌ Number calling failed - stopping game`);
+        return false; // Stop the timer
+      }
+      
+      // Step 3: Check if game should continue
+      const shouldContinue = !result.gameEnded && result.hasMoreNumbers;
+      
+      console.log(`✅ Number called successfully. Continue: ${shouldContinue}`);
+      return shouldContinue;
       
     } catch (error: any) {
-      console.error('❌ Start game error:', error);
-      throw new Error(error.message || 'Failed to start game');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
-
-  // 🛡️ ENHANCED: Pause game with immediate state lock
-  const pauseGame = useCallback(async () => {
-    if (!gameData || isProcessing) return;
-    
-    setIsProcessing(true);
-    try {
-      console.log(`⏸️ Pausing game: ${gameData.gameId}`);
+      console.error('❌ Firebase-game: Number calling error:', error);
       
-      // 🔧 CRITICAL: Abort current timer loop to stop all queued callbacks
-      if (gameControllerRef.current) {
-        gameControllerRef.current.abort();
-        gameControllerRef.current = null;
-        console.log(`🚫 Timer loop aborted`);
+      // Try to end the game gracefully on critical errors
+      try {
+        await this.endGameDueToError(gameId, error.message);
+      } catch (endError) {
+        console.error('❌ Failed to end game after error:', endError);
       }
       
-      // Set pause state immediately
-      setPauseRequested(true);
-      pauseRequestedRef.current = true;
-      gameActiveRef.current = false;
-      
-      // Clear existing timers
-      clearAllTimers();
-      
-      // Update database
-      await firebaseService.updateGameState(gameData.gameId, {
-        isActive: false,
-        isCountdown: false
-      });
-      
-      console.log(`✅ Game paused successfully: ${gameData.gameId}`);
-      
-    } catch (error: any) {
-      console.error('❌ Pause game error:', error);
-      
-      // 🛡️ ROLLBACK: If database update fails, rollback the pause state
-      console.log(`🔄 Rolling back pause state due to error`);
-      setPauseRequested(false);
-      pauseRequestedRef.current = false;
-      
-      // Try to restart the loop if game was actually active
-      if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
-        gameActiveRef.current = true;
-        startNumberCallingLoop();
-      }
-      
-      throw new Error(error.message || 'Failed to pause game');
-    } finally {
-      setIsProcessing(false);
+      return false; // Stop the timer
     }
-  }, [gameData, isProcessing, clearAllTimers, startNumberCallingLoop]);
-
-  // 🛡️ ENHANCED: Resume game
-  const resumeGame = useCallback(async () => {
-    if (!gameData || isProcessing) return;
-    
-    setIsProcessing(true);
-    try {
-      console.log(`▶️ Resuming game: ${gameData.gameId}`);
-      
-      // 🛡️ STEP 1: Update database first
-      await firebaseService.updateGameState(gameData.gameId, {
-        isActive: true,
-        isCountdown: false
-      });
-      
-      // Create new AbortController for resume
-      if (gameControllerRef.current) {
-        gameControllerRef.current.abort();
-        gameControllerRef.current = null;
-      }
-      console.log(`🔄 New timer controller for resume`);
-
-      // 🛡️ STEP 2: Clear pause lock and activate locally
-      setPauseRequested(false);
-      pauseRequestedRef.current = false;
-      gameActiveRef.current = true;
-      
-      // 🛡️ STEP 3: Restart the calling loop
-      startNumberCallingLoop();
-      
-      console.log(`✅ Game resumed successfully: ${gameData.gameId}`);
-      
-    } catch (error: any) {
-      console.error('❌ Resume game error:', error);
-      throw new Error(error.message || 'Failed to resume game');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [gameData, isProcessing, startNumberCallingLoop]);
-
-  // End game
-  const endGame = useCallback(async () => {
-    if (!gameData || isProcessing) return;
-    
-    setIsProcessing(true);
-    try {
-      console.log(`🏁 Ending game: ${gameData.gameId}`);
-      
-      // Clear pause state and stop timers
-      setPauseRequested(false);
-      pauseRequestedRef.current = false;
-      clearAllTimers();
-      
-      await firebaseService.updateGameState(gameData.gameId, {
-        isActive: false,
-        isCountdown: false,
-        gameOver: true
-      });
-      
-      console.log(`✅ Game ended successfully: ${gameData.gameId}`);
-      
-    } catch (error: any) {
-      console.error('❌ End game error:', error);
-      throw new Error(error.message || 'Failed to end game');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [gameData, isProcessing, clearAllTimers]);
-
-  // Update call interval
-  const updateCallInterval = useCallback((seconds: number) => {
-    setCallInterval(seconds);
-    console.log(`⏰ Call interval updated to ${seconds} seconds`);
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      clearAllTimers();
-    };
-  }, [clearAllTimers]);
-
-  const value: HostControlsContextValue = {
-    startGame,
-    pauseGame,
-    resumeGame,
-    endGame,
-    updateCallInterval,
-    isProcessing
-  };
-
-  return (
-    <HostControlsContext.Provider value={value}>
-      {children}
-    </HostControlsContext.Provider>
-  );
-};
-
-export const useHostControls = () => {
-  const context = useContext(HostControlsContext);
-  if (!context) {
-    throw new Error('useHostControls must be used within a HostControlsProvider');
   }
-  return context;
-};
+
+  // ================== GAME VALIDATION ==================
+
+  /**
+   * Validate if game can accept number calls
+   */
+  private async validateGameForCalling(gameId: string): Promise<{
+    isValid: boolean;
+    reason?: string;
+  }> {
+    try {
+      const gameData = await this.getGameData(gameId);
+      
+      if (!gameData) {
+        return { isValid: false, reason: 'Game not found' };
+      }
+      
+      if (!gameData.gameState.isActive) {
+        return { isValid: false, reason: 'Game is not active' };
+      }
+      
+      if (gameData.gameState.gameOver) {
+        return { isValid: false, reason: 'Game has ended' };
+      }
+      
+      if (gameData.gameState.isCountdown) {
+        return { isValid: false, reason: 'Game is in countdown' };
+      }
+      
+      const calledNumbers = gameData.gameState.calledNumbers || [];
+      if (calledNumbers.length >= 90) {
+        return { isValid: false, reason: 'All numbers have been called' };
+      }
+      
+      return { isValid: true };
+      
+    } catch (error: any) {
+      return { isValid: false, reason: `Validation error: ${error.message}` };
+    }
+  }
+
+  // ================== COMPLETE NUMBER CALLING PROCESS ==================
+
+  /**
+   * Complete number calling with all business logic
+   */
+  private async processCompleteNumberCall(gameId: string): Promise<{
+    success: boolean;
+    gameEnded: boolean;
+    hasMoreNumbers: boolean;
+    number?: number;
+    winners?: any;
+  }> {
+    try {
+      console.log(`📞 Processing complete number call for game: ${gameId}`);
+      
+      // Get fresh game data
+      const gameRef = ref(database, `games/${gameId}`);
+      const gameSnapshot = await get(gameRef);
+      
+      if (!gameSnapshot.exists()) {
+        throw new Error('Game not found');
+      }
+      
+      const gameData = gameSnapshot.val();
+      const calledNumbers = gameData.gameState.calledNumbers || [];
+      
+      // Select next number
+      const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+        .filter(num => !calledNumbers.includes(num));
+      
+      if (availableNumbers.length === 0) {
+        console.log(`🏁 No more numbers available - ending game`);
+        await this.endGameNoMoreNumbers(gameId);
+        return {
+          success: true,
+          gameEnded: true,
+          hasMoreNumbers: false
+        };
+      }
+      
+      // Call the number
+      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      const selectedNumber = availableNumbers[randomIndex];
+      const updatedCalledNumbers = [...calledNumbers, selectedNumber];
+      
+      console.log(`🎲 Selected number: ${selectedNumber}`);
+      
+      // Process prizes and winners
+      const prizeResult = await this.processNumberForPrizes(
+        gameData,
+        selectedNumber,
+        updatedCalledNumbers
+      );
+      
+      // Build complete update
+      const gameUpdates: any = {
+        gameState: {
+          ...gameData.gameState,
+          calledNumbers: updatedCalledNumbers,
+          currentNumber: selectedNumber,
+          updatedAt: new Date().toISOString()
+        }
+      };
+      
+      // Add prize updates if any
+      if (prizeResult.hasWinners) {
+        Object.assign(gameUpdates, prizeResult.prizeUpdates);
+        gameUpdates.lastWinnerAnnouncement = prizeResult.announcements.join(' ');
+        gameUpdates.lastWinnerAt = new Date().toISOString();
+      }
+      
+      // Check if game should end
+      const allPrizesWon = this.checkAllPrizesWon(gameData.prizes, prizeResult.prizeUpdates);
+      const isLastNumber = updatedCalledNumbers.length >= 90;
+      const shouldEndGame = allPrizesWon || isLastNumber;
+      
+      if (shouldEndGame) {
+        console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+        gameUpdates.gameState.isActive = false;
+        gameUpdates.gameState.gameOver = true;
+      }
+      
+      // Apply all updates atomically
+      await update(gameRef, gameUpdates);
+      
+      console.log(`✅ Number ${selectedNumber} called successfully`);
+      
+      return {
+        success: true,
+        gameEnded: shouldEndGame,
+        hasMoreNumbers: availableNumbers.length > 1,
+        number: selectedNumber,
+        winners: prizeResult.hasWinners ? prizeResult.winners : undefined
+      };
+      
+    } catch (error: any) {
+      console.error('❌ Error in processCompleteNumberCall:', error);
+      throw error;
+    }
+  }
+
+  // ================== PRIZE PROCESSING ==================
+
+  /**
+   * Process number for all prize detection
+   */
+  private async processNumberForPrizes(gameData: any, number: number, calledNumbers: number[]): Promise<{
+    hasWinners: boolean;
+    winners: any;
+    prizeUpdates: any;
+    announcements: string[];
+  }> {
+    const announcements: string[] = [];
+    const prizeUpdates: any = {};
+    let allWinners: any = {};
+    
+    // Get unwon prizes
+    const unwonPrizes = Object.fromEntries(
+      Object.entries(gameData.prizes).filter(([_, prize]: [string, any]) => !prize.won)
+    );
+    
+    if (Object.keys(unwonPrizes).length === 0) {
+      return {
+        hasWinners: false,
+        winners: {},
+        prizeUpdates: {},
+        announcements: []
+      };
+    }
+    
+    // Validate tickets for prizes
+    const validationResult = await this.validateTicketsForPrizes(
+      gameData.tickets || {},
+      calledNumbers,
+      unwonPrizes
+    );
+    
+    // Process each prize that has winners
+    for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
+      const prizeData = prizeWinners as any;
+      
+      prizeUpdates[`prizes/${prizeId}`] = {
+        ...gameData.prizes[prizeId],
+        won: true,
+        winners: prizeData.winners,
+        winningNumber: number,
+        wonAt: new Date().toISOString()
+      };
+      
+      allWinners[prizeId] = prizeData;
+      
+      const winnersText = prizeData.winners
+        .map((w: any) => `${w.name} (T${w.ticketId})`)
+        .join(', ');
+      announcements.push(`${prizeData.prizeName} won by ${winnersText}!`);
+    }
+    
+    return {
+      hasWinners: Object.keys(allWinners).length > 0,
+      winners: allWinners,
+      prizeUpdates,
+      announcements
+    };
+  }
+
+  /**
+   * Check if all prizes are won
+   */
+  private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
+    const allPrizes = { ...currentPrizes };
+    
+    // Apply updates
+    for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
+      if (updatePath.startsWith('prizes/')) {
+        const prizeId = updatePath.replace('prizes/', '');
+        allPrizes[prizeId] = updateData;
+      }
+    }
+    
+    return Object.values(allPrizes).every((prize: any) => prize.won);
+  }
+
+  // ================== GAME FLOW METHODS FOR HOSTCONTROLS ==================
+
+  /**
+   * Start game with countdown setup
+   */
+  async startGameWithCountdown(gameId: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/isCountdown': true,
+        'gameState/countdownTime': 10,
+        'gameState/isActive': false,
+        'gameState/gameOver': false,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Game countdown started: ${gameId}`);
+    } catch (error: any) {
+      throw new Error(`Failed to start countdown: ${error.message}`);
+    }
+  }
+
+  /**
+   * Activate game after countdown
+   */
+  async activateGameAfterCountdown(gameId: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/isActive': true,
+        'gameState/isCountdown': false,
+        'gameState/countdownTime': 0,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Game activated after countdown: ${gameId}`);
+    } catch (error: any) {
+      throw new Error(`Failed to activate game: ${error.message}`);
+    }
+  }
+
+  /**
+   * Pause game
+   */
+  async pauseGame(gameId: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/isActive': false,
+        'gameState/isCountdown': false,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Game paused: ${gameId}`);
+    } catch (error: any) {
+      throw new Error(`Failed to pause game: ${error.message}`);
+    }
+  }
+
+  /**
+   * Resume game
+   */
+  async resumeGame(gameId: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/isActive': true,
+        'gameState/isCountdown': false,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Game resumed: ${gameId}`);
+    } catch (error: any) {
+      throw new Error(`Failed to resume game: ${error.message}`);
+    }
+  }
+
+  /**
+   * End game manually
+   */
+  async endGame(gameId: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/isActive': false,
+        'gameState/isCountdown': false,
+        'gameState/gameOver': true,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Game ended manually: ${gameId}`);
+    } catch (error: any) {
+      throw new Error(`Failed to end game: ${error.message}`);
+    }
+  }
+
+  // ================== ERROR HANDLING ==================
+
+  /**
+   * End game when no more numbers available
+   */
+  private async endGameNoMoreNumbers(gameId: string): Promise<void> {
+    const gameRef = ref(database, `games/${gameId}`);
+    await update(gameRef, {
+      'gameState/isActive': false,
+      'gameState/gameOver': true,
+      'lastWinnerAnnouncement': 'Game completed - all numbers called!',
+      'lastWinnerAt': new Date().toISOString(),
+      'updatedAt': new Date().toISOString()
+    });
+  }
+
+  /**
+   * End game due to error
+   */
+  private async endGameDueToError(gameId: string, errorMessage: string): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/isActive': false,
+        'gameState/gameOver': true,
+        'lastWinnerAnnouncement': `Game ended due to error: ${errorMessage}`,
+        'lastWinnerAt': new Date().toISOString(),
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`🚨 Game ended due to error: ${gameId}`);
+    } catch (endError) {
+      console.error('❌ Failed to end game after error:', endError);
+    }
+  }
+
+  // ================== UTILITY METHODS ==================
+
+  /**
+   * Get game data
+   */
+  private async getGameData(gameId: string): Promise<any | null> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      const snapshot = await get(gameRef);
+      return snapshot.exists() ? snapshot.val() : null;
+    } catch (error) {
+      console.error('Error getting game data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Validate tickets for prizes (existing implementation)
+   */
+  async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any): Promise<{ winners: any }> {
+    // Your existing prize validation logic here
+    // This should return { winners: { [prizeId]: { prizeName, winners: [...] } } }
+    
+    // Placeholder implementation - replace with your actual logic
+    return { winners: {} };
+  }
+}
+
+// Export singleton instance
+export const firebaseGameService = new FirebaseGameService();
