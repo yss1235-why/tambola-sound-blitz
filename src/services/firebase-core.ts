@@ -158,7 +158,67 @@ export const removeUndefinedValues = (obj: any): any => {
 
 class FirebaseCoreService {
   // ================== TRANSACTION UTILITIES ==================
+// Add this property at the top of the FirebaseCoreService class
+private cleanupInProgress = new Set<string>();
 
+// Add this method inside the FirebaseCoreService class
+private async cleanupOldCompletedGames(hostId: string, currentGameId: string): Promise<void> {
+  if (this.cleanupInProgress.has(hostId)) {
+    console.log(`🔄 Cleanup already running for host: ${hostId}`);
+    return;
+  }
+
+  this.cleanupInProgress.add(hostId);
+  
+  try {
+    console.log(`🧹 Starting cleanup for host: ${hostId}, excluding: ${currentGameId}`);
+    
+    const allHostGames = await this.getAllGamesByHost(hostId);
+    
+    if (allHostGames.length === 0) {
+      console.log(`ℹ️ No games found for cleanup check: ${hostId}`);
+      return;
+    }
+
+    // ✅ FIXED: Consistent validation logic
+    const completedGames = allHostGames
+      .filter(game => {
+        if (!game.gameState) return false;
+        if (!game.gameState.gameOver) return false;
+        if (game.gameId === currentGameId) return false;
+        if (!game.createdAt) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // ✅ FIXED: Keep most recent completed game
+    if (completedGames.length <= 1) {
+      console.log(`ℹ️ Host ${hostId} has ${completedGames.length} completed games - keeping recent one`);
+      return;
+    }
+
+    const gamesToDelete = completedGames.slice(1);
+    const gameToKeep = completedGames[0];
+    
+    console.log(`🗑️ Deleting ${gamesToDelete.length} old games, keeping: ${gameToKeep.gameId}`);
+
+    for (const game of gamesToDelete) {
+      try {
+        await this.deleteGame(game.gameId);
+        console.log(`✅ Cleaned up old game: ${game.gameId}`);
+      } catch (error: any) {
+        console.error(`⚠️ Failed to cleanup game ${game.gameId}:`, error.message);
+      }
+    }
+
+    console.log(`✅ Cleanup completed for host: ${hostId}`);
+
+  } catch (error: any) {
+    console.error(`❌ Error during cleanup for host ${hostId}:`, error);
+  } finally {
+    this.cleanupInProgress.delete(hostId);
+  }
+}
   async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
@@ -186,6 +246,32 @@ class FirebaseCoreService {
       }
     }
   }
+  private async getAllGamesByHost(hostId: string): Promise<GameData[]> {
+  try {
+    console.log(`🔍 Fetching all games for host: ${hostId}`);
+    
+    const gamesQuery = query(
+      ref(database, 'games'),
+      orderByChild('hostId'),
+      equalTo(hostId)
+    );
+    
+    const gamesSnapshot = await get(gamesQuery);
+    
+    if (!gamesSnapshot.exists()) {
+      console.log(`📭 No games found for host: ${hostId}`);
+      return [];
+    }
+
+    const hostGames = Object.values(gamesSnapshot.val()) as GameData[];
+    console.log(`📊 Found ${hostGames.length} games for host: ${hostId}`);
+    
+    return hostGames;
+  } catch (error: any) {
+    console.error(`❌ Error fetching games for host ${hostId}:`, error);
+    return [];
+  }
+}
 
   // ================== AUTHENTICATION ==================
 
