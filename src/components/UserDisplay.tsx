@@ -69,7 +69,7 @@ export const UserDisplay: React.FC = () => {
         .map(prize => prize.id);
       
       if (wonPrizeIds.length > 0) {
-        setExpandedPrizes(new Set(wonPrizeIds));
+        setExpandedPrizes(new Set());
       }
     }
   }, [prizes, currentPhase]);
