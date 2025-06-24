@@ -938,7 +938,7 @@ const CreateGameForm = ({
               key={set.id}
               className={`p-4 border rounded-lg cursor-pointer transition-colors ${
                 createGameForm.selectedTicketSet === set.id
-                  ? 'border-blue-500 bg-blue-50'
+                  ? 'border-blue-500 bg-blue'
                   : 'border-gray-200 hover:border-gray-300'
               } ${(!set.available || isCreating || operationInProgress) ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={() => {
