@@ -86,15 +86,47 @@ const TICKET_SETS = [
 
 // Available prizes with difficulty indicators
 const AVAILABLE_PRIZES: GamePrize[] = [
-  {
-    id: 'earlyFive',
-    name: 'Early Five',
+{
+    id: 'fullHouse',
+    name: 'Full House',
     pattern: '',
     description: '',
-    order: 10,
+    order: 1,
     difficulty: ''
   },
-    {
+ {
+    id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
+    name: 'Full Sheet',
+    pattern: '',
+    description: '',
+    order: 3,
+    difficulty: ''
+  },
+ {
+    id: 'halfSheet',
+    name: 'Half Sheet',
+    pattern: '',
+    description: '',
+    order: 4,
+    difficulty: ''
+  },
+ {
+    id: 'starCorner',
+    name: 'Star Corner',
+    pattern: '',
+    description: '',
+    order: 5,
+    difficulty: ''
+  },
+ {
+    id: 'corners',
+    name: 'Four Corners',
+    pattern: '',
+    description: '',
+    order: 6,
+    difficulty: ''
+  },
+ {
     id: 'topLine',
     name: 'Top Line',
     pattern: '',
@@ -110,7 +142,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 8,
     difficulty: ''
   },
-  {
+ {
     id: 'bottomLine',
     name: 'Bottom Line',
     pattern: '',
@@ -118,46 +150,17 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 7,
     difficulty: ''
   },
+ 
+ 
   {
-    id: 'corners',
-    name: 'Four Corners',
+    id: 'earlyFive',
+    name: 'Early Five',
     pattern: '',
     description: '',
-    order: 6,
-    difficulty: ''
-  },
-  {
-    id: 'starCorner',
-    name: 'Star Corner',
-    pattern: '',
-    description: '',
-    order: 5,
-    difficulty: ''
-  },
-  {
-    id: 'halfSheet',
-    name: 'Half Sheet',
-    pattern: '',
-    description: '',
-    order: 4,
-    difficulty: ''
-  },
-  {
-    id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
-    name: 'Full Sheet',
-    pattern: '',
-    description: '',
-    order: 3,
-    difficulty: ''
-  },
-  {
-    id: 'fullHouse',
-    name: 'Full House',
-    pattern: '',
-    description: '',
-    order: 1,
+    order: 10,
     difficulty: ''
   }
+  
 ];
 
 export const GameHost: React.FC<GameHostProps> = ({ user }) => {
