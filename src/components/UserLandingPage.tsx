@@ -260,35 +260,6 @@ useEffect(() => {
     );
   }
 
-  if (currentView === 'booking' && selectedGameId) {
-    const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
-    
-    if (!selectedGame) {
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-white-600">Game not found</p>
-              <Button onClick={handleBackToList} className="mt-4">
-                Back to Games
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
-
-    // Check if game started while in booking view
-    const hasGameStarted = (selectedGame.gameState.calledNumbers?.length || 0) > 0 || 
-                          selectedGame.gameState.isActive || 
-                          selectedGame.gameState.isCountdown;
-
-    if (hasGameStarted) {
-      // Auto-switch to game view
-      setCurrentView('game');
-      return null; // Will re-render with game view
-    }
-
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
         <div className="max-w-7xl mx-auto space-y-6">
