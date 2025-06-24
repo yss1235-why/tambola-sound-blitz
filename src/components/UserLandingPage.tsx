@@ -333,12 +333,6 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
               <CardTitle className="text-2xl text-gray-800 text-center">
                 Available Games ({gameSummaries.length})
               </CardTitle>
-              <p className="text-center text-gray-600">
-                🔴 Live games • 🏆 Recent winners • ⚪ Booking open
-                {gameDataSource.loading && (
-                  <span className="text-orange-600"> • Updating...</span>
-                )}
-              </p>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
