@@ -545,10 +545,24 @@ useEffect(() => {
                     </div>
                   )}
                 </div>
-              </div>
+               </div>
             </CardContent>
           </Card>
         )}
+
+        {/* Footer - Copyright */}
+        <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+          <CardContent className="p-4">
+            <div className="text-center text-sm text-gray-600">
+              <p>
+                Developed and designed by <span className="font-semibold text-gray-800">Innovative Archive</span>
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                © 2024 All rights reserved. ™
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
