@@ -115,30 +115,30 @@ const isPatternPosition = (
       return isStarCorner;
     }
     
-    case 'quickFive': {
-      // ✅ QUICK FIVE: Only the first 5 called numbers from this ticket
-      if (!calledNumbers || calledNumbers.length === 0) return false;
-      
-      // Get all non-zero numbers from this ticket
-      const allTicketNumbers = ticket.rows.flat().filter(n => n > 0);
-      
-      // Find ticket numbers that were called, preserving call order
-      const calledTicketNumbers = calledNumbers.filter(num => allTicketNumbers.includes(num));
-      
-      // Only first 5 called numbers get highlighted
-      const firstFiveCalled = calledTicketNumbers.slice(0, 5);
-      
-      const isQuickFive = firstFiveCalled.includes(currentNumber);
-      console.log(`🔍 Quick Five check:`, { 
-        currentNumber, 
-        allTicketNumbers: allTicketNumbers.length, 
-        calledTicketNumbers: calledTicketNumbers.length,
-        firstFiveCalled, 
-        isQuickFive 
-      });
-      
-      return isQuickFive;
-    }
+    case 'earlyFive': {
+  // ✅ EARLY FIVE: Only the first 5 called numbers from this ticket
+  if (!calledNumbers || calledNumbers.length === 0) return false;
+  
+  // Get all non-zero numbers from this ticket
+  const allTicketNumbers = ticket.rows.flat().filter(n => n > 0);
+  
+  // Find ticket numbers that were called, preserving call order
+  const calledTicketNumbers = calledNumbers.filter(num => allTicketNumbers.includes(num));
+  
+  // Only first 5 called numbers get highlighted
+  const firstFiveCalled = calledTicketNumbers.slice(0, 5);
+  
+  const isEarlyFive = firstFiveCalled.includes(currentNumber);
+  console.log(`🔍 Early Five check:`, { 
+    currentNumber, 
+    allTicketNumbers: allTicketNumbers.length, 
+    calledTicketNumbers: calledTicketNumbers.length,
+    firstFiveCalled, 
+    isEarlyFive 
+  });
+  
+  return isEarlyFive;
+}
     
     case 'fullHouse': {
       // Full house: all non-zero positions (we already checked currentNumber > 0)
@@ -154,7 +154,7 @@ const isPatternPosition = (
 // Helper function for pattern names and descriptions
 const getPatternName = (prizeId: string): string => {
   switch (prizeId) {
-    case 'quickFive': return 'First 5 Called Numbers';
+    case 'earlyFive': return 'First 5 Called Numbers';
     case 'topLine': return 'Top Line Complete';
     case 'middleLine': return 'Middle Line Complete';
     case 'bottomLine': return 'Bottom Line Complete';
@@ -167,17 +167,16 @@ const getPatternName = (prizeId: string): string => {
 
 const getPatternDescription = (prizeId: string): string => {
   switch (prizeId) {
-    case 'quickFive': return 'Yellow borders show the first 5 numbers called from this ticket';
+    case 'earlyFive': return 'Yellow borders show the first 5 numbers called from this ticket';
     case 'corner': return 'Yellow borders show corner positions (leftmost & rightmost of top/bottom rows)';
     case 'starCorner': return 'Yellow borders show 4 corners + center number';
     case 'topLine': 
     case 'middleLine': 
     case 'bottomLine': return 'Yellow borders show the complete winning row';
-    case 'fullHouse': return 'Yellow borders show all numbers on the ticket';
+    case 'fullHouse': return 'Yellow borders show all numbers';
     default: return 'Yellow borders show pattern positions';
   }
 };
-
 export const renderTicket = ({ 
   ticket, 
   calledNumbers, 
