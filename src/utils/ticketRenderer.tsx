@@ -281,43 +281,43 @@ export const renderTicket = ({
   }
 
   // ✅ ALL CHECKS PASSED: Render the ticket normally
-  return (
-    <div className="bg-white p-4 rounded-lg border-2 border-blue-200">
-      {showPlayerInfo && ticket.playerName && (
-        <div className="mb-3 text-center">
-          <div className="flex items-center justify-center space-x-2">
-            <CheckCircle className="w-4 h-4 text-green-600" />
-            <p className="font-semibold text-gray-800">Ticket {ticket.ticketId}</p>
-          </div>
-          <p className="text-sm text-gray-600">{ticket.playerName}</p>
+ return (
+  <div className="bg-amber-50 p-2 rounded-lg border-2 border-yellow-500">
+    {showPlayerInfo && ticket.playerName && (
+      <div className="mb-2 flex items-center justify-between px-2">
+        <div className="flex items-center space-x-1">
+          <CheckCircle className="w-3 h-3 text-green-600" />
+          <p className="text-sm font-semibold text-gray-800">Ticket {ticket.ticketId}</p>
         </div>
-      )}
-      <div className="grid grid-cols-9 gap-1">
-        {allNumbers.map((number, index) => {
-          const isMarked = number !== 0 && calledNumbers.includes(number);
-          const isEmpty = number === 0;
-          const isPattern = isPatternPosition(index, patternHighlight, ticket, calledNumbers);
-          
-          return (
-            <div
-              key={index}
-              className={`
-                aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-200
-                ${isEmpty 
-                  ? 'bg-gray-100' 
-                  : isMarked 
-                    ? `bg-green-500 text-white shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
-                    : isPattern
-                      ? 'bg-yellow-50 border-2 border-yellow-400 text-gray-800 pattern-highlight'
-                      : 'bg-yellow-50 text-gray-800 border border-gray-300 hover:bg-yellow-100'
-                }
-              `}
-            >
-              {number !== 0 ? number : ''}
-            </div>
-          );
-        })}
+        <p className="text-sm text-gray-600">{ticket.playerName}</p>
       </div>
+    )}
+   <div className="grid grid-cols-9 gap-1">
+  {allNumbers.map((number, index) => {
+    const isMarked = number !== 0 && calledNumbers.includes(number);
+    const isEmpty = number === 0;
+    const isPattern = isPatternPosition(index, patternHighlight, ticket, calledNumbers);
+    
+    return (
+      <div
+        key={index}
+        className={`
+          aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-200
+          ${isEmpty 
+            ? 'bg-gray-500/50 border-2 border-red-900' 
+            : isMarked 
+              ? `bg-pink-300/50 text-black border-2 border-yellow-500 shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
+              : isPattern
+                ? 'bg-teal-500/50 text-black border-2 border-black pattern-highlight'
+                : 'bg-teal-500/50 text-black border-2 border-black'
+          }
+        `}
+      >
+        {number !== 0 ? number : ''}
+      </div>
+    );
+  })}
+</div>
       
       {/* Pattern explanation for highlighted tickets */}
       {patternHighlight && (
