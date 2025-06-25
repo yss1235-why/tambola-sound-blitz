@@ -99,6 +99,14 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 1
     },
+    secondFullHouse: {
+      id: 'secondFullHouse',
+      name: 'Second Full House',
+      pattern: 'All numbers (after first)',
+      description: 'Second player to mark all numbers after Full House is won',
+      won: false,
+      order: 2
+    },
      fullSheet: {
       id: 'fullSheet',
       name: 'Full Sheet',
@@ -386,6 +394,18 @@ export const validateTicketsForPrizes = async (
             case 'fullHouse':
               const allNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
               hasWon = allNumbers.every(num => calledNumbers.includes(num));
+              break;
+                          case 'secondFullHouse':
+              // Only check if Full House is already won
+              if (!prizes.fullHouse.won) {
+                hasWon = false; // Can't win Second Full House before Full House
+                console.log(`⏸️ Second Full House check skipped: Full House not won yet`, { ticketId });
+              } else {
+                // Same logic as Full House - all numbers marked
+                const allSecondNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
+                hasWon = allSecondNumbers.every(num => calledNumbers.includes(num));
+                console.log(`🏆 Second Full House check:`, { ticketId, allNumbers: allSecondNumbers.length, hasWon });
+              }
               break;
 
             case 'corners':
