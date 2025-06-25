@@ -201,22 +201,20 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 <div className="p-2">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                  {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
-                    <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-1 border border-yellow-500 rounded">
-                      {ticket.rows.flat().map((number, index) => (
-                        <div
-                          key={index}
-                          className={`aspect-square flex items-center justify-center text-xs font-bold rounded border-2 ${
-                              number === 0 
-                                ? 'bg-gray-500/50 border-red-900'
-                                : ticket.isBooked 
-                                  ? 'bg-pink-300/50 text-black border-yellow-500' 
-                                  : 'bg-teal-500/50 text-black border-black'
-                            }`}
-                          >
-                          {number !== 0 ? number : ''}
-                        </div>
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-1 border border-yellow-500 rounded">
+                    {ticket.rows.flat().map((number, index) => (
+                      <div
+                        key={index}
+                        className={`aspect-square flex items-center justify-center text-xs font-bold rounded border-2 text-black ${
+                          number === 0 
+                            ? 'bg-gray-500/50 border-red-900' 
+                            : 'bg-white border-yellow-500'
+                        }`}
+                      >
+                        {number === 0 ? '' : number}
+                      </div>
+                    ))}
+                  </div>
                   ) : (
                     /* ✅ FIXED: Show loading state if ticket data is incomplete */
                    <div className="grid grid-cols-9 gap-1 mb-2">
