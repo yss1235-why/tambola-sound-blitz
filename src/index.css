@@ -100,35 +100,32 @@
   }
   
   /* FIXED: Ticket grid with proper contrast */
-  .ticket-grid {
-    @apply grid grid-cols-9 gap-1 p-4 bg-white rounded-xl shadow-md border-2 border-slate-200;
-  }
+ /* Updated: New color scheme ticket grid */
+.ticket-grid {
+  @apply grid grid-cols-9 gap-1 p-2 bg-amber-50 rounded-xl shadow-md border-2 border-yellow-500;
+}
+
+.ticket-cell {
+  @apply aspect-square flex items-center justify-center rounded-lg text-sm font-semibold
+         border-2 transition-all duration-200;
+}
+
+/* Updated: Unmarked numbers - Teal 50% + black border + black text */
+.ticket-cell.number {
+  @apply bg-teal-500/50 text-black border-black;
+}
+
+/* Updated: Empty cells - Gray 50% + burgundy border + no text */
+.ticket-cell.empty {
+  @apply bg-gray-500/50 border-red-900;
+}
+
+/* Updated: Marked numbers - Blush pink 50% + golden border + black text */
+.ticket-cell.marked {
+  @apply bg-pink-300/50 text-black border-yellow-500 font-bold;
+}
   
-  .ticket-cell {
-    @apply aspect-square flex items-center justify-center rounded-lg text-sm font-semibold
-           border-2 transition-all duration-200;
-  }
-  
-  /* FIXED: Ensure text is visible on all ticket cells */
-  .ticket-cell.number {
-    @apply bg-gradient-to-br from-yellow-50 to-amber-50 text-gray-800 
-           hover:from-yellow-100 hover:to-amber-100 border-gray-300;
-  }
-  
-  .ticket-cell.empty {
-    @apply bg-gray-100 border-gray-200;
-  }
-  
-  /* FIXED: Marked cells with high contrast */
-  .ticket-cell.marked {
-    @apply bg-gradient-to-br from-emerald-500 to-emerald-600 text-white 
-           shadow-md border-emerald-500 font-bold;
-  }
-  
-  .ticket-cell.booked {
-    @apply bg-gradient-to-br from-gray-300 to-gray-400 text-gray-800 
-           border-gray-400 font-medium;
-  }
+ 
 
   /* ✅ NEW: Pattern highlighting for winning patterns */
   .pattern-highlight {
@@ -469,23 +466,24 @@
   }
 
   /* Dark mode support (if needed) - with proper contrast */
-  @media (prefers-color-scheme: dark) {
-    .number-cell {
-      @apply from-slate-700 to-slate-800 text-slate-100 border-slate-600;
-    }
-
-    .ticket-cell {
-      @apply border-gray-600;
-    }
-
-    .ticket-cell.number {
-      @apply from-slate-700 to-slate-800 text-slate-100 border-slate-600;
-    }
-    
-    .ticket-cell.marked {
-      @apply from-emerald-600 to-emerald-700 text-white border-emerald-600;
-    }
+@media (prefers-color-scheme: dark) {
+  .number-cell {
+    @apply from-slate-700 to-slate-800 text-slate-100 border-slate-600;
   }
+
+  /* Keep our custom ticket colors even in dark mode */
+  .ticket-cell.number {
+    @apply bg-teal-500/50 text-black border-black;
+  }
+  
+  .ticket-cell.marked {
+    @apply bg-pink-300/50 text-black border-yellow-500 font-bold;
+  }
+
+  .ticket-cell.empty {
+    @apply bg-gray-500/50 border-red-900;
+  }
+}
 
   /* Custom animations */
   @keyframes number-call {
