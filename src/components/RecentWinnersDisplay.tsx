@@ -239,14 +239,14 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            <div className="space-y-2 sm:space-y-3">
+            <div className="space-y-2">
               {wonPrizes
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map((prize) => (
                 <Card key={prize.id} className="bg-green-50 border-green-200 overflow-hidden">
                   <CardContent className="p-0">
-                    <div className="p-3 sm:p-4">
-                      <div className="flex items-center justify-between mb-2">
+                    <div className="p-2 sm:p-3">
+                      <div className="flex items-center justify-between mb-3">
                         <div className="flex-1 min-w-0">
                           <h3 className="font-bold text-green-800 text-sm sm:text-base truncate flex items-center">
                             🏆 {prize.name}
@@ -256,10 +256,9 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                               </Badge>
                             )}
                           </h3>
-                          <p className="text-xs sm:text-sm text-green-600">{prize.pattern}</p>
                         </div>
-                        <Badge className="bg-green-600 text-white text-xs">
-                          {prize.winners?.length || 0} winner{(prize.winners?.length || 0) !== 1 ? 's' : ''}
+                          <Badge className="bg-green-600 text-white text-xs">
+                          {prize.winners?.length || 0}
                         </Badge>
                       </div>
                       
@@ -268,12 +267,9 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                         <div className="space-y-1">
                           {/* Multiple Winners Header */}
                           {prize.winners.length > 1 && (
-                            <div className="text-xs bg-green-100 border border-green-300 rounded p-2 mb-2">
+                            <div className="text-xs bg-green-100 border border-green-300 rounded p-1.5 mb-1.5">
                               <p className="text-green-800 font-medium">
-                                🎉 Multiple Winners ({prize.winners.length} players won this prize!)
-                              </p>
-                              <p className="text-green-700 text-xs mt-1">
-                                Each winner's ticket is shown separately below
+                                🎉 Multiple Winners ({prize.winners.length} players!)
                               </p>
                             </div>
                           )}
@@ -289,7 +285,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                 <Button
                                   variant="ghost"
                                   onClick={() => toggleWinnerTicket(winnerId)}
-                                  className="w-full justify-between p-2 sm:p-3 h-auto hover:bg-green-50 rounded-md"
+                                   className="w-full justify-between p-1.5 sm:p-2 h-auto hover:bg-green-50 rounded-md"
                                 >
                                   <div className="flex items-center space-x-2 flex-1 min-w-0">
                                     <div className="bg-green-100 p-1.5 rounded-full flex-shrink-0">
@@ -330,8 +326,8 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                 
                                 {/* Expandable Winning Ticket */}
                                 {isExpanded && (
-                                  <div className="px-2 sm:px-3 pb-2 sm:pb-3 bg-gray-50 border-t border-green-200">
-                                    <div className="flex items-center justify-between mb-2 pt-2">
+                                   <div className="px-1.5 sm:px-2 pb-1.5 sm:pb-2 bg-gray-50 border-t border-green-200">
+                                   <div className="flex items-center justify-between mb-1.5 pt-1.5">
                                       <h5 className="font-medium text-gray-800 flex items-center text-xs sm:text-sm">
                                         <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-green-600" />
                                         {winner.name}'s Winning Ticket {winner.ticketId}
