@@ -184,19 +184,19 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 }`}
               >
                 {/* Ticket Header */}
-                <div className={`text-center py-3 rounded-t-xl ${
-                  ticket.isBooked 
-                    ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
-                    : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
-                }`}>
-                  <h3 className="font-bold text-lg">Ticket {ticketId}</h3>
-                  {ticket.isBooked && (
-                    <p className="text-sm">Booked by {ticket.playerName}</p>
-                  )}
-                </div>
+                <div className={`flex justify-between items-center py-1 px-3 rounded-t-xl ${
+                    ticket.isBooked 
+                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
+                      : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                  }`}>
+                    <span className="font-bold text-sm">Ticket {ticketId}</span>
+                    <span className="text-xs font-medium">
+                      {ticket.isBooked ? ticket.playerName : 'Available'}
+                    </span>
+                  </div>
 
                 {/* ✅ FIXED: Ticket Grid with Safety Checks */}
-                <div className="p-4">
+               <div className="p-2">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                   {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
                     <div className="grid grid-cols-9 gap-1 mb-4">
@@ -217,8 +217,9 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                     </div>
                   ) : (
                     /* ✅ FIXED: Show loading state if ticket data is incomplete */
-                    <div className="grid grid-cols-9 gap-1 mb-4">
-                      <div className="col-span-9 text-center py-4">
+                   <div className="grid grid-cols-9 gap-1 mb-2">
+                      <div className="col-span-9 text-center py-2">
+
                         <div className="flex items-center justify-center space-x-2">
                           <Clock className="w-4 h-4 text-yellow-600 animate-pulse" />
                           <span className="text-sm text-yellow-700">
@@ -233,33 +234,27 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   )}
 
                   {/* Booking Status / Button */}
-                  {ticket.isBooked ? (
-                    <div className="text-center">
-                      <div className="flex items-center justify-center space-x-2 text-gray-600">
-                        <User className="w-4 h-4" />
-                        <span className="font-medium">{ticket.playerName}</span>
+                  <div className="py-1 px-3 rounded-b-xl bg-gray-50">
+                    {ticket.isBooked ? (
+                      <div className="text-center">
+                        <div className="text-xs text-gray-500">
+                          {ticket.playerPhone || 'No phone provided'}
+                        </div>
                       </div>
-                      {ticket.playerPhone && (
-                        <p className="text-xs text-gray-500 mt-1 flex items-center justify-center space-x-1">
-                          <Phone className="w-3 h-3" />
-                          <span>{ticket.playerPhone}</span>
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
+                    ) : (
                       <Button
                         onClick={() => handleBookTicket(ticketId)}
                         disabled={!hostPhone || isLoadingHost || !ticket.rows}
-                        className="bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 w-full disabled:opacity-50"
+                        size="sm"
+                        className="bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 w-full h-6 text-xs disabled:opacity-50"
                       >
-                        <Phone className="w-4 h-4 mr-2" />
+                        <Phone className="w-3 h-3 mr-1" />
                         {isLoadingHost ? 'Loading...' : 
-                         !ticket.rows ? 'Loading ticket...' : 
-                         'Book via WhatsApp'}
+                         !ticket.rows ? 'Loading...' : 
+                         'Book'}
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
