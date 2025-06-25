@@ -990,36 +990,23 @@ const CreateGameForm = ({
           Select Prizes
         </Label>
         <div className="grid grid-cols-1 gap-3">
-          {AVAILABLE_PRIZES
+       {AVAILABLE_PRIZES
             .sort((a, b) => a.order - b.order)
-            .filter(prize => {
-              // Show Second Full House only if Full House is selected
-              if (prize.id === 'secondFullHouse') {
-                return createGameForm.selectedPrizes.includes('fullHouse');
-              }
-              return true;
-            })
             .map(prize => (
               <div key={prize.id} className="flex items-start space-x-3">
                 <Checkbox
                   id={prize.id}
                   checked={createGameForm.selectedPrizes.includes(prize.id)}
                   onCheckedChange={(checked) => {
-                    if (isCreating || operationInProgress) return;
-                    
-                    setCreateGameForm(prev => ({
-                      ...prev,
-                      selectedPrizes: checked
-                        ? [...prev.selectedPrizes, prize.id]
-                        : prev.selectedPrizes.filter(id => {
-                            // Remove Second Full House if Full House is unchecked
-                            if (prize.id === 'fullHouse' && !checked) {
-                              return id !== 'secondFullHouse';
-                            }
-                            return id !== prize.id;
-                          })
-                    }));
-                  }}
+                      if (isCreating || operationInProgress) return;
+                      
+                      setCreateGameForm(prev => ({
+                        ...prev,
+                        selectedPrizes: checked
+                          ? [...prev.selectedPrizes, prize.id]
+                          : prev.selectedPrizes.filter(id => id !== prize.id)
+                      }));
+                    }}
                   disabled={isCreating || operationInProgress}
                 />
                 <div className="flex-1">
@@ -1042,8 +1029,8 @@ const CreateGameForm = ({
                       </Badge>
                     )}
                     {prize.id === 'secondFullHouse' && (
-                      <Badge variant="outline" className="ml-1 text-xs text-blue-600 border-blue-300">
-                        Dependent
+                      <Badge variant="outline" className="ml-1 text-xs text-green-600 border-green-300">
+                        Independent
                       </Badge>
                     )}
                   </Label>
@@ -1052,12 +1039,6 @@ const CreateGameForm = ({
               </div>
             ))}
         </div>
-        {/* Dependency Note */}
-        {!createGameForm.selectedPrizes.includes('fullHouse') && (
-          <p className="text-xs text-gray-500 mt-2">
-            💡 Select "Full House" to enable "Second Full House" option
-          </p>
-        )}
       </div>
       
       <Button
@@ -1208,33 +1189,20 @@ const EditGameForm = ({
         </Label>
         <div className="grid grid-cols-1 gap-3">
           {AVAILABLE_PRIZES
-            .sort((a, b) => a.order - b.order)
-            .filter(prize => {
-              // Show Second Full House only if Full House is selected
-              if (prize.id === 'secondFullHouse') {
-                return createGameForm.selectedPrizes.includes('fullHouse');
-              }
-              return true;
-            })
-            .map(prize => (
+          .sort((a, b) => a.order - b.order)
+          .map(prize => (
               <div key={prize.id} className="flex items-start space-x-3">
                 <Checkbox
                   id={`edit-${prize.id}`}
                   checked={createGameForm.selectedPrizes.includes(prize.id)}
-                  onCheckedChange={(checked) => {
+                 onCheckedChange={(checked) => {
                     if (isCreating || operationInProgress) return;
                     
                     setCreateGameForm(prev => ({
                       ...prev,
                       selectedPrizes: checked
                         ? [...prev.selectedPrizes, prize.id]
-                        : prev.selectedPrizes.filter(id => {
-                            // Remove Second Full House if Full House is unchecked
-                            if (prize.id === 'fullHouse' && !checked) {
-                              return id !== 'secondFullHouse';
-                            }
-                            return id !== prize.id;
-                          })
+                        : prev.selectedPrizes.filter(id => id !== prize.id)
                     }));
                   }}
                   disabled={isCreating || operationInProgress}
@@ -1259,8 +1227,8 @@ const EditGameForm = ({
                       </Badge>
                     )}
                     {prize.id === 'secondFullHouse' && (
-                      <Badge variant="outline" className="ml-1 text-xs text-blue-600 border-blue-300">
-                        Dependent
+                      <Badge variant="outline" className="ml-1 text-xs text-green-600 border-green-300">
+                        Independent
                       </Badge>
                     )}
                     {gameData.prizes[prize.id]?.won && (
@@ -1274,12 +1242,6 @@ const EditGameForm = ({
               </div>
             ))}
         </div>
-        {/* Dependency Note */}
-        {!createGameForm.selectedPrizes.includes('fullHouse') && (
-          <p className="text-xs text-gray-500 mt-2">
-            💡 Select "Full House" to enable "Second Full House" option
-          </p>
-        )}
       </div>
       
       <div className="flex space-x-4">
