@@ -468,16 +468,16 @@ export class PrizeEngine {
   /**
    * Create prize configuration
    */
-  createPrizeConfiguration(selectedPrizes: string[]): { [prizeId: string]: Prize } {
-    return createPrizeConfiguration(selectedPrizes);
-  }
+ createPrizeConfiguration(selectedPrizes: string[]): { [prizeId: string]: Prize } {
+  return createPrizeConfiguration(selectedPrizes); // ✅ This should call the standalone function
+}
 
   /**
    * Generate prizes (alias for compatibility)
    */
-  generatePrizes(selectedPrizes: string[]): { [prizeId: string]: Prize } {
-    return this.createPrizeConfiguration(selectedPrizes);
-  }
+ generatePrizes(selectedPrizes: string[]): { [prizeId: string]: Prize } {
+  return createPrizeConfiguration(selectedPrizes); // ✅ Correct - calls standalone function
+}
 
   /**
    * Get ticket corners dynamically
