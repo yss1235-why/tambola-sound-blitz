@@ -395,7 +395,7 @@ export const validateTicketsForPrizes = async (
               const allNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
               hasWon = allNumbers.every(num => calledNumbers.includes(num));
               break;
-                          case 'secondFullHouse':
+           case 'secondFullHouse':
               // Only check if Full House is already won
               if (!prizes.fullHouse.won) {
                 hasWon = false; // Can't win Second Full House before Full House
@@ -404,7 +404,17 @@ export const validateTicketsForPrizes = async (
                 // Same logic as Full House - all numbers marked
                 const allSecondNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
                 hasWon = allSecondNumbers.every(num => calledNumbers.includes(num));
-                console.log(`🏆 Second Full House check:`, { ticketId, allNumbers: allSecondNumbers.length, hasWon });
+                
+                // Additional check: exclude tickets that already won Full House
+                if (hasWon && prizes.fullHouse.winners) {
+                  const alreadyWonFullHouse = prizes.fullHouse.winners.some(winner => winner.ticketId === ticketId);
+                  if (alreadyWonFullHouse) {
+                    hasWon = false; // This ticket already won Full House
+                    console.log(`⏸️ Second Full House check skipped: Ticket ${ticketId} already won Full House`);
+                  } else {
+                    console.log(`🏆 Second Full House winner found:`, { ticketId, allNumbers: allSecondNumbers.length, hasWon });
+                  }
+                }
               }
               break;
 
