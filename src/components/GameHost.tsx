@@ -94,6 +94,14 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 1,
     difficulty: ''
   },
+   {
+    id: 'secondFullHouse',
+    name: 'Second Full House',
+    pattern: '',
+    description: '',
+    order: 2,
+    difficulty: ''
+  },
  {
     id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
     name: 'Full Sheet',
@@ -984,6 +992,13 @@ const CreateGameForm = ({
         <div className="grid grid-cols-1 gap-3">
           {AVAILABLE_PRIZES
             .sort((a, b) => a.order - b.order)
+            .filter(prize => {
+              // Show Second Full House only if Full House is selected
+              if (prize.id === 'secondFullHouse') {
+                return createGameForm.selectedPrizes.includes('fullHouse');
+              }
+              return true;
+            })
             .map(prize => (
               <div key={prize.id} className="flex items-start space-x-3">
                 <Checkbox
@@ -996,7 +1011,13 @@ const CreateGameForm = ({
                       ...prev,
                       selectedPrizes: checked
                         ? [...prev.selectedPrizes, prize.id]
-                        : prev.selectedPrizes.filter(id => id !== prize.id)
+                        : prev.selectedPrizes.filter(id => {
+                            // Remove Second Full House if Full House is unchecked
+                            if (prize.id === 'fullHouse' && !checked) {
+                              return id !== 'secondFullHouse';
+                            }
+                            return id !== prize.id;
+                          })
                     }));
                   }}
                   disabled={isCreating || operationInProgress}
@@ -1020,13 +1041,23 @@ const CreateGameForm = ({
                         Traditional
                       </Badge>
                     )}
+                    {prize.id === 'secondFullHouse' && (
+                      <Badge variant="outline" className="ml-1 text-xs text-blue-600 border-blue-300">
+                        Dependent
+                      </Badge>
+                    )}
                   </Label>
-                  <p className="text-sm text-gray-600">{prize.pattern}</p>
-                  <p className="text-xs text-gray-500">{prize.description}</p>
+                  <p className="text-sm text-gray-600">{prize.description}</p>
                 </div>
               </div>
             ))}
         </div>
+        {/* Dependency Note */}
+        {!createGameForm.selectedPrizes.includes('fullHouse') && (
+          <p className="text-xs text-gray-500 mt-2">
+            💡 Select "Full House" to enable "Second Full House" option
+          </p>
+        )}
       </div>
       
       <Button
@@ -1169,7 +1200,7 @@ const EditGameForm = ({
         </p>
       </div>
 
-      {/* Prize Selection */}
+     {/* Prize Selection */}
       <div>
         <Label className="flex items-center mb-3">
           <Crown className="w-4 h-4 mr-2" />
@@ -1178,6 +1209,13 @@ const EditGameForm = ({
         <div className="grid grid-cols-1 gap-3">
           {AVAILABLE_PRIZES
             .sort((a, b) => a.order - b.order)
+            .filter(prize => {
+              // Show Second Full House only if Full House is selected
+              if (prize.id === 'secondFullHouse') {
+                return createGameForm.selectedPrizes.includes('fullHouse');
+              }
+              return true;
+            })
             .map(prize => (
               <div key={prize.id} className="flex items-start space-x-3">
                 <Checkbox
@@ -1190,7 +1228,13 @@ const EditGameForm = ({
                       ...prev,
                       selectedPrizes: checked
                         ? [...prev.selectedPrizes, prize.id]
-                        : prev.selectedPrizes.filter(id => id !== prize.id)
+                        : prev.selectedPrizes.filter(id => {
+                            // Remove Second Full House if Full House is unchecked
+                            if (prize.id === 'fullHouse' && !checked) {
+                              return id !== 'secondFullHouse';
+                            }
+                            return id !== prize.id;
+                          })
                     }));
                   }}
                   disabled={isCreating || operationInProgress}
@@ -1214,17 +1258,28 @@ const EditGameForm = ({
                         Traditional
                       </Badge>
                     )}
+                    {prize.id === 'secondFullHouse' && (
+                      <Badge variant="outline" className="ml-1 text-xs text-blue-600 border-blue-300">
+                        Dependent
+                      </Badge>
+                    )}
                     {gameData.prizes[prize.id]?.won && (
                       <Badge variant="default" className="ml-2 text-xs bg-green-600">
                         Won
                       </Badge>
                     )}
                   </Label>
-                  <p className="text-sm text-gray-600">{prize.pattern}</p>
+                  <p className="text-sm text-gray-600">{prize.description}</p>
                 </div>
               </div>
             ))}
         </div>
+        {/* Dependency Note */}
+        {!createGameForm.selectedPrizes.includes('fullHouse') && (
+          <p className="text-xs text-gray-500 mt-2">
+            💡 Select "Full House" to enable "Second Full House" option
+          </p>
+        )}
       </div>
       
       <div className="flex space-x-4">
