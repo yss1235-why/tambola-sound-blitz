@@ -234,9 +234,12 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   )}
 
                   {/* Booking Status / Button */}
-                   div className="text-center">
-                      {/* Phone number removed */}
-                    </div>
+                    <div className="py-1 px-3 rounded-b bg-gray-50">
+                      {ticket.isBooked ? (
+                         <div className="text-center">
+                          {/* Phone number removed */}
+                        </div>
+                         
                       ) : (
                       <Button
                         onClick={() => handleBookTicket(ticketId)}
