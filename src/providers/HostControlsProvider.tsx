@@ -15,6 +15,7 @@ interface HostControlsContextValue {
   
   // Status
   isProcessing: boolean;
+  countdownTime: number;
 }
 
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
@@ -46,6 +47,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   
   // Simple state - only for UI feedback
   const [isProcessing, setIsProcessing] = React.useState(false);
+  const [countdownTime, setCountdownTime] = React.useState(0);
   const [callInterval, setCallInterval] = React.useState(5);
   
   // Simple refs - only for timer management
@@ -114,7 +116,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   /**
    * Clear all timers - for cleanup
    */
-  const clearAllTimers = useCallback(() => {
+ const clearAllTimers = useCallback(() => {
     if (gameTimerRef.current) {
       clearTimeout(gameTimerRef.current);
       gameTimerRef.current = null;
@@ -123,6 +125,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       clearInterval(countdownTimerRef.current);
       countdownTimerRef.current = null;
     }
+    setCountdownTime(0);
     isTimerActiveRef.current = false;
   }, []);
 
@@ -146,10 +149,13 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       
       // Start countdown timer (UI only)
       let timeLeft = 10;
+      setCountdownTime(timeLeft);
       countdownTimerRef.current = setInterval(async () => {
         timeLeft--;
+        setCountdownTime(timeLeft);
         
         if (timeLeft <= 0) {
+          setCountdownTime(0);
           clearInterval(countdownTimerRef.current!);
           countdownTimerRef.current = null;
           
@@ -163,11 +169,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       
       console.log(`✅ Game start initiated: ${gameData.gameId}`);
       
-    } catch (error: any) {
-      console.error('❌ Start game error:', error);
-      clearAllTimers();
-      throw new Error(error.message || 'Failed to start game');
-    } finally {
+          } catch (error: any) {
+          console.error('❌ Start game error:', error);
+          clearAllTimers();
+          setCountdownTime(0);  // ✅ Move this line BEFORE throw
+          throw new Error(error.message || 'Failed to start game');
+        } finally {
       setIsProcessing(false);
     }
   }, [gameData, isProcessing, clearAllTimers, startTimer]);
@@ -283,7 +290,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     resumeGame,
     endGame,
     updateCallInterval,
-    isProcessing
+    isProcessing,
+    countdownTime
   };
 
   return (
