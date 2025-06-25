@@ -3,7 +3,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Trophy, User, Phone, Play, CheckCircle } from 'lucide-react';
+import { Trophy, User, Play, CheckCircle } from 'lucide-react';
 import { GameData } from '@/services/firebase';
 
 interface SimplifiedWinnerDisplayProps {
@@ -49,7 +49,7 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
             <CardTitle className="flex items-center justify-between text-base sm:text-lg">
               <div className="flex items-center">
                 <Trophy className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                Winners & Contact Info
+                Winners
               </div>
               <Badge className="bg-green-600 text-white text-xs">
                 {wonPrizes.length} prize{wonPrizes.length !== 1 ? 's' : ''}
@@ -66,14 +66,14 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
                 </p>
               </div>
             ) : (
-              <div className="space-y-2 sm:space-y-3">
+              <div className="space-y-1 sm:space-y-2">
                 {wonPrizes
                   .sort((a, b) => (a.order || 0) - (b.order || 0))
                   .map((prize) => (
                   <Card key={prize.id} className="bg-green-50 border-green-200">
-                    <CardContent className="p-2 sm:p-3">
+                    <CardContent className="p-1.5 sm:p-2">
                       {/* Prize Header - Single Line */}
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-1">
                         <h3 className="text-sm sm:text-base font-bold text-green-800 flex items-center">
                           🏆 {prize.name}
                           {prize.winningNumber && (
@@ -89,9 +89,9 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
 
                       {/* Winners Grid - Mobile Optimized */}
                       {prize.winners && prize.winners.length > 0 && (
-                        <div className="space-y-1">
+                        <div className="space-y-0.5">
                           {prize.winners.map((winner, idx) => (
-                            <div key={idx} className="bg-white rounded p-2 border border-green-200">
+                            <div key={idx} className="bg-white rounded p-1.5 border border-green-200">
                               <div className="flex items-center justify-between">
                                 {/* Winner Info - Compact */}
                                 <div className="flex-1 min-w-0">
@@ -101,38 +101,10 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
                                       {winner.name}
                                     </span>
                                     <Badge variant="outline" className="text-xs border-gray-300 text-gray-600">
-                                      T{winner.ticketId}
+                                      No. {winner.ticketId}
                                     </Badge>
                                   </div>
-                                  {winner.phone && (
-                                    <div className="flex items-center space-x-1 mt-1">
-                                      <Phone className="w-3 h-3 text-green-600 flex-shrink-0" />
-                                      <a 
-                                        href={`tel:${winner.phone}`}
-                                        className="text-xs text-green-700 hover:text-green-800 font-medium"
-                                        onClick={() => console.log('📞 Host calling winner:', winner.name, winner.phone)}
-                                      >
-                                        {winner.phone}
-                                      </a>
-                                    </div>
-                                  )}
                                 </div>
-                                
-                                {/* WhatsApp Quick Action */}
-                                {winner.phone && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => {
-                                      const message = `Congratulations ${winner.name}! You won ${prize.name} in today's Tambola game with ticket ${winner.ticketId}. Well done! 🎉`;
-                                      console.log('📱 Host sending WhatsApp to winner:', winner.name);
-                                      window.open(`https://wa.me/${winner.phone}?text=${encodeURIComponent(message)}`, '_blank');
-                                    }}
-                                    className="text-green-600 border-green-300 hover:bg-green-50 text-xs px-2 py-1 h-7"
-                                  >
-                                    📱 WhatsApp
-                                  </Button>
-                                )}
                               </div>
                             </div>
                           ))}
@@ -152,9 +124,6 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
             <div className="mb-3 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <p className="text-xs sm:text-sm text-blue-800 font-medium mb-1">
                 ✅ Game completed! Winner information displayed above.
-              </p>
-              <p className="text-xs text-blue-600">
-                💡 Note down contact details now. Creating a new game will clear this display.
               </p>
             </div>
             
