@@ -558,7 +558,7 @@ useEffect(() => {
                 Developed and designed by <span className="font-semibold text-gray-800">Innovative Archive</span>
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                © 2024 All rights reserved. ™
+                © 2025 All rights reserved. ™
               </p>
             </div>
           </CardContent>
