@@ -276,16 +276,15 @@ export const UserDisplay: React.FC = () => {
         <AudioStatusComponent />
 
         {/* Header */}
-        <Card className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
-          <CardHeader className="text-center">
-            <CardTitle className="text-4xl font-bold">🎲 {gameData.name} 🎲</CardTitle>
-            <p className="text-blue-100 text-lg">
-              {currentPhase === 'finished' ? 'Game Complete!' : 
-               currentPhase === 'countdown' ? `Game Starting in ${timeUntilAction}s!` : 
-               currentPhase === 'playing' ? 'Game in Progress' : 'Waiting to Start'}
-            </p>
-          </CardHeader>
-        </Card>
+        <Card className="bg-white/90 backdrop-blur-sm border border-blue-200">
+            <CardHeader className="text-center py-4">
+              <p className="text-lg text-gray-600 font-medium">
+                {currentPhase === 'finished' ? 'Game Complete!' : 
+                 currentPhase === 'countdown' ? `Game Starting in ${timeUntilAction}s!` : 
+                 currentPhase === 'playing' ? 'Game in Progress' : 'Waiting to Start'}
+              </p>
+            </CardHeader>
+          </Card>
 
         {/* Countdown Display */}
         {currentPhase === 'countdown' && (
