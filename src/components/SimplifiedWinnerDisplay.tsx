@@ -89,22 +89,17 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
 
                       {/* Winners Grid - Mobile Optimized */}
                       {prize.winners && prize.winners.length > 0 && (
-                        <div className="space-y-0.5">
+                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
                           {prize.winners.map((winner, idx) => (
-                            <div key={idx} className="bg-white rounded p-1.5 border border-green-200">
-                              <div className="flex items-center justify-between">
-                                {/* Winner Info - Compact */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center space-x-1">
-                                    <User className="w-3 h-3 text-gray-600 flex-shrink-0" />
-                                    <span className="font-medium text-gray-800 text-xs sm:text-sm truncate">
-                                      {winner.name}
-                                    </span>
-                                    <Badge variant="outline" className="text-xs border-gray-300 text-gray-600">
-                                      No. {winner.ticketId}
-                                    </Badge>
-                                  </div>
-                                </div>
+                           <div key={idx} className="bg-white rounded p-1.5 border border-green-200">
+                             <div className="flex items-center justify-center space-x-1">
+                                <User className="w-3 h-3 text-gray-600 flex-shrink-0" />
+                                <span className="font-medium text-gray-800 text-xs sm:text-sm truncate">
+                                  {winner.name}
+                                </span>
+                                <Badge variant="outline" className="text-xs border-gray-300 text-gray-600">
+                                  No. {winner.ticketId}
+                                </Badge>
                               </div>
                             </div>
                           ))}
