@@ -456,7 +456,7 @@ export const UserDisplay: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => removeSearchedTicket(item.uniqueId)}
-                            className="absolute top-0 right-0 z-10 bg-white/90 text-red-600 hover:text-red-700 hover:bg-red-50 p-1 h-6 w-6"
+                            className="absolute top-0 right-0 z-10 bg-white/90 text-red-600 hover:text-red-700 hover:bg-red-50 p-0.5 h-3 w-3"
                             title={`Remove Ticket ${item.ticket.ticketId}`}
                           >
                             <X className="w-3 h-3" />
