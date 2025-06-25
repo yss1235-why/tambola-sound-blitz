@@ -236,11 +236,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   {/* Booking Status / Button */}
                     <div className="py-1 px-3 rounded-b bg-gray-50">
                       {ticket.isBooked ? (
-                        <div className="text-center">
-                          {ticket.playerPhone && (
-                            <div className="text-xs text-gray-500">
-                              {ticket.playerPhone}
-                            </div>
                           )}
                         </div>
                       ) : (
