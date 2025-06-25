@@ -15,6 +15,7 @@ import {
   Trash2, 
   UserPlus,
   CheckSquare,
+  Loader2,
   X
 } from 'lucide-react';
 import { GameData, TambolaTicket, firebaseService } from '@/services/firebase';
@@ -47,6 +48,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   const [editingTicket, setEditingTicket] = useState<TicketInfo | null>(null);
   const [isBooking, setIsBooking] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isCanceling, setIsCanceling] = useState('');
   const [isExpanding, setIsExpanding] = useState(false);
   const [isScrolledDown, setIsScrolledDown] = useState(false);
   
@@ -183,14 +185,18 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     }
   };
 
-  const handleCancelBooking = async (ticketId: string) => {
+ const handleCancelBooking = async (ticketId: string) => {
     if (!confirm('Are you sure you want to cancel this booking?')) return;
-
+    
+    setIsCanceling(ticketId);
     try {
       await firebaseService.unbookTicket(gameData.gameId, ticketId);
       onRefreshGame();
     } catch (error) {
       console.error('Error canceling booking:', error);
+      alert('Failed to cancel booking. Please try again.');
+    } finally {
+      setIsCanceling('');
     }
   };
 
@@ -528,7 +534,85 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             </div>
           </div>
         </DialogContent>
-      </Dialog>
+     </Dialog>
+
+      {/* NEW: Booked Tickets List */}
+      {(() => {
+        const bookedTickets = ticketInfo.filter(t => t.isBooked);
+        const bookedTicketRows = [];
+        for (let i = 0; i < bookedTickets.length; i += 2) {
+          bookedTicketRows.push(bookedTickets.slice(i, i + 2));
+        }
+        
+        return bookedTickets.length > 0 ? (
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Booked Tickets ({bookedTickets.length})</span>
+                <Badge variant="secondary">{bookedTickets.length} players</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {bookedTicketRows.map((row, rowIndex) => (
+                  <div key={rowIndex} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {row.map((ticket) => (
+                      <div
+                        key={ticket.ticketId}
+                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border"
+                      >
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-800">
+                            {ticket.playerName || 'Unknown Player'}
+                          </div>
+                          <div className="text-sm text-gray-600">
+                            Ticket #{ticket.ticketId}
+                          </div>
+                          {ticket.playerPhone && (
+                            <div className="text-xs text-gray-500">
+                              📞 {ticket.playerPhone}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex space-x-2 ml-4">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingTicket(ticket);
+                              setEditForm({
+                                playerName: ticket.playerName || '',
+                                playerPhone: ticket.playerPhone || ''
+                              });
+                              setShowEditDialog(true);
+                            }}
+                            className="text-blue-600 hover:text-blue-700"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleCancelBooking(ticket.ticketId)}
+                            disabled={isCanceling === ticket.ticketId}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            {isCanceling === ticket.ticketId ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ) : null;
+      })()}
     </div>
   );
 };
