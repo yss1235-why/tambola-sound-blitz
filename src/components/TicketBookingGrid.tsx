@@ -174,15 +174,28 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Object.entries(availableTickets).map(([ticketId, ticket]) => (
-              <div
-  key={ticketId}
-  className={`relative rounded border-2 transition-all duration-200 ${
-      ticket.isBooked 
-        ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
-        : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
-    }`}
-  >
+  {Object.entries(availableTickets).map(([ticketId, ticket]) => (
+    <div
+      key={ticketId}
+      className={`relative rounded border-2 transition-all duration-200 ${
+        ticket.isBooked 
+          ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
+          : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
+      }`}
+    >
+      {/* NEW: Ticket Info Header */}
+      <div className="flex items-center justify-between p-3 border-b border-gray-200">
+        <div className="flex items-center space-x-2">
+          <span className="font-bold text-gray-800">Ticket {ticketId}</span>
+        </div>
+        <div className="text-right">
+          {ticket.isBooked ? (
+            <span className="text-sm text-gray-600">{ticket.playerName}</span>
+          ) : (
+            <span className="text-sm text-green-600 font-medium">Available</span>
+          )}
+        </div>
+      </div>
 
 {/* ✅ FIXED: Ticket Grid with Safety Checks */}
 <div className="p-2">
