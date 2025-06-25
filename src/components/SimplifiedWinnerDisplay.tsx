@@ -121,13 +121,6 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
         {/* Create New Game Button - Prominent */}
         <Card>
           <CardContent className="p-3 sm:p-4 text-center">
-            <div className="mb-3 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-xs sm:text-sm text-blue-800 font-medium mb-1">
-                ✅ Game completed! Winner information displayed above.
-              </p>
-            </div>
-            
-            {/* ✅ VERIFIED: Button calls onCreateNewGame which triggers the alert and flow */}
             <Button 
               onClick={() => {
                 console.log('🎮 Host clicked Create New Game from winner display');
@@ -140,10 +133,6 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
               <Play className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Create New Game
             </Button>
-            
-            <p className="text-xs text-gray-500 mt-2">
-              🔒 This will take you to game setup. Old game data will be preserved until new game is created.
-            </p>
           </CardContent>
         </Card>
 
