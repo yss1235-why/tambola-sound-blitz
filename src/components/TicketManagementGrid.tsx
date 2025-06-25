@@ -167,11 +167,12 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     setIsUpdating(true);
     try {
-      await firebaseService.updateTicketInfo(
-        gameData.gameId,
+      // Use bookTicket to update player information (since ticket is already booked)
+      await firebaseService.bookTicket(
         editingTicket.ticketId,
         editForm.playerName.trim(),
-        editForm.playerPhone.trim()
+        editForm.playerPhone.trim(),
+        gameData.gameId
       );
 
       setShowEditDialog(false);
@@ -180,6 +181,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       onRefreshGame();
     } catch (error) {
       console.error('Error updating ticket:', error);
+      alert('Failed to update ticket. Please try again.');
     } finally {
       setIsUpdating(false);
     }
