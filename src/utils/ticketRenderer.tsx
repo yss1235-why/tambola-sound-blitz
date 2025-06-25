@@ -293,31 +293,31 @@ return (
       </div>
     )}
     <div className="grid grid-cols-9 gap-1">
-  {allNumbers.map((number, index) => {
-    const isMarked = number !== 0 && calledNumbers.includes(number);
-    const isEmpty = number === 0;
-    const isPattern = isPatternPosition(index, patternHighlight, ticket, calledNumbers);
-    
-    return (
-      <div
-        key={index}
-        className={`
-          aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-200
-          ${isEmpty 
-            ? 'bg-gray-500/50 border-2 border-red-900' 
-            : isMarked 
-              ? `bg-pink-300/50 text-black border-2 border-yellow-500 shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
-              : isPattern
-                ? 'bg-teal-500/50 text-black border-2 border-black pattern-highlight'
-                : 'bg-teal-500/50 text-black border-2 border-black'
-          }
-        `}
-      >
-        {number !== 0 ? number : ''}
+        {allNumbers.map((number, index) => {
+          const isMarked = number !== 0 && calledNumbers.includes(number);
+          const isEmpty = number === 0;
+          const isPattern = isPatternPosition(index, patternHighlight, ticket, calledNumbers);
+          
+          return (
+            <div
+              key={index}
+              className={`
+                aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-200 text-black
+                ${isEmpty 
+                  ? 'bg-gray-500/50 border-2 border-red-900' 
+                  : isMarked 
+                    ? `bg-green-300/50 border-2 border-yellow-500 shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
+                    : isPattern
+                      ? 'bg-green-200/50 border-2 border-yellow-500'
+                      : 'bg-white border-2 border-yellow-500'
+                }
+              `}
+            >
+              {number === 0 ? '' : number}
+            </div>
+          );
+        })}
       </div>
-    );
-  })}
-</div>
       
       {/* Pattern explanation for highlighted tickets */}
       {patternHighlight && (
