@@ -234,7 +234,10 @@ useEffect(() => {
       <GameDataProvider gameId={selectedGameId}>
         <div className="space-y-4">
           <div className="p-4 bg-white">
-            <Button onClick={handleBackToList} variant="outline">
+            <Button 
+              onClick={handleBackToList} 
+              className="bg-black text-white hover:bg-gray-800 border-black"
+            >
               ← Back to Games
             </Button>
           </div>
@@ -250,7 +253,10 @@ useEffect(() => {
       <GameDataProvider gameId={selectedGameId}>
         <div className="space-y-4">
           <div className="p-4 text-white">
-            <Button onClick={handleBackToList} variant="outline">
+           <Button 
+              onClick={handleBackToList} 
+              className="bg-black text-white hover:bg-gray-800 border-black"
+            >
               ← Back to Games
             </Button>
           </div>
@@ -286,9 +292,12 @@ useEffect(() => {
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <Button onClick={handleBackToList} variant="outline">
-            ← Back to Games
-          </Button>
+          <Button 
+              onClick={handleBackToList} 
+              className="bg-black text-white hover:bg-gray-800 border-black"
+            >
+              ← Back to Games
+            </Button>
           <div className="flex items-center space-x-2">
             <Badge variant="default">Booking Phase</Badge>
             <Badge variant="outline" className="text-green-600 border-green-400">
