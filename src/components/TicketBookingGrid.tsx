@@ -175,20 +175,20 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Object.entries(availableTickets).map(([ticketId, ticket]) => (
-              <div
-                key={ticketId}
-                className={`relative rounded-xl border-2 transition-all duration-200 ${
-                  ticket.isBooked 
-                    ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
-                    : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
-                }`}
-              >
-                {/* Ticket Header */}
-                <div className={`flex justify-between items-center py-1 px-3 rounded-t-xl ${
+             <div
+                  key={ticketId}
+                  className={`relative rounded-lg border-2 transition-all duration-200 ${
                     ticket.isBooked 
-                      ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
-                      : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
-                  }`}>
+                      ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
+                      : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
+                  }`}
+                >
+                {/* Ticket Header */}
+                 <div className={`flex justify-between items-center py-1 px-3 rounded-t-lg ${
+                      ticket.isBooked 
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
+                        : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
+                    }`}>
                     <span className="font-bold text-sm">Ticket {ticketId}</span>
                     <span className="text-xs font-medium">
                       {ticket.isBooked ? ticket.playerName : 'Available'}
@@ -199,13 +199,13 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                <div className="p-2">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                   {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
-                    <div className="grid grid-cols-9 gap-1 mb-4">
+                    <div className="grid grid-cols-9 gap-1 mb-1">
                       {ticket.rows.flat().map((number, index) => (
                         <div
                           key={index}
                           className={`aspect-square flex items-center justify-center text-xs font-bold rounded ${
                             number === 0 
-                              ? 'bg-gray-100' 
+                              ? ticket.isBooked ? 'bg-gray-400' : 'bg-gray-100'
                               : ticket.isBooked 
                                 ? 'bg-green-300 text-green-800' 
                                 : 'bg-gradient-to-br from-orange-100 to-red-100 text-gray-800 border border-orange-200'
@@ -234,14 +234,16 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   )}
 
                   {/* Booking Status / Button */}
-                  <div className="py-1 px-3 rounded-b-xl bg-gray-50">
-                    {ticket.isBooked ? (
-                      <div className="text-center">
-                        <div className="text-xs text-gray-500">
-                          {ticket.playerPhone || 'No phone provided'}
+                    <div className="py-1 px-3 rounded-b-lg bg-gray-50">
+                      {ticket.isBooked ? (
+                        <div className="text-center">
+                          {ticket.playerPhone && (
+                            <div className="text-xs text-gray-500">
+                              {ticket.playerPhone}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ) : (
+                      ) : (
                       <Button
                         onClick={() => handleBookTicket(ticketId)}
                         disabled={!hostPhone || isLoadingHost || !ticket.rows}
