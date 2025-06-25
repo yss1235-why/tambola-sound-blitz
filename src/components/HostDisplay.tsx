@@ -394,7 +394,9 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.values(gameData.prizes).map((prize) => (
+            {Object.values(gameData.prizes)
+              .sort((a, b) => (a.order || 0) - (b.order || 0))
+              .map((prize) => (
               <div
                 key={prize.id}
                 className={`p-3 rounded-lg border-2 transition-all duration-300 ${
