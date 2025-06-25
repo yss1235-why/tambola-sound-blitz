@@ -178,7 +178,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 currentPhase === 'finished' ? 'destructive' : 'outline'
               } className="text-lg px-4">
                 {currentPhase === 'booking' && '🎫 Booking Open'}
-                {currentPhase === 'countdown' && `⏰ Starting in ${timeUntilAction}s`}
+                {currentPhase === 'countdown' && `⏰ Starting in ${hostControls?.countdownTime || 0}s`}
                 {currentPhase === 'playing' && gameData.gameState.isActive && '🔴 Live Game'}
                 {currentPhase === 'playing' && !gameData.gameState.isActive && '⏸️ Game Paused'}
                 {currentPhase === 'finished' && '🏆 Game Complete'}
@@ -271,7 +271,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             {currentPhase === 'countdown' && (
               <Button disabled className="flex-1" size="lg">
                 <Clock className="w-4 h-4 mr-2 animate-pulse" />
-                Starting in {timeUntilAction}s...
+               Starting in {hostControls?.countdownTime || 0}s...
               </Button>
             )}
 
