@@ -204,12 +204,12 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                         <div
                           key={index}
                           className={`aspect-square flex items-center justify-center text-xs font-bold rounded ${
-                            number === 0 
-                              ? ticket.isBooked ? 'bg-gray-300' : 'bg-gray-100'
-                              : ticket.isBooked 
-                                ? 'bg-green-300 text-green-800' 
-                                : 'bg-gradient-to-br from-orange-100 to-red-100 text-gray-800 border border-orange-200'
-                          }`}
+                              number === 0 
+                                ? 'bg-gray-300'
+                                : ticket.isBooked 
+                                  ? 'bg-green-300 text-green-800' 
+                                  : 'bg-gradient-to-br from-orange-100 to-red-100 text-gray-800 border border-orange-200'
+                            }`}
                           >
                           {number !== 0 ? number : ''}
                         </div>
