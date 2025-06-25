@@ -140,8 +140,13 @@ const isPatternPosition = (
   return isEarlyFive;
 }
     
-    case 'fullHouse': {
+   case 'fullHouse': {
       // Full house: all non-zero positions (we already checked currentNumber > 0)
+      return true;
+    }
+    
+    case 'secondFullHouse': {
+      // Second Full House: same pattern as Full House - all non-zero positions
       return true;
     }
     
@@ -161,6 +166,7 @@ const getPatternName = (prizeId: string): string => {
     case 'corner': return '4 Corner Numbers';
     case 'starCorner': return '4 Corners + Center';
     case 'fullHouse': return 'All Numbers';
+    case 'secondFullHouse': return 'All Numbers (Second Winner)';
     default: return 'Winning Pattern';
   }
 };
@@ -174,6 +180,7 @@ const getPatternDescription = (prizeId: string): string => {
     case 'middleLine': 
     case 'bottomLine': return 'Yellow borders show the complete winning row';
     case 'fullHouse': return 'Yellow borders show all numbers';
+    case 'secondFullHouse': return 'Yellow borders show all numbers (Second Full House winner)';
     default: return 'Yellow borders show pattern positions';
   }
 };
