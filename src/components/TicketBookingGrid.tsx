@@ -175,28 +175,17 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {Object.entries(availableTickets).map(([ticketId, ticket]) => (
-               <div
-                  key={ticketId}
-                  className={`relative rounded border-2 transition-all duration-200 ${
-                      ticket.isBooked 
-                        ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
-                        : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
-                    }`}
-                  >
-                {/* Ticket Header */}
-                  <div className={`flex justify-between items-center py-1 px-3 rounded-t ${
-                      ticket.isBooked 
-                        ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white' 
-                        : 'bg-gradient-to-r from-orange-500 to-red-500 text-white'
-                    }`}>
-                    <span className="font-bold text-sm">Ticket {ticketId}</span>
-                    <span className="text-xs font-medium">
-                      {ticket.isBooked ? ticket.playerName : 'Available'}
-                    </span>
-                  </div>
+              <div
+  key={ticketId}
+  className={`relative rounded border-2 transition-all duration-200 ${
+      ticket.isBooked 
+        ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
+        : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
+    }`}
+  >
 
-                {/* ✅ FIXED: Ticket Grid with Safety Checks */}
-               <div className="p-2">
+{/* ✅ FIXED: Ticket Grid with Safety Checks */}
+<div className="p-2">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                  {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
                     <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-1 border border-yellow-500 rounded">
