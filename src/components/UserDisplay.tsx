@@ -43,7 +43,7 @@ export const UserDisplay: React.FC = () => {
   const tickets = gameData?.tickets || {};
   const calledNumbers = gameData?.gameState.calledNumbers || [];
   const currentNumber = gameData?.gameState.currentNumber;
-  const prizes = gameData ? Object.values(gameData.prizes) : [];
+  const prizes = gameData ? Object.values(gameData.prizes).sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
 
   // ✅ NEW: Validate ticket ID format consistency
   const validateTicketFormat = React.useCallback(() => {
