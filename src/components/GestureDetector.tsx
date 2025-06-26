@@ -36,25 +36,23 @@ export const GestureDetector: React.FC<GestureDetectorProps> = ({
     resetGesture
   } = useGesturePattern(onGestureComplete, config);
 
-  // Event handler for touch/mouse events
-  const handleInteraction = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!enabled) return;
-    
-    // Prevent default to avoid any interference with normal interactions
-    // but only for our specific gesture detection
-    const nativeEvent = e.nativeEvent;
-    handleTouch(nativeEvent);
-  };
+   // No handleInteraction needed - using global listeners only
 
-  // Add global event listeners for better coverage
+  // Add global event listeners for gesture detection
   useEffect(() => {
     if (!enabled) return;
 
     const handleGlobalTouch = (e: TouchEvent) => {
+      if (config.debugMode) {
+        console.log('🎯 Touch event detected at:', e.touches[0]?.clientX, e.touches[0]?.clientY);
+      }
       handleTouch(e);
     };
 
     const handleGlobalClick = (e: MouseEvent) => {
+      if (config.debugMode) {
+        console.log('🎯 Click event detected at:', e.clientX, e.clientY);
+      }
       handleTouch(e);
     };
 
@@ -62,11 +60,18 @@ export const GestureDetector: React.FC<GestureDetectorProps> = ({
     document.addEventListener('touchstart', handleGlobalTouch, { passive: true });
     document.addEventListener('click', handleGlobalClick, { passive: true });
 
+    if (config.debugMode) {
+      console.log('🎯 GestureDetector: Event listeners added, enabled =', enabled);
+    }
+
     return () => {
       document.removeEventListener('touchstart', handleGlobalTouch);
       document.removeEventListener('click', handleGlobalClick);
+      if (config.debugMode) {
+        console.log('🎯 GestureDetector: Event listeners removed');
+      }
     };
-  }, [handleTouch, enabled]);
+  }, [handleTouch, enabled, config.debugMode]);
 
   // Debug info (only in development/debug mode)
   useEffect(() => {
@@ -95,26 +100,7 @@ export const GestureDetector: React.FC<GestureDetectorProps> = ({
 
   return (
     <>
-      {/* Invisible overlay for gesture detection */}
-      <div
-        ref={overlayRef}
-        className={`
-          fixed inset-0 z-50 
-          pointer-events-none 
-          touch-action-none
-          ${config.debugMode ? 'bg-red-500 bg-opacity-5' : ''}
-          ${className}
-        `}
-        onTouchStart={handleInteraction}
-        onClick={handleInteraction}
-        style={{
-          // Ensure it's truly invisible in production
-          backgroundColor: config.debugMode ? 'rgba(255, 0, 0, 0.05)' : 'transparent',
-          // Ensure it doesn't interfere with normal interactions
-          pointerEvents: 'none'
-        }}
-        aria-hidden="true"
-      />
+     {/* No overlay needed - using global event listeners only */}
       
       {/* Debug overlay showing zones (only in debug mode) */}
       {config.debugMode && (
@@ -201,10 +187,10 @@ export const GestureDetector: React.FC<GestureDetectorProps> = ({
             </div>
           </div>
           
-          {/* Status indicator */}
+           {/* Status indicator */}
           <div className="absolute top-4 left-4 bg-white bg-opacity-90 p-2 rounded border">
             <div className="text-xs font-bold">
-              Gesture Debug Mode
+              Gesture Debug Mode {enabled ? '(ENABLED)' : '(DISABLED)'}
             </div>
             <div className="text-xs">
               Active: {isActive ? 'YES' : 'NO'}
@@ -220,6 +206,9 @@ export const GestureDetector: React.FC<GestureDetectorProps> = ({
                 COOLDOWN ACTIVE
               </div>
             )}
+            <div className="text-xs mt-1 text-blue-600">
+              Pattern: {config.pattern.map(p => `${p.taps}x ${p.zone}`).join(' → ')}
+            </div>
           </div>
         </div>
       )}
