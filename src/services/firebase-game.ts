@@ -10,9 +10,11 @@ import {
   runTransaction,
   query,
   orderByChild,
-  equalTo
+  equalTo,
+  onValue, 
+  off
 } from 'firebase/database';
-import { database, removeUndefinedValues } from './firebase-core';
+import { database, removeUndefinedValues } from './firebase-core'; 
 import { prizeEngine } from './prize-engine';
 import type { 
   GameData, 
@@ -112,49 +114,104 @@ class FirebaseGameService {
 
   // ================== GAME OPERATIONS ==================
 
-  async createGame(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
-    try {
-      console.log(`🎮 Creating game for host: ${hostId}`);
-      
-      const gameId = push(ref(database, 'games')).key;
-      if (!gameId) throw new Error('Failed to generate game ID');
-
-      const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
-      const prizes = prizeEngine.createPrizeConfiguration(selectedPrizes);
-
-      const gameData: GameData = {
-        gameId,
-        name: config.name,
-        hostId,
-        hostPhone: config.hostPhone,
-        createdAt: new Date().toISOString(),
-        maxTickets: config.maxTickets,
-        ticketPrice: config.ticketPrice,
-        gameState: {
-          isActive: false,
-          isCountdown: false,
-          countdownTime: 0,
-          gameOver: false,
-          calledNumbers: [],
-          currentNumber: null
-        },
-        tickets,
-        prizes,
-        updatedAt: new Date().toISOString()
-      };
-
-      const newGameRef = ref(database, `games/${gameId}`);
-      await set(newGameRef, removeUndefinedValues(gameData));
-      
-      console.log(`✅ Game created successfully: ${gameId}`);
-      return gameData;
-      
-    } catch (error: any) {
-      console.error('❌ Error creating game:', error);
-      throw new Error(error.message || 'Failed to create game');
+ async createGame(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
+  try {
+    console.log(`🎮 Creating game for host: ${hostId} with database protection`);
+    
+    // STEP 1: Check for existing active games (non-atomic check first)
+    const existingActiveGame = await this.getHostCurrentGame(hostId);
+    if (existingActiveGame && !existingActiveGame.gameState.gameOver) {
+      throw new Error(`Host already has an active game: ${existingActiveGame.gameId}. Please complete or delete it first.`);
     }
+    
+    // STEP 2: Atomic lock to prevent concurrent creation
+    const lockRef = ref(database, `hostLocks/${hostId}`);
+    
+    return await runTransaction(lockRef, (currentLock) => {
+      // If lock exists and is recent (within 30 seconds), reject
+      if (currentLock !== null) {
+        const lockAge = Date.now() - currentLock;
+        if (lockAge < 30000) { // 30 seconds
+          throw new Error('Host is already creating a game. Please wait.');
+        }
+        // If lock is old, we can override it (maybe previous creation failed)
+      }
+      
+      // Set new lock with current timestamp
+      return Date.now();
+      
+    }).then(async (transactionResult) => {
+      if (!transactionResult.committed) {
+        throw new Error('Failed to acquire creation lock');
+      }
+      
+      console.log('✅ Creation lock acquired, proceeding with game creation');
+      
+      try {
+        // STEP 3: Double-check no active game exists (inside lock)
+        const doubleCheckGame = await this.getHostCurrentGame(hostId);
+        if (doubleCheckGame && !doubleCheckGame.gameState.gameOver) {
+          throw new Error('Host created a game while we were acquiring lock');
+        }
+        
+        // STEP 4: Proceed with actual game creation
+        const gameData = await this.createGameInternal(config, hostId, ticketSetId, selectedPrizes);
+        
+        console.log(`✅ Game created successfully: ${gameData.gameId}`);
+        return gameData;
+        
+      } finally {
+        // STEP 5: Always clear the lock (success or failure)
+        try {
+          await remove(lockRef);
+          console.log('✅ Creation lock released');
+        } catch (lockError) {
+          console.error('⚠️ Failed to release creation lock:', lockError);
+        }
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('❌ Error creating game with protection:', error);
+    throw new Error(error.message || 'Failed to create game');
+  }
+}
+// HELPER: The actual game creation logic (separated for clarity)
+private async createGameInternal(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
+  const gameId = push(ref(database, 'games')).key;
+  if (!gameId) {
+    throw new Error('Failed to generate game ID');
   }
 
+  const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
+  const prizes = prizeEngine.createPrizeConfiguration(selectedPrizes);
+
+  const gameData: GameData = {
+    gameId,
+    name: config.name,
+    hostId,
+    hostPhone: config.hostPhone,
+    createdAt: new Date().toISOString(),
+    maxTickets: config.maxTickets,
+    ticketPrice: config.ticketPrice,
+    gameState: {
+      isActive: false,
+      isCountdown: false,
+      countdownTime: 0,
+      gameOver: false,
+      calledNumbers: [],
+      currentNumber: null
+    },
+    tickets,
+    prizes,
+    updatedAt: new Date().toISOString()
+  };
+
+  const newGameRef = ref(database, `games/${gameId}`);
+  await set(newGameRef, removeUndefinedValues(gameData));
+  
+  return gameData;
+}
   async deleteGame(gameId: string): Promise<void> {
     try {
       await remove(ref(database, `games/${gameId}`));
