@@ -1,5 +1,5 @@
 // src/pages/Index.tsx - COMPLETE: Updated to use simplified authentication
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { UserLandingPage } from '@/components/UserLandingPage';
 import { GameHost } from '@/components/GameHost';
@@ -79,10 +79,30 @@ const Index = () => {
     // No-op since auth is always ready, but keep for compatibility
     await auth.initializeAuth();
   }, [auth]);
-  const handleGestureComplete = useCallback(() => {
+ const handleGestureComplete = useCallback(() => {
   console.log('🎯 Admin gesture detected, opening login dialog');
+  
+  // Clear any existing auth errors first
+  if (auth.error) {
+    auth.clearError();
+  }
+  
   setShowAdminLoginViaGesture(true);
-}, []);
+}, [auth]);
+// ✅ NEW: Handle gesture state cleanup
+  useEffect(() => {
+    // Reset gesture state when user successfully logs in
+    if (auth.user && showAdminLoginViaGesture) {
+      console.log('🎯 User logged in, resetting gesture state');
+      setShowAdminLoginViaGesture(false);
+    }
+  }, [auth.user, showAdminLoginViaGesture]);
+
+  // ✅ NEW: Handle admin login dialog close
+  const handleAdminLoginClose = useCallback(() => {
+    console.log('🎯 Admin login dialog closed, resetting gesture state');
+    setShowAdminLoginViaGesture(false);
+  }, []);
 
   // ✅ UNCHANGED: Render logic stays exactly the same
   const renderContent = () => {
@@ -131,18 +151,22 @@ const Index = () => {
     <div className="min-h-screen">
       {/* ✅ UNCHANGED: Header interface remains exactly the same */}
       <Header 
-          currentUser={auth.user}
-          userRole={auth.userRole}
-          authLoading={showAuthLoading}
-          authError={auth.error}
-          authInitialized={auth.initialized}
-          onRequestLogin={handleRequestLogin}
-          onUserLogin={handleUserLogin}
-          onUserLogout={handleUserLogout}
-          onClearError={auth.clearError}
-          forceShowAdminLogin={showAdminLoginViaGesture}
-          onAdminLoginClose={() => setShowAdminLoginViaGesture(false)}
-        />
+        // Auth state - same interface as before
+        currentUser={auth.user}
+        userRole={auth.userRole}
+        authLoading={auth.loading}
+        authError={auth.error}
+        authInitialized={auth.initialized}
+        
+        // Auth actions - same interface as before
+        onRequestLogin={handleRequestLogin}
+        onUserLogin={handleUserLogin}
+        onUserLogout={handleUserLogout}
+        onClearError={auth.clearError}
+
+        forceShowAdminLogin={showAdminLoginViaGesture}
+        onAdminLoginClose={handleAdminLoginClose}
+      />
       
       {/* ✅ UNCHANGED: Loading overlay logic */}
       {showAuthLoading && (
@@ -188,10 +212,13 @@ const Index = () => {
         </div>
       )}
       {/* ✅ NEW: Gesture Detection Component */}
- <GestureDetector 
+         <GestureDetector
           onGestureComplete={handleGestureComplete}
-          config={DEFAULT_GESTURE_CONFIG}
           enabled={!auth.user}
+          config={{
+            ...DEFAULT_GESTURE_CONFIG,
+            debugMode: process.env.NODE_ENV === 'development'
+          }}
         />
     </div>
   );
