@@ -289,11 +289,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   const [editMode, setEditMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
-    hostPhone: '',
-    maxTickets: '100',
-    selectedTicketSet: '1',
-    selectedPrizes: ['earlyFive', 'halfSheet', 'topLine', 'fullHouse']
-  });
+  hostPhone: '',
+  maxTickets: '100',
+  selectedTicketSet: '1',
+  selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fullHouse']
+});
+const [isCreatingGame, setIsCreatingGame] = useState(false);
+const [gameCreationError, setGameCreationError] = useState<string | null>(null);
 
   // Component-level state for winner display management
   const [uiState, setUIState] = useState<UIState>('calculated');
@@ -454,36 +456,43 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
 
   // ================== ENHANCED CREATE NEW GAME ==================
 
-  const createNewGame = async () => {
-    // ✅ SAFETY: Additional validation before game creation
-    if (!user?.uid) {
-      alert('User authentication required');
-      return;
-    }
-    
-    if (!isSubscriptionValid()) {
-      alert('Your subscription has expired. Please contact the administrator.');
-      return;
-    }
+const createNewGame = async () => {
+  // UI-LEVEL PROTECTION: Prevent rapid clicking
+  if (isCreating) {
+    alert('Game creation already in progress. Please wait...');
+    return;
+  }
 
-    // Validate form inputs
-    const maxTicketsNum = parseInt(createGameForm.maxTickets);
-    if (isNaN(maxTicketsNum) || maxTicketsNum < 1 || maxTicketsNum > 600) {
-      alert('Please enter valid max tickets (1-600)');
-      return;
-    }
+  // ✅ SAFETY: Additional validation before game creation
+  if (!user?.uid) {
+    alert('User authentication required');
+    return;
+  }
+  
+  if (!isSubscriptionValid()) {
+    alert('Your subscription has expired. Please contact the administrator.');
+    return;
+  }
 
-    if (!createGameForm.hostPhone.trim()) {
-      alert('Please enter your phone number');
-      return;
-    }
+  // Validate form inputs
+  const maxTicketsNum = parseInt(createGameForm.maxTickets);
+  if (isNaN(maxTicketsNum) || maxTicketsNum < 1 || maxTicketsNum > 600) {
+    alert('Please enter valid max tickets (1-600)');
+    return;
+  }
 
-    if (createGameForm.selectedPrizes.length === 0) {
-      alert('Please select at least one prize');
-      return;
-    }
+  if (!createGameForm.hostPhone.trim()) {
+    alert('Please enter your phone number');
+    return;
+  }
 
-    setIsCreating(true);
+  if (createGameForm.selectedPrizes.length === 0) {
+    alert('Please select at least one prize');
+    return;
+  }
+
+  setIsCreating(true);
+  setGameCreationError(null);
     setOperation({
       type: 'create',
       inProgress: true,
@@ -539,12 +548,21 @@ if (cachedWinnerData) {
       }));
 
     } catch (error: any) {
-      console.error('❌ Create game error:', error);
-      setOperation({ type: null, inProgress: false, message: '' });
+    console.error('❌ Create game error:', error);
+    setOperation({ type: null, inProgress: false, message: '' });
+    setGameCreationError(error.message);
+    
+    // Show user-friendly error messages
+    if (error.message.includes('already has an active game')) {
+      alert('You already have an active game running. Please complete or delete it first.');
+    } else if (error.message.includes('already creating a game')) {
+      alert('Game creation is already in progress. Please wait a moment.');
+    } else {
       alert(error.message || 'Failed to create game. Please try again.');
-    } finally {
-      setIsCreating(false);
     }
+  } finally {
+    setIsCreating(false);
+  }
   };
 
   // ================== OTHER EVENT HANDLERS ==================
