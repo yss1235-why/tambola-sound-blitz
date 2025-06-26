@@ -1,5 +1,5 @@
 // src/components/Header.tsx - OPTIMIZED: Works with lazy authentication system
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -15,18 +15,17 @@ import {
 import { AdminUser, HostUser } from '@/services/firebase';
 
 interface HeaderProps {
-  // ✅ NEW: Auth state from parent (lazy loaded)
   currentUser: AdminUser | HostUser | null;
   userRole: 'admin' | 'host' | null;
   authLoading: boolean;
   authError: string | null;
   authInitialized: boolean;
-  
-  // ✅ NEW: Auth actions from parent
   onRequestLogin: () => Promise<void>;
   onUserLogin: (type: 'admin' | 'host', email: string, password: string) => Promise<boolean>;
   onUserLogout: () => Promise<boolean>;
   onClearError: () => void;
+  forceShowAdminLogin?: boolean;
+  onAdminLoginClose?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -38,7 +37,9 @@ export const Header: React.FC<HeaderProps> = ({
   onRequestLogin,
   onUserLogin,
   onUserLogout,
-  onClearError
+  onClearError,
+  forceShowAdminLogin = false,
+  onAdminLoginClose
 }) => {
   // Local state for dialog management
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
@@ -55,6 +56,13 @@ export const Header: React.FC<HeaderProps> = ({
     email: '',
     password: ''
   });
+  // ✅ NEW: Handle forced admin login from gesture
+useEffect(() => {
+  if (forceShowAdminLogin && !isAdminLoginOpen) {
+    console.log('🎯 Gesture triggered admin login dialog');
+    setIsAdminLoginOpen(true);
+  }
+}, [forceShowAdminLogin, isAdminLoginOpen]);
 
   // ✅ NEW: Handle login dialog opening (triggers auth initialization)
   const handleOpenLogin = async (type: 'admin' | 'host') => {
@@ -137,11 +145,17 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   // ✅ NEW: Handle dialog close (clears forms)
-  const handleCloseAdminDialog = () => {
+ // ✅ NEW: Enhanced close handler for gesture support
+const handleCloseAdminDialog = (open: boolean) => {
+  if (!open) {
     setIsAdminLoginOpen(false);
     setAdminForm({ email: '', password: '' });
     if (authError) onClearError();
-  };
+    if (onAdminLoginClose) {
+      onAdminLoginClose();
+    }
+  }
+};
 
   const handleCloseHostDialog = () => {
     setIsHostLoginOpen(false);
@@ -241,17 +255,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <LogIn className="w-4 h-4 mr-2" />
                     Host Login
                   </DropdownMenuItem>
-                  <DropdownMenuItem 
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      handleOpenLogin('admin');
-                    }}
-                    className="cursor-pointer"
-                    disabled={authLoading}
-                  >
-                    <LogIn className="w-4 h-4 mr-2" />
-                    Admin Login
-                  </DropdownMenuItem>
+                 
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
