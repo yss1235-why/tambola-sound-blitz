@@ -29,10 +29,9 @@ export interface GestureConfig {
 export const DEFAULT_GESTURE_CONFIG: GestureConfig = {
   // Pattern: 3 taps top-left → 2 taps bottom-right → 1 tap center
   pattern: [
-    { taps: 3, zone: 'top-left' },
-    { taps: 2, zone: 'bottom-right' },
-    { taps: 1, zone: 'center' }
-  ],
+  { taps: 3, zone: 'bottom-right' },
+  { taps: 3, zone: 'bottom-left' }
+],
   
   // Timing (all in milliseconds)
   totalTimeLimit: 5000,    // 5 second total limit
