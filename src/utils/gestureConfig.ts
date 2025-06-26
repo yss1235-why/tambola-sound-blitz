@@ -30,7 +30,6 @@ export const DEFAULT_GESTURE_CONFIG: GestureConfig = {
   // Pattern: 3 taps top-left → 2 taps bottom-right → 1 tap center
   pattern: [
   { taps: 3, zone: 'bottom-right' },
-  { taps: 3, zone: 'bottom-left' }
 ],
   
   // Timing (all in milliseconds)
@@ -47,5 +46,5 @@ export const DEFAULT_GESTURE_CONFIG: GestureConfig = {
   // Security
   maxFailedAttempts: 3,    // 3 failed attempts
   cooldownPeriod: 10000,   // 10 second cooldown
-  debugMode: true         // Disable debug in production
+  debugMode: false         // Disable debug in production
 };
