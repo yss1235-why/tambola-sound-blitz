@@ -566,6 +566,33 @@ async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void
 
     return () => off(gameRef, 'value', unsubscribe);
   }
+  subscribeToHosts(callback: (hosts: HostUser[] | null) => void): () => void {
+  const hostsRef = ref(database, 'hosts');
+  
+  console.log('🔄 Setting up hosts subscription');
+  
+  const unsubscribe = onValue(hostsRef, (snapshot) => {
+    try {
+      if (snapshot.exists()) {
+        const hostsData = snapshot.val();
+        const hostsList = Object.values(hostsData) as HostUser[];
+        console.log(`📊 Hosts updated: ${hostsList.length} hosts`);
+        callback(hostsList);
+      } else {
+        console.log('📊 No hosts found');
+        callback([]);
+      }
+    } catch (error) {
+      console.error('❌ Error in hosts subscription:', error);
+      callback(null);
+    }
+  }, (error) => {
+    console.error('❌ Firebase hosts subscription error:', error);
+    callback(null);
+  });
+
+  return () => off(hostsRef, 'value', unsubscribe);
+}
 
   subscribeToHostGames(hostId: string, callback: (games: GameData[]) => void): () => void {
     const gamesRef = query(ref(database, 'games'), orderByChild('hostId'), equalTo(hostId));
