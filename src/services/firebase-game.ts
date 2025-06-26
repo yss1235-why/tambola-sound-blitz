@@ -613,11 +613,19 @@ class FirebaseGameService {
   }
 
   async callNextNumber(gameId: string): Promise<number | null> {
-    try {
-      const gameData = await this.getGameData(gameId);
-      if (!gameData) throw new Error('Game not found');
+  try {
+    const gameData = await this.getGameData(gameId);
+    if (!gameData) throw new Error('Game not found');
 
-      const calledNumbers = gameData.gameState.calledNumbers || [];
+    const calledNumbers = gameData.gameState.calledNumbers || [];
+    let newNumber: number;
+
+    // ✅ NEW: Check for predetermined sequence first
+    if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
+      newNumber = gameData.sessionCache[calledNumbers.length];
+      console.log(`🎯 Using predetermined number ${newNumber} (position ${calledNumbers.length + 1})`);
+    } else {
+      // EXISTING: Random selection fallback
       const availableNumbers = Array.from({length: 90}, (_, i) => i + 1)
         .filter(num => !calledNumbers.includes(num));
 
@@ -627,8 +635,9 @@ class FirebaseGameService {
       }
 
       const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-      const newNumber = availableNumbers[randomIndex];
-
+      newNumber = availableNumbers[randomIndex];
+      console.log(`🎲 Using random number ${newNumber}`);
+    }
       const updates = {
         calledNumbers: [...calledNumbers, newNumber],
         currentNumber: newNumber
@@ -776,23 +785,34 @@ class FirebaseGameService {
       const calledNumbers = gameData.gameState.calledNumbers || [];
       
       // Select next number
-      const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
-        .filter(num => !calledNumbers.includes(num));
+      let selectedNumber: number;
       
-      if (availableNumbers.length === 0) {
-        console.log(`🏁 No more numbers available - ending game`);
-        await this.endGameNoMoreNumbers(gameId);
-        return {
-          success: true,
-          gameEnded: true,
-          hasMoreNumbers: false
-        };
+      
+      if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
+        selectedNumber = gameData.sessionCache[calledNumbers.length];
+        console.log(`🎯 Using predetermined number ${selectedNumber} (position ${calledNumbers.length + 1})`);
+      } else {
+       
+        const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
+          .filter(num => !calledNumbers.includes(num));
+        
+        if (availableNumbers.length === 0) {
+          console.log(`🏁 No more numbers available - ending game`);
+          await this.endGameNoMoreNumbers(gameId);
+          return {
+            success: true,
+            gameEnded: true,
+            hasMoreNumbers: false
+          };
+        }
+        
+        const randomIndex = Math.floor(Math.random() * availableNumbers.length);
+        selectedNumber = availableNumbers[randomIndex];
+        console.log(`🎲 Using random number ${selectedNumber}`);
       }
       
-      // Call the number
-      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-      const selectedNumber = availableNumbers[randomIndex];
       const updatedCalledNumbers = [...calledNumbers, selectedNumber];
+      
       
       console.log(`🎲 Selected number: ${selectedNumber}`);
       
@@ -839,7 +859,7 @@ class FirebaseGameService {
       return {
         success: true,
         gameEnded: shouldEndGame,
-        hasMoreNumbers: availableNumbers.length > 1,
+        hasMoreNumbers: updatedCalledNumbers.length < 90,
         number: selectedNumber,
         winners: prizeResult.hasWinners ? prizeResult.winners : undefined
       };
