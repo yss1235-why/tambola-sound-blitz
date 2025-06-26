@@ -236,6 +236,9 @@ class FirebaseService {
   subscribeToAllActiveGames(callback: (games: any[]) => void) {
     return this.core.subscribeToAllActiveGames(callback);
   }
+  subscribeToHosts(callback: (hosts: any[] | null) => void) {
+    return this.core.subscribeToHosts(callback);
+  }
 
   // ========== UTILITY METHODS (delegate to game) ==========
   async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any) {
