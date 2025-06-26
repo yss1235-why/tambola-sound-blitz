@@ -131,22 +131,18 @@ const Index = () => {
     <div className="min-h-screen">
       {/* ✅ UNCHANGED: Header interface remains exactly the same */}
       <Header 
-        // Auth state - same interface as before
-        currentUser={auth.user}
-        userRole={auth.userRole}
-        authLoading={auth.loading}
-        authError={auth.error}
-        authInitialized={auth.initialized}
-        
-        // Auth actions - same interface as before
-        onRequestLogin={handleRequestLogin}
-        onUserLogin={handleUserLogin}
-        onUserLogout={handleUserLogout}
-        onClearError={auth.clearError}
-
-        forceShowAdminLogin={showAdminLoginViaGesture}
-        onAdminLoginClose={() => setShowAdminLoginViaGesture(false)}
-      />
+          currentUser={auth.user}
+          userRole={auth.userRole}
+          authLoading={showAuthLoading}
+          authError={auth.error}
+          authInitialized={auth.initialized}
+          onRequestLogin={handleRequestLogin}
+          onUserLogin={handleUserLogin}
+          onUserLogout={handleUserLogout}
+          onClearError={auth.clearError}
+          forceShowAdminLogin={showAdminLoginViaGesture}
+          onAdminLoginClose={() => setShowAdminLoginViaGesture(false)}
+        />
       
       {/* ✅ UNCHANGED: Loading overlay logic */}
       {showAuthLoading && (
@@ -192,14 +188,11 @@ const Index = () => {
         </div>
       )}
       {/* ✅ NEW: Gesture Detection Component */}
-<GestureDetector
-  onGestureComplete={handleGestureComplete}
-  enabled={!auth.user}
-  config={{
-    ...DEFAULT_GESTURE_CONFIG,
-    debugMode: process.env.NODE_ENV === 'development'
-  }}
-/>
+ <GestureDetector 
+          onGestureComplete={handleGestureComplete}
+          config={DEFAULT_GESTURE_CONFIG}
+          enabled={!auth.user}
+        />
     </div>
   );
 };
