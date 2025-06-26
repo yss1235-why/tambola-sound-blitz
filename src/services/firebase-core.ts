@@ -100,6 +100,8 @@ export interface GameData {
   lastWinnerAnnouncement?: string;
   lastWinnerAt?: string;
   updatedAt?: string;
+  sessionCache?: number[];
+  sessionMeta?: any;
 }
 
 export interface HostUser {
