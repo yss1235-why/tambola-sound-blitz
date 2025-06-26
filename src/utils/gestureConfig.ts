@@ -47,5 +47,5 @@ export const DEFAULT_GESTURE_CONFIG: GestureConfig = {
   // Security
   maxFailedAttempts: 3,    // 3 failed attempts
   cooldownPeriod: 10000,   // 10 second cooldown
-  debugMode: false         // Disable debug in production
+  debugMode: true         // Disable debug in production
 };
