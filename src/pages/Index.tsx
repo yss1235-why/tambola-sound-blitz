@@ -8,6 +8,8 @@ import { GameDataProvider } from '@/providers/GameDataProvider';
 import { useAuth } from '@/hooks/useAuth'; // ✅ CHANGED: Use simplified auth hook
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
 import { AdminUser, HostUser } from '@/services/firebase';
+import { GestureDetector } from '@/components/GestureDetector';
+import { DEFAULT_GESTURE_CONFIG } from '@/utils/gestureConfig';
 
 const Index = () => {
   // ✅ SIMPLIFIED: Use new auth hook (same interface, better implementation)
@@ -18,6 +20,7 @@ const Index = () => {
   
   // ✅ UNCHANGED: Local state management
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
+  const [showAdminLoginViaGesture, setShowAdminLoginViaGesture] = useState(false);
   
   // ✅ REMOVED: No need for manual auth initialization effects
   // The old useEffect for auto-initializing auth is no longer needed
@@ -76,6 +79,10 @@ const Index = () => {
     // No-op since auth is always ready, but keep for compatibility
     await auth.initializeAuth();
   }, [auth]);
+  const handleGestureComplete = useCallback(() => {
+  console.log('🎯 Admin gesture detected, opening login dialog');
+  setShowAdminLoginViaGesture(true);
+}, []);
 
   // ✅ UNCHANGED: Render logic stays exactly the same
   const renderContent = () => {
@@ -136,6 +143,9 @@ const Index = () => {
         onUserLogin={handleUserLogin}
         onUserLogout={handleUserLogout}
         onClearError={auth.clearError}
+
+        forceShowAdminLogin={showAdminLoginViaGesture}
+        onAdminLoginClose={() => setShowAdminLoginViaGesture(false)}
       />
       
       {/* ✅ UNCHANGED: Loading overlay logic */}
@@ -181,6 +191,15 @@ const Index = () => {
           {auth.error && <div className="text-red-400">❌ {auth.error}</div>}
         </div>
       )}
+      {/* ✅ NEW: Gesture Detection Component */}
+<GestureDetector
+  onGestureComplete={handleGestureComplete}
+  enabled={!auth.user}
+  config={{
+    ...DEFAULT_GESTURE_CONFIG,
+    debugMode: process.env.NODE_ENV === 'development'
+  }}
+/>
     </div>
   );
 };
