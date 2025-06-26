@@ -16,6 +16,9 @@ interface HostControlsContextValue {
   // Status
   isProcessing: boolean;
   countdownTime: number;
+  
+  // ✅ SOLUTION 1: Audio completion handler
+  handleAudioComplete: () => void;
 }
 
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
@@ -48,7 +51,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // Simple state - only for UI feedback
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [countdownTime, setCountdownTime] = React.useState(0);
-  const [callInterval, setCallInterval] = React.useState(5);
+ const [callInterval, setCallInterval] = React.useState(5);
+const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
   
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -61,37 +65,37 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
    * Pure timer function - delegates everything to firebase-game
    */
   const scheduleNextCall = useCallback(() => {
-    if (!gameData || !isTimerActiveRef.current) return;
+  if (!isTimerActiveRef.current || !gameData) return;
+  
+  gameTimerRef.current = setTimeout(async () => {
+    if (!isTimerActiveRef.current || !gameData) return;
     
-    console.log(`⏰ Scheduling next call in ${callInterval} seconds`);
-    
-    gameTimerRef.current = setTimeout(async () => {
-      if (!isTimerActiveRef.current || !gameData) {
-        console.log(`⏹️ Timer stopped (active: ${isTimerActiveRef.current})`);
+    try {
+      console.log(`⏰ Timer: Calling next number for ${gameData.gameId}`);
+      
+      // 🎯 DELEGATE: All logic handled by firebase-game
+      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+      
+      if (!shouldContinue) {
+        // ✅ SOLUTION 1: Don't end immediately, wait for audio
+        console.log(`🏁 Timer: Game should end, waiting for audio completion`);
+        setPendingGameEnd(true);
         return;
       }
       
-      try {
-        console.log(`📞 Delegating number call to firebase-game service`);
-        
-        // 🎯 KEY CHANGE: Let firebase-game handle EVERYTHING
-        const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
-        
-        if (shouldContinue && isTimerActiveRef.current) {
-          console.log(`✅ Firebase-game says continue - scheduling next call`);
-          scheduleNextCall();
-        } else {
-          console.log(`🏁 Firebase-game says stop - ending timer`);
-          stopTimer();
-        }
-        
-      } catch (error: any) {
-        console.error('❌ Number calling failed:', error);
-        console.log(`🛑 Stopping timer due to error`);
+      if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
+        scheduleNextCall(); // Continue the timer
+      } else {
+        console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
         stopTimer();
       }
-    }, callInterval * 1000);
-  }, [gameData, callInterval]);
+      
+    } catch (error: any) {
+      console.error('❌ Timer: Number calling error:', error);
+      stopTimer();
+    }
+  }, callInterval * 1000);
+}, [gameData, callInterval, pendingGameEnd]);
 
   /**
    * Simple timer control
@@ -129,6 +133,25 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     isTimerActiveRef.current = false;
   }, []);
 
+/**
+ * ✅ SOLUTION 1: Handle audio completion and check for pending game end
+ */
+const handleAudioComplete = useCallback(() => {
+  console.log(`🔊 Audio completed`);
+  
+  // Check if game should end after audio completes
+  if (pendingGameEnd) {
+    console.log(`🏁 Audio complete, ending game now`);
+    setPendingGameEnd(false);
+    stopTimer();
+    return;
+  }
+  
+  // Continue with normal scheduling if game is active
+  if (isTimerActiveRef.current && gameData && !pendingGameEnd) {
+    scheduleNextCall();
+  }
+}, [pendingGameEnd, gameData, scheduleNextCall, stopTimer]);
   // ================== GAME CONTROL METHODS ==================
 
   /**
@@ -285,14 +308,15 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // ================== CONTEXT VALUE ==================
 
   const value: HostControlsContextValue = {
-    startGame,
-    pauseGame,
-    resumeGame,
-    endGame,
-    updateCallInterval,
-    isProcessing,
-    countdownTime
-  };
+  startGame,
+  pauseGame,
+  resumeGame,
+  endGame,
+  updateCallInterval,
+  isProcessing,
+  countdownTime,
+  handleAudioComplete // ✅ SOLUTION 1: Add audio completion handler
+};
 
   return (
     <HostControlsContext.Provider value={value}>
