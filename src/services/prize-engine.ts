@@ -348,7 +348,8 @@ export const validateTicketsForPrizes = async (
   const winners: { [prizeId: string]: any } = {};
 
   for (const [prizeId, prize] of Object.entries(prizes)) {
-    if (prize.won) continue;
+  console.log(`🔍 Prize Loop: ${prizeId}, won: ${prize.won}`);
+  if (prize.won) continue;
 
     const prizeWinners: { name: string; ticketId: string; phone?: string }[] = [];
 
@@ -383,6 +384,7 @@ export const validateTicketsForPrizes = async (
         let hasWon = false;
 
         try {
+          console.log(`🎯 Entering switch for: ${prizeId} (ticket: ${ticketId})`);
           switch (prizeId) {
             case 'earlyFive':
               const markedCount = ticket.metadata?.allNumbers.filter(num => 
@@ -395,11 +397,12 @@ export const validateTicketsForPrizes = async (
               const allNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
               hasWon = allNumbers.every(num => calledNumbers.includes(num));
               break;
-           case 'secondFullHouse':
-  console.log(`🔍 Checking Second Full House for ticket ${ticketId}:`, {
-    fullHouseWon: prizes.fullHouse.won,
-    fullHouseWinners: prizes.fullHouse.winners?.length || 0
-  });
+            case 'secondFullHouse':
+              console.log(`🏆 ENTERED secondFullHouse case for ticket ${ticketId}`);
+              console.log(`🔍 Checking Second Full House for ticket ${ticketId}:`, {
+              fullHouseWon: prizes.fullHouse.won,
+              fullHouseWinners: prizes.fullHouse.winners?.length || 0
+            });
   
   // Only check if Full House is already won
   if (!prizes.fullHouse.won) {
@@ -483,6 +486,15 @@ export const validateTicketsForPrizes = async (
 } else if (prizeId === 'secondFullHouse') {
   console.log(`❌ Second Full House NOT won for ticket ${ticket.ticketId}`);
 }
+      }
+    }
+
+    if (prizeWinners.length > 0) {
+      winners[prizeId] = {
+        prizeName: prize.name,
+        winners: prizeWinners
+      };
+    }
   }
 
   const endTime = Date.now();
