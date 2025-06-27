@@ -396,27 +396,45 @@ export const validateTicketsForPrizes = async (
               hasWon = allNumbers.every(num => calledNumbers.includes(num));
               break;
            case 'secondFullHouse':
-              // Only check if Full House is already won
-              if (!prizes.fullHouse.won) {
-                hasWon = false; // Can't win Second Full House before Full House
-                console.log(`⏸️ Second Full House check skipped: Full House not won yet`, { ticketId });
-              } else {
-                // Same logic as Full House - all numbers marked
-                const allSecondNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
-                hasWon = allSecondNumbers.every(num => calledNumbers.includes(num));
-                
-                // Additional check: exclude tickets that already won Full House
-                if (hasWon && prizes.fullHouse.winners) {
-                  const alreadyWonFullHouse = prizes.fullHouse.winners.some(winner => winner.ticketId === ticketId);
-                  if (alreadyWonFullHouse) {
-                    hasWon = false; // This ticket already won Full House
-                    console.log(`⏸️ Second Full House check skipped: Ticket ${ticketId} already won Full House`);
-                  } else {
-                    console.log(`🏆 Second Full House winner found:`, { ticketId, allNumbers: allSecondNumbers.length, hasWon });
-                  }
-                }
-              }
-              break;
+  console.log(`🔍 Checking Second Full House for ticket ${ticketId}:`, {
+    fullHouseWon: prizes.fullHouse.won,
+    fullHouseWinners: prizes.fullHouse.winners?.length || 0
+  });
+  
+  // Only check if Full House is already won
+  if (!prizes.fullHouse.won) {
+    hasWon = false; // Can't win Second Full House before Full House
+    console.log(`⏸️ Second Full House check skipped: Full House not won yet`, { ticketId });
+  } else {
+    // Same logic as Full House - all numbers marked
+    const allSecondNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
+    hasWon = allSecondNumbers.every(num => calledNumbers.includes(num));
+    
+    console.log(`🔍 Second Full House validation for ${ticketId}:`, {
+      allNumbers: allSecondNumbers.length,
+      calledNumbers: calledNumbers.length,
+      hasAllNumbers: hasWon
+    });
+    
+    // Additional check: exclude tickets that already won Full House
+    if (hasWon && prizes.fullHouse.winners) {
+      const alreadyWonFullHouse = prizes.fullHouse.winners.some(winner => winner.ticketId === ticketId);
+      if (alreadyWonFullHouse) {
+        hasWon = false; // This ticket already won Full House
+        console.log(`⏸️ Second Full House check skipped: Ticket ${ticketId} already won Full House`);
+      } else {
+        console.log(`🏆 Second Full House winner found:`, { 
+          ticketId, 
+          playerName: ticket.playerName,
+          allNumbers: allSecondNumbers.length, 
+          hasWon 
+        });
+      }
+    } else if (hasWon && !prizes.fullHouse.winners) {
+      console.log(`🔍 Second Full House: hasWon=true but no fullHouse.winners array`, { ticketId });
+    }
+  }
+  break;
 
             case 'corners':
               const corners = getTicketCorners(ticket);
@@ -451,22 +469,20 @@ export const validateTicketsForPrizes = async (
           hasWon = false;
         }
 
-        if (hasWon) {
-          prizeWinners.push({
-            name: ticket.playerName,
-            ticketId: ticket.ticketId,
-            phone: ticket.playerPhone
-          });
-        }
-      }
-    }
-
-    if (prizeWinners.length > 0) {
-      winners[prizeId] = {
-        prizeName: prize.name,
-        winners: prizeWinners
-      };
-    }
+       if (hasWon) {
+  console.log(`✅ Adding ${prizeId} winner:`, {
+    name: ticket.playerName,
+    ticketId: ticket.ticketId,
+    phone: ticket.playerPhone
+  });
+  prizeWinners.push({
+    name: ticket.playerName,
+    ticketId: ticket.ticketId,
+    phone: ticket.playerPhone
+  });
+} else if (prizeId === 'secondFullHouse') {
+  console.log(`❌ Second Full House NOT won for ticket ${ticket.ticketId}`);
+}
   }
 
   const endTime = Date.now();
