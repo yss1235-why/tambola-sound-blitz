@@ -701,6 +701,21 @@ if (cachedWinnerData) {
       }
     }
   }, [gameData, operation]);
+// 🚨 FIX: Force view re-calculation when game state changes
+useEffect(() => {
+  if (!gameData) return;
+  
+  console.log('🎯 GameHost: Game state changed, current view calculation:', {
+    currentView: getCurrentView(),
+    gameState: {
+      isActive: gameData.gameState.isActive,
+      isCountdown: gameData.gameState.isCountdown,
+      gameOver: gameData.gameState.gameOver,
+      calledNumbers: gameData.gameState.calledNumbers?.length || 0
+    },
+    uiState
+  });
+}, [gameData?.gameState.isActive, gameData?.gameState.isCountdown, gameData?.gameState.gameOver, uiState]);
 
   // ================== VIEW CALCULATION ==================
 
