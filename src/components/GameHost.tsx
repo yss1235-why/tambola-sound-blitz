@@ -12,6 +12,7 @@ import { HostDisplay } from './HostDisplay';
 import { TicketManagementGrid } from './TicketManagementGrid';
 import { AudioManager } from './AudioManager';
 import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay';
+import { useHostControls } from '@/providers/HostControlsProvider';
 import { 
   Plus,
   AlertCircle,
@@ -170,6 +171,26 @@ const AVAILABLE_PRIZES: GamePrize[] = [
   }
   
 ];
+
+// ✅ ADD THIS ENTIRE COMPONENT BEFORE GameHost
+// Helper component to connect AudioManager with HostControls
+const AudioManagerWithHostControls: React.FC<{
+  currentNumber: number | null;
+  prizes: any[];
+  forceEnable: boolean;
+}> = ({ currentNumber, prizes, forceEnable }) => {
+  const { handleAudioComplete } = useHostControls();
+  
+  return (
+    <AudioManager
+      currentNumber={currentNumber}
+      prizes={prizes}
+      forceEnable={forceEnable}
+      onAudioComplete={handleAudioComplete} // ✅ SOLUTION 1
+      onPrizeAudioComplete={(prizeId) => console.log(`Prize audio complete: ${prizeId}`)} // ✅ SOLUTION 2
+    />
+  );
+};
 
 export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   const { gameData, currentPhase, isLoading, error } = useGameData();
@@ -853,13 +874,21 @@ if (cachedWinnerData) {
         )}
 
         {/* Audio Manager */}
-        {gameData && (
-          <AudioManager
-            currentNumber={gameData.gameState.currentNumber}
-            prizes={Object.values(gameData.prizes)}
-            forceEnable={true}
-          />
-        )}
+        {/* Audio Manager with Host Controls Integration */}
+{gameData && currentView === 'live' && (
+  <AudioManagerWithHostControls
+    currentNumber={gameData.gameState.currentNumber}
+    prizes={Object.values(gameData.prizes)}
+    forceEnable={true}
+  />
+)}
+{gameData && currentView !== 'live' && (
+  <AudioManager
+    currentNumber={gameData.gameState.currentNumber}
+    prizes={Object.values(gameData.prizes)}
+    forceEnable={true}
+  />
+)}
 
         {/* Development Debug Info */}
         {process.env.NODE_ENV === 'development' && (
