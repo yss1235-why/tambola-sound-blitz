@@ -304,7 +304,7 @@ return (
               className={`
                 aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-200 text-black
                 ${isEmpty 
-                  ? 'bg-white border-2 border-yellow-500' 
+                  ? 'bg-gray-100/20 border-2 border-yellow-500' 
                   : isMarked 
                     ? `bg-green-300/50 border-2 border-yellow-500 shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
                     : isPattern
