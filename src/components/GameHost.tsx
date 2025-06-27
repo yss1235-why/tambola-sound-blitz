@@ -701,32 +701,43 @@ if (cachedWinnerData) {
       }
     }
   }, [gameData, operation]);
-// 🚨 FIX: Force view re-calculation when game state changes
-useEffect(() => {
-  if (!gameData) return;
-  
-  console.log('🎯 GameHost: Game state changed, current view calculation:', {
-    currentView: getCurrentView(),
-    gameState: {
-      isActive: gameData.gameState.isActive,
-      isCountdown: gameData.gameState.isCountdown,
-      gameOver: gameData.gameState.gameOver,
-      calledNumbers: gameData.gameState.calledNumbers?.length || 0
-    },
-    uiState
-  });
-}, [gameData?.gameState.isActive, gameData?.gameState.isCountdown, gameData?.gameState.gameOver, uiState]);
+
 
   // ================== VIEW CALCULATION ==================
 
   const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
-    if (uiState === 'winners') return 'winners';
-    if (uiState === 'setup') return 'setup';
-    if (!gameData) return 'setup';
-    if (gameData.gameState.gameOver) return 'winners';
-    if (gameData.gameState.isActive || gameData.gameState.isCountdown) return 'live';
-    return 'booking';
-  };
+  console.log('🎯 GameHost: Calculating current view:', {
+    uiState,
+    hasGameData: !!gameData,
+    gameOver: gameData?.gameState.gameOver,
+    isActive: gameData?.gameState.isActive,
+    isCountdown: gameData?.gameState.isCountdown,
+    calledNumbers: gameData?.gameState.calledNumbers?.length || 0
+  });
+  
+  if (uiState === 'winners') {
+    console.log('🏆 GameHost: Returning winners view');
+    return 'winners';
+  }
+  if (uiState === 'setup') {
+    console.log('🎮 GameHost: Returning setup view');
+    return 'setup';
+  }
+  if (!gameData) {
+    console.log('❌ GameHost: No game data, returning setup');
+    return 'setup';
+  }
+  if (gameData.gameState.gameOver) {
+    console.log('🏁 GameHost: Game over, returning winners');
+    return 'winners';
+  }
+  if (gameData.gameState.isActive || gameData.gameState.isCountdown) {
+    console.log('🎮 GameHost: Game started - returning LIVE view');
+    return 'live';
+  }
+  console.log('🎫 GameHost: Default - returning booking view');
+  return 'booking';
+};
 
   const currentView = getCurrentView();
   const subscriptionStatus = getSubscriptionStatus();
