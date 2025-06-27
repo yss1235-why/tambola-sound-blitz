@@ -96,22 +96,6 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
   }
   
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
-
-// ✅ DEBUG: Log all prize data when game ends
-console.log('🔍 DEBUG: All prizes data:', gameData.prizes);
-console.log('🔍 DEBUG: Won prizes:', wonPrizes);
-console.log('🔍 DEBUG: Second Full House data:', gameData.prizes.secondFullHouse);
-
-// ✅ DEBUG: Check specifically for Second Full House
-if (gameData.prizes.secondFullHouse) {
-  console.log('🔍 DEBUG: Second Full House details:', {
-    id: gameData.prizes.secondFullHouse.id,
-    name: gameData.prizes.secondFullHouse.name,
-    won: gameData.prizes.secondFullHouse.won,
-    winners: gameData.prizes.secondFullHouse.winners,
-    hasWinners: !!(gameData.prizes.secondFullHouse.winners && gameData.prizes.secondFullHouse.winners.length > 0)
-  });
-}
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
   
   // 🎯 HOST MODE: Clean celebration view
