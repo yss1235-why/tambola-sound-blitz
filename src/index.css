@@ -117,7 +117,7 @@
 
 /* Updated: Empty cells - Gray 50% + burgundy border + no text */
 .ticket-cell.empty {
-  @apply bg-gray-500/50 border-red-900;
+  @apply bg-gray-100/20 border-red-900;
 }
 
 /* Updated: Marked numbers - Blush pink 50% + golden border + black text */
