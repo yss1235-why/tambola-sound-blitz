@@ -941,18 +941,26 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     let allWinners: any = {};
     
     // Get unwon prizes
-    const unwonPrizes = Object.fromEntries(
-      Object.entries(gameData.prizes).filter(([_, prize]: [string, any]) => !prize.won)
-    );
-    
-    if (Object.keys(unwonPrizes).length === 0) {
-      return {
-        hasWinners: false,
-        winners: {},
-        prizeUpdates: {},
-        announcements: []
-      };
+   // Get unwon prizes (special handling for secondFullHouse)
+const unwonPrizes = Object.fromEntries(
+  Object.entries(gameData.prizes).filter(([prizeId, prize]: [string, any]) => {
+    // Normal prizes: only check if not won
+    if (prizeId !== 'secondFullHouse') {
+      return !prize.won;
     }
+    // secondFullHouse: check if it's not won AND fullHouse is won
+    return !prize.won && gameData.prizes.fullHouse?.won;
+  })
+);
+
+if (Object.keys(unwonPrizes).length === 0) {
+  return {
+    hasWinners: false,
+    winners: {},
+    prizeUpdates: {},
+    announcements: []
+  };
+}
     
     // Validate tickets for prizes
     const validationResult = await this.validateTicketsForPrizes(
