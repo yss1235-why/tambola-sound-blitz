@@ -962,24 +962,52 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     );
     
     // Process each prize that has winners
-    for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
-      const prizeData = prizeWinners as any;
-      
-      prizeUpdates[`prizes/${prizeId}`] = {
-        ...gameData.prizes[prizeId],
-        won: true,
-        winners: prizeData.winners,
-        winningNumber: number,
-        wonAt: new Date().toISOString()
-      };
-      
-      allWinners[prizeId] = prizeData;
-      
-      const winnersText = prizeData.winners
-        .map((w: any) => `${w.name} (T${w.ticketId})`)
-        .join(', ');
-      announcements.push(`${prizeData.prizeName} won by ${winnersText}!`);
-    }
+for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
+  const prizeData = prizeWinners as any;
+  
+  // ✅ FIX: Ensure all required prize properties are properly set
+  const prizeUpdate = {
+    ...gameData.prizes[prizeId],
+    won: true,
+    winners: prizeData.winners || [],
+    winningNumber: number,
+    wonAt: new Date().toISOString()
+  };
+  
+  // ✅ FIX: Ensure critical properties exist for display components
+  if (!prizeUpdate.id) {
+    prizeUpdate.id = prizeId;
+  }
+  if (!prizeUpdate.name) {
+    prizeUpdate.name = prizeData.prizeName || gameData.prizes[prizeId]?.name || prizeId;
+  }
+  if (!prizeUpdate.order) {
+    prizeUpdate.order = gameData.prizes[prizeId]?.order || 999;
+  }
+  if (!prizeUpdate.pattern) {
+    prizeUpdate.pattern = gameData.prizes[prizeId]?.pattern || 'Winning pattern';
+  }
+  
+  prizeUpdates[`prizes/${prizeId}`] = prizeUpdate;
+  allWinners[prizeId] = prizeData;
+  
+  const winnersText = prizeData.winners
+    .map((w: any) => `${w.name} (T${w.ticketId})`)
+    .join(', ');
+  announcements.push(`${prizeData.prizeName} won by ${winnersText}!`);
+  
+  // ✅ FIX: Add debug logging for Second Full House
+  if (prizeId === 'secondFullHouse') {
+    console.log(`🔧 Second Full House prize update:`, {
+      prizeId,
+      won: prizeUpdate.won,
+      winnersCount: prizeData.winners?.length || 0,
+      hasName: !!prizeUpdate.name,
+      hasOrder: !!prizeUpdate.order,
+      prizeUpdate
+    });
+  }
+}
     
     return {
       hasWinners: Object.keys(allWinners).length > 0,
