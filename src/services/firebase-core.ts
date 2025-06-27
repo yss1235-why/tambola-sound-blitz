@@ -15,6 +15,9 @@ import {
   runTransaction
 } from 'firebase/database';
 import { 
+  createUserWithEmailAndPassword 
+} from 'firebase/auth';
+import { 
   getAuth, 
   signInWithEmailAndPassword, 
   signOut,
@@ -381,37 +384,52 @@ async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void
   // ================== HOST MANAGEMENT ==================
 
   async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number): Promise<void> {
-    try {
-      const subscriptionEndDate = new Date();
-      subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
+  try {
+    // STEP 1: Create Firebase Authentication user first
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const hostId = userCredential.user.uid;
+    
+    // STEP 2: Calculate subscription end date
+    const subscriptionEndDate = new Date();
+    subscriptionEndDate.setMonth(subscriptionEndDate.getMonth() + subscriptionMonths);
 
-      const hostId = push(ref(database, 'hosts')).key;
-      if (!hostId) throw new Error('Failed to generate host ID');
+    // STEP 3: Create database record with Auth UID
+    const hostData: HostUser = {
+      uid: hostId,
+      email,
+      name,
+      phone,
+      role: 'host',
+      subscriptionEndDate: subscriptionEndDate.toISOString(),
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      createdBy: adminId
+    };
 
-      const hostData: HostUser = {
-        uid: hostId,
-        email,
-        name,
-        phone,
-        role: 'host',
-        subscriptionEndDate: subscriptionEndDate.toISOString(),
-        isActive: true
-      };
-
-      const hostRef = ref(database, `hosts/${hostId}`);
-      await set(hostRef, removeUndefinedValues(hostData));
-      
-      console.log(`✅ Host ${name} created successfully with ID: ${hostId}`);
-      throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
-      
-    } catch (error: any) {
-      if (error.message.startsWith('SUCCESS:')) {
-        throw error;
-      }
-      console.error('❌ Error creating host:', error);
-      throw new Error(error.message || 'Failed to create host');
+    const hostRef = ref(database, `hosts/${hostId}`);
+    await set(hostRef, removeUndefinedValues(hostData));
+    
+    console.log(`✅ Host ${name} created successfully with Auth UID: ${hostId}`);
+    throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
+    
+  } catch (error: any) {
+    if (error.message.startsWith('SUCCESS:')) {
+      throw error;
     }
+    console.error('❌ Error creating host:', error);
+    
+    // Enhanced error handling for Auth errors
+    if (error.code === 'auth/email-already-in-use') {
+      throw new Error('Email address is already registered');
+    } else if (error.code === 'auth/weak-password') {
+      throw new Error('Password is too weak');
+    } else if (error.code === 'auth/invalid-email') {
+      throw new Error('Invalid email address format');
+    }
+    
+    throw new Error(error.message || 'Failed to create host');
   }
+}
 
   async getAllHosts(): Promise<HostUser[]> {
     try {
