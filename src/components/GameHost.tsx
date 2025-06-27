@@ -893,20 +893,16 @@ if (cachedWinnerData) {
         )}
 
         {/* Live Game Phases */}
-        {currentView === 'live' && gameData && (
-          <HostControlsProvider userId={user.uid}>
-            <HostDisplay onCreateNewGame={createNewGame} />
-          </HostControlsProvider>
-        )}
-
-        {/* Audio Manager */}
-        {/* Audio Manager with Host Controls Integration */}
-{gameData && currentView === 'live' && (
-  <AudioManagerWithHostControls
-    currentNumber={gameData.gameState.currentNumber}
-    prizes={Object.values(gameData.prizes)}
-    forceEnable={true}
-  />
+        {/* Live Game Phases */}
+{currentView === 'live' && gameData && (
+  <HostControlsProvider userId={user.uid}>
+    <HostDisplay onCreateNewGame={createNewGame} />
+    <AudioManagerWithHostControls
+      currentNumber={gameData.gameState.currentNumber}
+      prizes={Object.values(gameData.prizes)}
+      forceEnable={true}
+    />
+  </HostControlsProvider>
 )}
 {gameData && currentView !== 'live' && (
   <AudioManager
