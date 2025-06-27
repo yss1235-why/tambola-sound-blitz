@@ -7,6 +7,7 @@ interface AudioManagerProps {
   prizes: Prize[];
   onAudioComplete?: () => void;
   forceEnable?: boolean;
+  onPrizeAudioComplete?: (prizeId: string) => void; // ✅ SOLUTION 2
 }
 
 interface AudioQueueItem {
@@ -114,12 +115,15 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   currentNumber, 
   prizes, 
   onAudioComplete,
-  forceEnable = false 
+  forceEnable = false,
+  onPrizeAudioComplete // ✅ SOLUTION 2
 }) => {
   // State
-  const [isAudioSupported, setIsAudioSupported] = useState(false);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+ // State
+const [isAudioSupported, setIsAudioSupported] = useState(false);
+const [isAudioEnabled, setIsAudioEnabled] = useState(false);
+const [isPlaying, setIsPlaying] = useState(false);
+const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false); // ✅ SOLUTION 3
   
   // Refs
   const lastCalledNumber = useRef<number | null>(null);
@@ -264,30 +268,43 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   }, []);
 
   // Add to queue
-  const addToQueue = useCallback((item: AudioQueueItem) => {
-    if (!isAudioSupported || !isAudioEnabled) {
-      console.log('🔇 Audio not available, skipping:', item.text);
-      // Call callback immediately if audio not available
-      if (item.callback) {
-        setTimeout(item.callback, 100);
-      }
-      return;
+  // Add to queue
+const addToQueue = useCallback((item: AudioQueueItem) => {
+  if (!isAudioSupported || !isAudioEnabled) {
+    console.log('🔇 Audio not available, skipping:', item.text);
+    // Call callback immediately if audio not available
+    if (item.callback) {
+      setTimeout(item.callback, 100);
     }
+    return;
+  }
 
-    // If high priority, add to front of queue
-    if (item.priority === 'high') {
-      audioQueue.current.unshift(item);
-    } else {
-      audioQueue.current.push(item);
-    }
-
-    console.log(`🔊 Queued: ${item.text} (Priority: ${item.priority})`);
+  // ✅ SOLUTION 3: Handle blocking for prize announcements
+  if (item.id.startsWith('prize-')) {
+    setIsBlockedForAnnouncement(true);
     
-    // Start processing if not already processing
-    if (!isProcessingQueue.current) {
-      processQueue();
-    }
-  }, [isAudioSupported, isAudioEnabled]);
+    // Wrap original callback to unblock
+    const originalCallback = item.callback;
+    item.callback = () => {
+      setIsBlockedForAnnouncement(false);
+      if (originalCallback) originalCallback();
+    };
+  }
+
+  // If high priority, add to front of queue
+  if (item.priority === 'high') {
+    audioQueue.current.unshift(item);
+  } else {
+    audioQueue.current.push(item);
+  }
+
+  console.log(`🔊 Queued: ${item.text} (Priority: ${item.priority})`);
+  
+  // Start processing if not already processing
+  if (!isProcessingQueue.current) {
+    processQueue();
+  }
+}, [isAudioSupported, isAudioEnabled]);
 
   // Process audio queue
   const processQueue = useCallback(() => {
@@ -389,53 +406,59 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     processNext();
   }, [forceEnable]);
 
-  // Handle number announcements
-  useEffect(() => {
-    if (currentNumber && currentNumber !== lastCalledNumber.current) {
-      lastCalledNumber.current = currentNumber;
-      
-      const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
-      
-      console.log(`📢 Announcing number: ${currentNumber}`);
-      
-      addToQueue({
-        id: `number-${currentNumber}`,
-        text: callText,
-        priority: 'high',
-        callback: onAudioComplete // Only call completion for number announcements
-      });
-    }
-  }, [currentNumber, addToQueue, onAudioComplete]);
+ // Handle number announcements
+useEffect(() => {
+  // ✅ SOLUTION 3: Don't announce numbers if blocked by prize announcement
+  if (currentNumber && currentNumber !== lastCalledNumber.current && !isBlockedForAnnouncement) {
+    lastCalledNumber.current = currentNumber;
+    
+    const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
+    
+    console.log(`📢 Announcing number: ${currentNumber}`);
+    
+    addToQueue({
+      id: `number-${currentNumber}`,
+      text: callText,
+      priority: 'high',
+      callback: onAudioComplete // Only call completion for number announcements
+    });
+  }
+}, [currentNumber, addToQueue, onAudioComplete, isBlockedForAnnouncement]);
 
   // Handle prize announcements
-  useEffect(() => {
-    prizes.forEach(prize => {
-      if (prize.won && !announcedPrizes.current.has(prize.id)) {
-        announcedPrizes.current.add(prize.id);
-        
-        let announcement = ` Congratulations! ${prize.name} has been won`;
-        
-        if (prize.winners && prize.winners.length > 0) {
-          if (prize.winners.length === 1) {
-            announcement += ` by ${prize.winners[0].name}`;
-          } else {
-            announcement += ` by ${prize.winners.length} players`;
+useEffect(() => {
+  prizes.forEach(prize => {
+    if (prize.won && !announcedPrizes.current.has(prize.id)) {
+      announcedPrizes.current.add(prize.id);
+      
+      let announcement = ` Congratulations! ${prize.name} has been won`;
+      
+      if (prize.winners && prize.winners.length > 0) {
+        if (prize.winners.length === 1) {
+          announcement += ` by ${prize.winners[0].name}`;
+        } else {
+          announcement += ` by ${prize.winners.length} players`;
+        }
+      }
+      
+      announcement += '! Well done!';
+      
+      console.log(`🏆 Announcing prize: ${prize.name}`);
+      
+      addToQueue({
+        id: `prize-${prize.id}`,
+        text: announcement,
+        priority: 'normal',
+        // ✅ SOLUTION 2: Add callback to signal completion
+        callback: () => {
+          if (onPrizeAudioComplete) {
+            onPrizeAudioComplete(prize.id);
           }
         }
-        
-        announcement += '! Well done!';
-        
-        console.log(`🏆 Announcing prize: ${prize.name}`);
-        
-        addToQueue({
-          id: `prize-${prize.id}`,
-          text: announcement,
-          priority: 'normal'
-          // No callback for prize announcements
-        });
-      }
-    });
-  }, [prizes, addToQueue]);
+      });
+    }
+  });
+}, [prizes, addToQueue, onPrizeAudioComplete]);
 
   // Reset announced prizes when game resets
   useEffect(() => {
