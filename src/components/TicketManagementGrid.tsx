@@ -222,7 +222,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     } else if (selectedTickets.includes(ticket.ticketId)) {
       return `${baseClasses} border-blue-500 bg-blue-200 text-black`;
     } else {
-      return `${baseClasses} border-gray-300 bg-white text-black hover:border-gray-400`;
+      return `${baseClasses} border-gray-300 bg-gray-100/20 text-black hover:border-gray-400`;
     }
   };
 
