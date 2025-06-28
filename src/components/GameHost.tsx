@@ -179,13 +179,14 @@ const AudioManagerWithHostControls: React.FC<{
   prizes: any[];
   forceEnable: boolean;
 }> = ({ currentNumber, prizes, forceEnable }) => {
-  const { handleAudioComplete } = useHostControls();
+ const { handleAudioComplete, callInterval } = useHostControls();
   
   return (
     <AudioManager
       currentNumber={currentNumber}
       prizes={prizes}
       forceEnable={forceEnable}
+      callInterval={callInterval} 
       onAudioComplete={handleAudioComplete} // ✅ SOLUTION 1
       onPrizeAudioComplete={(prizeId) => console.log(`Prize audio complete: ${prizeId}`)} // ✅ SOLUTION 2
     />
