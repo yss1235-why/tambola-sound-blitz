@@ -414,7 +414,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                   placeholder="Name *"
                   value={bookingForm.playerName}
                   onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-white placeholder:text-gray-300"
+                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
                   required
                 />
                 
@@ -424,7 +424,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                   placeholder="Phone"
                   value={bookingForm.playerPhone}
                   onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-white placeholder:text-gray-300"
+                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
                 />
             
             {/* Book button */}
