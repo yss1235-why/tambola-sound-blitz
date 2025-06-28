@@ -800,13 +800,6 @@ if (cachedWinnerData) {
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center">
-              <Crown className="w-8 h-8 mr-3 text-yellow-500" />
-              Host Dashboard
-            </h1>
-            <p className="text-gray-600 mt-1">Manage your Tambola games</p>
-          </div>
           <div className="text-right">
             <Badge variant={subscriptionStatus.variant} className="mb-2">
               {subscriptionStatus.message}
@@ -853,7 +846,6 @@ if (cachedWinnerData) {
           <div className="space-y-6">
            <div className="flex justify-between items-center py-2">
               <div className="flex items-center space-x-3">
-                <h2 className="text-lg font-bold text-gray-800">Host Dashboard</h2>
                 <Badge variant={
                   currentView === 'booking' ? 'outline' : 'default'
                 } className="text-xs px-2 py-1 text-black">
@@ -904,7 +896,6 @@ if (cachedWinnerData) {
   <div className="space-y-4">
     <div className="flex justify-between items-center py-2">
       <div className="flex items-center space-x-3">
-        <h2 className="text-lg font-bold text-gray-800">Host Dashboard</h2>
         <Badge variant="default" className="text-xs px-2 py-1">
           🔴 Live Game
         </Badge>
