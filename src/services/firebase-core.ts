@@ -316,6 +316,79 @@ async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void
     console.error(`❌ Error deleting game ${gameId}:`, error);    throw new Error(`Failed to delete game ${gameId}: ${error.message}`);
   }
 }
+
+  // ================== ADMIN SETUP METHODS ==================
+
+async checkAdminExists(): Promise<boolean> {
+  try {
+    const adminsSnapshot = await get(ref(database, 'admins'));
+    return adminsSnapshot.exists() && Object.keys(adminsSnapshot.val()).length > 0;
+  } catch (error) {
+    console.error('Error checking admin existence:', error);
+    return true; // Assume admins exist if we can't check (safer)
+  }
+}
+
+async checkCanCreateAdmin(): Promise<boolean> {
+  try {
+    // Test if we can write to database without authentication
+    const testRef = ref(database, 'admins/.test');
+    await set(testRef, { test: true });
+    await remove(testRef); // Clean up test
+    return true;
+  } catch (error) {
+    console.log('Cannot create admin - Firebase rules are secured:', error);
+    return false;
+  }
+}
+
+async createFirstAdmin(email: string, password: string, name: string): Promise<void> {
+  try {
+    console.log('🔧 Creating first admin account...');
+    
+    // Check if admin creation is allowed
+    const canCreate = await this.checkCanCreateAdmin();
+    if (!canCreate) {
+      throw new Error('Admin creation is disabled. Firebase rules are secured for production.');
+    }
+    
+    // Check if admins already exist
+    const adminExists = await this.checkAdminExists();
+    if (adminExists) {
+      throw new Error('Admin accounts already exist. Cannot create additional admins via this method.');
+    }
+    
+    // Create Firebase Auth user
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const adminId = userCredential.user.uid;
+    
+    // Create database record
+    const adminData = {
+      uid: adminId,
+      email,
+      name,
+      role: 'admin',
+      permissions: {
+        createHosts: true,
+        manageUsers: true
+      },
+      createdAt: new Date().toISOString(),
+      isFirstAdmin: true
+    };
+
+    await set(ref(database, `admins/${adminId}`), adminData);
+    
+    console.log('✅ First admin created successfully');
+    
+    // Sign out the newly created user
+    await signOut(auth);
+    
+    return;
+  } catch (error: any) {
+    console.error('❌ Error creating first admin:', error);
+    throw new Error(error.message || 'Failed to create first admin');
+  }
+}
   
 
   // ================== AUTHENTICATION ==================
