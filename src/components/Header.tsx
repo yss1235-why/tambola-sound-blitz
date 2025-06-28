@@ -12,8 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AdminUser, HostUser, firebaseService } from '@/services/firebase';
-
+import { AdminUser, HostUser } from '@/services/firebase';
 
 interface HeaderProps {
   currentUser: AdminUser | HostUser | null;
@@ -46,16 +45,6 @@ export const Header: React.FC<HeaderProps> = ({
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isHostLoginOpen, setIsHostLoginOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  // Admin creation state
-  const [showAdminCreation, setShowAdminCreation] = useState(false);
-  const [canCreateAdmin, setCanCreateAdmin] = useState(false);
-  const [checkingAdminStatus, setCheckingAdminStatus] = useState(false);
-  const [adminCreationForm, setAdminCreationForm] = useState({
-    email: '',
-    password: '',
-    name: ''
-  });
-  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
 
   // Login form states
   const [adminForm, setAdminForm] = useState({
@@ -74,12 +63,6 @@ useEffect(() => {
     setIsAdminLoginOpen(true);
   }
 }, [forceShowAdminLogin, isAdminLoginOpen]);
-  // Check admin creation status when dialog opens
-  useEffect(() => {
-    if (isAdminLoginOpen && !checkingAdminStatus) {
-      checkAdminCreationStatus();
-    }
-  }, [isAdminLoginOpen]);
 
   // ✅ NEW: Handle login dialog opening (triggers auth initialization)
   const handleOpenLogin = async (type: 'admin' | 'host') => {
@@ -173,53 +156,6 @@ const handleCloseAdminDialog = (open: boolean) => {
     }
   }
 };
-  const checkAdminCreationStatus = async () => {
-    setCheckingAdminStatus(true);
-    try {
-      const adminExists = await firebaseService.checkAdminExists();
-      const canCreate = await firebaseService.checkCanCreateAdmin();
-      
-      // Show admin creation if no admins exist AND rules allow creation
-      setShowAdminCreation(!adminExists && canCreate);
-      setCanCreateAdmin(canCreate);
-      
-      console.log('🔧 Admin status check:', { adminExists, canCreate, showCreation: !adminExists && canCreate });
-    } catch (error) {
-      console.error('Error checking admin status:', error);
-      setShowAdminCreation(false);
-    } finally {
-      setCheckingAdminStatus(false);
-    }
-  };
-
-  const handleCreateFirstAdmin = async () => {
-    if (!adminCreationForm.email.trim() || !adminCreationForm.password.trim() || !adminCreationForm.name.trim()) {
-      alert('Please fill in all fields');
-      return;
-    }
-
-    setIsCreatingAdmin(true);
-    try {
-      await firebaseService.createFirstAdmin(
-        adminCreationForm.email,
-        adminCreationForm.password,
-        adminCreationForm.name
-      );
-      
-      alert('Admin account created successfully! You can now login.');
-      setAdminCreationForm({ email: '', password: '', name: '' });
-      setShowAdminCreation(false);
-      
-      // Recheck status to hide the creation form
-      await checkAdminCreationStatus();
-      
-    } catch (error: any) {
-      console.error('Admin creation failed:', error);
-      alert(error.message || 'Failed to create admin account');
-    } finally {
-      setIsCreatingAdmin(false);
-    }
-  };
 
   const handleCloseHostDialog = () => {
     setIsHostLoginOpen(false);
@@ -324,7 +260,7 @@ const handleCloseAdminDialog = (open: boolean) => {
               </DropdownMenu>
             )}
 
-            {/* ✅ Host Login Dialog */}
+            {/* ✅ NEW: Host Login Dialog (with auth initialization) */}
             <Dialog open={isHostLoginOpen} onOpenChange={handleCloseHostDialog}>
               <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
                 <DialogHeader>
@@ -358,6 +294,7 @@ const handleCloseAdminDialog = (open: boolean) => {
                       required 
                       value={hostForm.email}
                       onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
+                      onKeyPress={(e) => e.key === 'Enter' && !hostForm.password && document.getElementById('host-password')?.focus()}
                       className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                       disabled={isLoggingIn || !authInitialized}
                     />
@@ -371,6 +308,7 @@ const handleCloseAdminDialog = (open: boolean) => {
                       required 
                       value={hostForm.password}
                       onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
+                      onKeyPress={(e) => e.key === 'Enter' && hostForm.email && hostForm.password && authInitialized && handleHostLogin()}
                       className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                       disabled={isLoggingIn || !authInitialized}
                     />
@@ -393,177 +331,78 @@ const handleCloseAdminDialog = (open: boolean) => {
               </DialogContent>
             </Dialog>
 
-            {/* ✅ Admin Login Dialog (with Creation Support) */}
+            {/* ✅ NEW: Admin Login Dialog (with auth initialization) */}
             <Dialog open={isAdminLoginOpen} onOpenChange={handleCloseAdminDialog}>
               <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
                 <DialogHeader>
                   <DialogTitle className="text-gray-800 flex items-center">
-                    {showAdminCreation ? '🔧 Admin Setup' : 'Admin Login'}
-                    {(!authInitialized || checkingAdminStatus) && (
+                    Admin Login
+                    {!authInitialized && (
                       <Loader2 className="w-4 h-4 ml-2 animate-spin text-orange-500" />
                     )}
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
-                  {/* Show checking status */}
-                  {checkingAdminStatus && (
-                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                      <p className="text-sm text-gray-600">
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />
-                        Checking admin status...
-                      </p>
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm text-blue-800 font-medium">Admin Login</p>
+                    <p className="text-xs text-blue-600">Enter your admin credentials</p>
+                  </div>
+                  
+                  {!authInitialized && (
+                    <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                      <p className="text-sm text-orange-800 font-medium">Initializing authentication...</p>
+                      <p className="text-xs text-orange-600">Please wait while we set up the login system</p>
                     </div>
                   )}
-
-                  {/* Normal Admin Login Form */}
-                  {!showAdminCreation && !checkingAdminStatus && (
-                    <>
-                      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                        <p className="text-sm text-blue-800 font-medium">Admin Login</p>
-                        <p className="text-xs text-blue-600">Enter your admin credentials</p>
-                      </div>
-                      
-                      {!authInitialized && (
-                        <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-                          <p className="text-sm text-orange-800 font-medium">Initializing authentication...</p>
-                          <p className="text-xs text-orange-600">Please wait while we set up the login system</p>
-                        </div>
-                      )}
-                      
-                      {authError && (
-                        <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-                          <p className="text-sm text-red-800">{authError}</p>
-                        </div>
-                      )}
-                      
-                      <div>
-                        <Label htmlFor="admin-email" className="text-gray-700 font-medium">Email</Label>
-                        <Input 
-                          id="admin-email" 
-                          type="email" 
-                          placeholder="Enter your email" 
-                          required 
-                          value={adminForm.email}
-                          onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
-                          className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
-                          disabled={isLoggingIn || !authInitialized}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="admin-password" className="text-gray-700 font-medium">Password</Label>
-                        <Input 
-                          id="admin-password" 
-                          type="password" 
-                          placeholder="Enter your password" 
-                          required 
-                          value={adminForm.password}
-                          onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
-                          className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
-                          disabled={isLoggingIn || !authInitialized}
-                        />
-                      </div>
-                      <Button 
-                        onClick={handleAdminLogin}
-                        className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
-                        disabled={isLoggingIn || !authInitialized || !adminForm.email || !adminForm.password}
-                      >
-                        {isLoggingIn ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Logging in...
-                          </>
-                        ) : (
-                          'Login as Admin'
-                        )}
-                      </Button>
-                    </>
+                  
+                  {authError && (
+                    <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                      <p className="text-sm text-red-800">{authError}</p>
+                    </div>
                   )}
-
-                  {/* Admin Creation Form */}
-                  {showAdminCreation && !checkingAdminStatus && (
-                    <>
-                      <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-                        <p className="text-sm text-green-800 font-medium">🔧 Setup Mode Detected</p>
-                        <p className="text-xs text-green-600">No admin accounts found. Create the first admin account.</p>
-                      </div>
-                      
-                      <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <p className="text-xs text-yellow-800">
-                          <strong>Security Notice:</strong> This option is only available when Firebase rules allow public access. 
-                          Once rules are secured for production, admin creation will be disabled.
-                        </p>
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="admin-create-name" className="text-gray-700 font-medium">Full Name</Label>
-                        <Input 
-                          id="admin-create-name" 
-                          type="text" 
-                          placeholder="Enter admin name" 
-                          required 
-                          value={adminCreationForm.name}
-                          onChange={(e) => setAdminCreationForm(prev => ({ ...prev, name: e.target.value }))}
-                          className="border-2 border-green-200 focus:border-green-400 bg-white text-gray-800 placeholder:text-gray-500"
-                          disabled={isCreatingAdmin}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="admin-create-email" className="text-gray-700 font-medium">Email</Label>
-                        <Input 
-                          id="admin-create-email" 
-                          type="email" 
-                          placeholder="Enter admin email" 
-                          required 
-                          value={adminCreationForm.email}
-                          onChange={(e) => setAdminCreationForm(prev => ({ ...prev, email: e.target.value }))}
-                          className="border-2 border-green-200 focus:border-green-400 bg-white text-gray-800 placeholder:text-gray-500"
-                          disabled={isCreatingAdmin}
-                        />
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="admin-create-password" className="text-gray-700 font-medium">Password</Label>
-                        <Input 
-                          id="admin-create-password" 
-                          type="password" 
-                          placeholder="Enter admin password" 
-                          required 
-                          value={adminCreationForm.password}
-                          onChange={(e) => setAdminCreationForm(prev => ({ ...prev, password: e.target.value }))}
-                          className="border-2 border-green-200 focus:border-green-400 bg-white text-gray-800 placeholder:text-gray-500"
-                          disabled={isCreatingAdmin}
-                        />
-                      </div>
-                      
-                      <Button 
-                        onClick={handleCreateFirstAdmin}
-                        className="w-full bg-gradient-to-r from-green-500 to-blue-500 text-white hover:from-green-600 hover:to-blue-600"
-                        disabled={isCreatingAdmin || !adminCreationForm.email || !adminCreationForm.password || !adminCreationForm.name}
-                      >
-                        {isCreatingAdmin ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Creating Admin...
-                          </>
-                        ) : (
-                          '🔧 Create First Admin'
-                        )}
-                      </Button>
-                      
-                      <div className="text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => setShowAdminCreation(false)}
-                          disabled={isCreatingAdmin}
-                          className="text-gray-500 hover:text-gray-700"
-                        >
-                          Back to Login
-                        </Button>
-                      </div>
-                    </>
-                  )}
+                  
+                  <div>
+                    <Label htmlFor="admin-email" className="text-gray-700 font-medium">Email</Label>
+                    <Input 
+                      id="admin-email" 
+                      type="email" 
+                      placeholder="Enter your email" 
+                      required 
+                      value={adminForm.email}
+                      onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
+                      onKeyPress={(e) => e.key === 'Enter' && !adminForm.password && document.getElementById('admin-password')?.focus()}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      disabled={isLoggingIn || !authInitialized}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="admin-password" className="text-gray-700 font-medium">Password</Label>
+                    <Input 
+                      id="admin-password" 
+                      type="password" 
+                      placeholder="Enter your password" 
+                      required 
+                      value={adminForm.password}
+                      onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
+                      onKeyPress={(e) => e.key === 'Enter' && adminForm.email && adminForm.password && authInitialized && handleAdminLogin()}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      disabled={isLoggingIn || !authInitialized}
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleAdminLogin}
+                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
+                    disabled={isLoggingIn || !authInitialized || !adminForm.email || !adminForm.password}
+                  >
+                    {isLoggingIn ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Logging in...
+                      </>
+                    ) : (
+                      'Login as Admin'
+                    )}
+                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
