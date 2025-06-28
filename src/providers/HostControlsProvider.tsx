@@ -52,12 +52,13 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [countdownTime, setCountdownTime] = React.useState(0);
  const [callInterval, setCallInterval] = React.useState(5);
-const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
+
   
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isTimerActiveRef = useRef(false);
+  const isCallingRef = useRef(false);
 
   // ================== SIMPLE TIMER LOGIC ==================
 
@@ -65,50 +66,50 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
    * Pure timer function - delegates everything to firebase-game
    */
   const scheduleNextCall = useCallback(() => {
-  if (!isTimerActiveRef.current || !gameData) return;
+  if (!isTimerActiveRef.current || !gameData || isCallingRef.current) return;
   
   gameTimerRef.current = setTimeout(async () => {
-    if (!isTimerActiveRef.current || !gameData) return;
+    if (!isTimerActiveRef.current || !gameData || isCallingRef.current) return;
+    
+    isCallingRef.current = true; // Prevent concurrent calls
     
     try {
       console.log(`⏰ Timer: Calling next number for ${gameData.gameId}`);
       
-      // 🎯 DELEGATE: All logic handled by firebase-game
       const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
       
       if (!shouldContinue) {
-        // ✅ SOLUTION 1: Don't end immediately, wait for audio
-        console.log(`🏁 Timer: Game should end, waiting for audio completion`);
-        setPendingGameEnd(true);
+        console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
+        stopTimer();
         return;
       }
       
-      if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
+      if (shouldContinue && isTimerActiveRef.current) {
         scheduleNextCall(); // Continue the timer
-      } else {
-        console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
-        stopTimer();
       }
       
     } catch (error: any) {
       console.error('❌ Timer: Number calling error:', error);
       stopTimer();
+    } finally {
+      isCallingRef.current = false; // Always reset flag
     }
   }, callInterval * 1000);
-}, [gameData, callInterval, pendingGameEnd]);
+}, [gameData, callInterval]);
 
   /**
    * Simple timer control
    */
   const stopTimer = useCallback(() => {
-    console.log(`🛑 Stopping number calling timer`);
-    isTimerActiveRef.current = false;
-    
-    if (gameTimerRef.current) {
-      clearTimeout(gameTimerRef.current);
-      gameTimerRef.current = null;
-    }
-  }, []);
+  console.log(`🛑 Stopping number calling timer`);
+  isTimerActiveRef.current = false;
+  isCallingRef.current = false; // Reset calling flag
+  
+  if (gameTimerRef.current) {
+    clearTimeout(gameTimerRef.current);
+    gameTimerRef.current = null;
+  }
+}, []);
 
   const startTimer = useCallback(() => {
     console.log(`▶️ Starting number calling timer`);
@@ -134,24 +135,14 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
   }, []);
 
 /**
- * ✅ SOLUTION 1: Handle audio completion and check for pending game end
+ * Handle audio completion - simplified version
  */
 const handleAudioComplete = useCallback(() => {
   console.log(`🔊 Audio completed`);
-  
-  // Check if game should end after audio completes
-  if (pendingGameEnd) {
-    console.log(`🏁 Audio complete, ending game now`);
-    setPendingGameEnd(false);
-    stopTimer();
-    return;
-  }
-  
-  // Continue with normal scheduling if game is active
-  if (isTimerActiveRef.current && gameData && !pendingGameEnd) {
-    scheduleNextCall();
-  }
-}, [pendingGameEnd, gameData, scheduleNextCall, stopTimer]);
+  // Audio completion is now handled automatically by the timer
+  // No additional logic needed here
+}, []);
+
   // ================== GAME CONTROL METHODS ==================
 
   /**
@@ -192,16 +183,17 @@ const handleAudioComplete = useCallback(() => {
       
       console.log(`✅ Game start initiated: ${gameData.gameId}`);
       
-          } catch (error: any) {
-          console.error('❌ Start game error:', error);
-          clearAllTimers();
-          setCountdownTime(0);  // ✅ Move this line BEFORE throw
-          throw new Error(error.message || 'Failed to start game');
-        } finally {
+    } catch (error: any) {
+      console.error('❌ Start game error:', error);
+      clearAllTimers();
+      setCountdownTime(0);
+      throw new Error(error.message || 'Failed to start game');
+    } finally {
       setIsProcessing(false);
     }
   }, [gameData, isProcessing, clearAllTimers, startTimer]);
 
+  
   /**
    * Pause game - simple timer stop + database update
    */
@@ -315,7 +307,7 @@ const handleAudioComplete = useCallback(() => {
   updateCallInterval,
   isProcessing,
   countdownTime,
-  handleAudioComplete // ✅ SOLUTION 1: Add audio completion handler
+  handleAudioComplete 
 };
 
   return (
