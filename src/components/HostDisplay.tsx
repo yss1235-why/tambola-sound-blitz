@@ -334,7 +334,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 {prize.pattern}
               </p>
               {prize.won && prize.winners && prize.winners.length > 0 && (
-                <div className="mt-1 md:mt-2 hidden md:block">
+                <div className="mt-1 md:mt-2">
                   <p className="text-xs md:text-sm font-medium text-green-700">
                     Won by: {prize.winners.map(w => w.name).join(', ')}
                   </p>
@@ -356,7 +356,9 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 ? 'bg-green-500 text-white' 
                 : 'bg-gray-200 text-gray-500'
             }`}>
-              {prize.won ? '✓' : '?'}
+             <div className="text-xs text-gray-500 text-right">
+               
+              </div>
             </div>
           </div>
         </div>
