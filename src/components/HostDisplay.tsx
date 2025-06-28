@@ -3,7 +3,7 @@
 // REPLACE the entire HostDisplay component with this version
 // ================================================================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,10 @@ import {
   Gamepad2,
   Timer,
   Hash,
-  CheckCircle
+  CheckCircle,
+  ChevronDown,
+  ChevronUp,
+  User
 } from 'lucide-react';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
 import { useHostControls } from '@/providers/HostControlsProvider';
@@ -38,6 +41,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const { bookedCount } = useBookingStats();
   const hostControls = useHostControls();
   const [callInterval, setCallInterval] = React.useState(5);
+  const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
 
   // Handle interval change
   const handleIntervalChange = (newInterval: number) => {
@@ -45,6 +49,18 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     if (hostControls) {
       hostControls.updateCallInterval(newInterval);
     }
+  };
+  // Toggle prize expansion
+  const togglePrize = (prizeId: string) => {
+    setExpandedPrizes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(prizeId)) {
+        newSet.delete(prizeId);
+      } else {
+        newSet.add(prizeId);
+      }
+      return newSet;
+    });
   };
 
   // ✅ SIMPLIFIED: Only automatic game control handlers
@@ -304,7 +320,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
         </Card>
       )}
 
-     {/* Prize Status - New Format */}
+    {/* Prize Status - Collapsible Format */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -315,46 +331,116 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
         <CardContent className="space-y-3">
           {Object.values(gameData.prizes)
             .sort((a, b) => (a.order || 0) - (b.order || 0))
-            .map((prize) => (
-            <div key={prize.id} className="space-y-2">
-              {/* Prize Header */}
-              <div className={`p-3 rounded-lg border-2 ${
-                prize.won 
-                  ? 'bg-green-50 border-green-200' 
-                  : 'bg-gray-50 border-gray-200'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`p-2 rounded-full ${
-                      prize.won ? 'bg-green-100' : 'bg-gray-100'
-                    }`}>
-                      <Trophy className={`w-4 h-4 ${
-                        prize.won ? 'text-green-600' : 'text-gray-400'
-                      }`} />
+            .map((prize) => {
+              const isExpanded = expandedPrizes.has(prize.id);
+              
+              return (
+                <div key={prize.id} className="space-y-2">
+                  {/* Clickable Prize Header */}
+                  <Button
+                    variant="ghost"
+                    onClick={() => togglePrize(prize.id)}
+                    className={`w-full justify-between p-3 h-auto rounded-lg border-2 hover:bg-opacity-80 ${
+                      prize.won 
+                        ? 'bg-green-50 border-green-200 hover:bg-green-100' 
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className={`p-2 rounded-full ${
+                        prize.won ? 'bg-green-100' : 'bg-gray-100'
+                      }`}>
+                        <Trophy className={`w-4 h-4 ${
+                          prize.won ? 'text-green-600' : 'text-gray-400'
+                        }`} />
+                      </div>
+                      <div className="text-left">
+                        <h3 className="font-medium text-gray-800">
+                          {prize.name}
+                        </h3>
+                        {prize.won && prize.winners && (
+                          <p className="text-sm text-green-600">
+                            {prize.winners.length} winner{prize.winners.length !== 1 ? 's' : ''}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-medium text-gray-800">
-                        {prize.name}
-                      </h3>
+                    
+                    <div className="flex items-center space-x-2">
+                      {/* Quick Ticket Preview */}
+                      <div className="text-right">
+                        {prize.won && prize.winners ? (
+                          <div className="text-sm font-mono text-green-700">
+                            {prize.winners.slice(0, 2).map(w => w.ticketId).join(', ')}
+                            {prize.winners.length > 2 && '...'}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-gray-400">
+                            Not Won
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Chevron */}
+                      {prize.won ? (
+                        isExpanded ? 
+                          <ChevronUp className="w-4 h-4 text-green-600" /> : 
+                          <ChevronDown className="w-4 h-4 text-green-600" />
+                      ) : (
+                        <div className="w-4 h-4" /> // Empty space for alignment
+                      )}
                     </div>
-                  </div>
+                  </Button>
                   
-                  {/* Just Ticket Numbers */}
-                  <div className="text-right">
-                    {prize.won && prize.winners ? (
-                      <div className="text-sm font-mono text-green-700 font-medium">
-                        {prize.winners.map(w => w.ticketId).join(', ')}
+                  {/* Expandable Winner Details */}
+                  {isExpanded && prize.won && prize.winners && (
+                    <div className="px-3 pb-3 bg-green-50 rounded-lg border border-green-200">
+                      <div className="space-y-2">
+                        {prize.winners.map((winner, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-green-100">
+                            <div className="flex items-center space-x-3">
+                              <div className="bg-green-100 p-1.5 rounded-full">
+                                <User className="w-3 h-3 text-green-600" />
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-800 text-sm">
+                                  {winner.name}
+                                  {prize.winners.length > 1 && (
+                                    <Badge variant="outline" className="ml-2 text-xs border-green-400 text-green-700">
+                                      Winner {idx + 1}
+                                    </Badge>
+                                  )}
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  Ticket {winner.ticketId}
+                                </p>
+                              </div>
+                            </div>
+                            
+                            {/* Winner Badge */}
+                            <Badge variant="outline" className="text-xs border-green-400 text-green-700">
+                              {prize.name}
+                            </Badge>
+                          </div>
+                        ))}
+                        
+                        {/* Prize Details */}
+                        {prize.winningNumber && (
+                          <div className="text-xs text-green-600 text-center pt-2 border-t border-green-200">
+                            Won on number {prize.winningNumber}
+                            {prize.wonAt && (
+                              <span className="ml-2">
+                                at {new Date(prize.wonAt).toLocaleTimeString()}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="text-sm text-gray-400">
-                        Not Won
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
-          ))}
+              );
+            })}
         </CardContent>
       </Card>
      
