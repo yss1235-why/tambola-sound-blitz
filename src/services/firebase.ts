@@ -59,6 +59,18 @@ class FirebaseService {
   async getCurrentUserRole() {
     return this.core.getCurrentUserRole();
   }
+  // ========== ADMIN SETUP METHODS (delegate to core) ==========
+  async checkAdminExists() {
+    return this.core.checkAdminExists();
+  }
+
+  async checkCanCreateAdmin() {
+    return this.core.checkCanCreateAdmin();
+  }
+
+  async createFirstAdmin(email: string, password: string, name: string) {
+    return this.core.createFirstAdmin(email, password, name);
+  }
 
   // ========== GAME DATA (delegate to core) ==========
   async getGameData(gameId: string) {
