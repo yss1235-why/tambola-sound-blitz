@@ -8,6 +8,7 @@ interface AudioManagerProps {
   onAudioComplete?: () => void;
   forceEnable?: boolean;
   onPrizeAudioComplete?: (prizeId: string) => void; // ✅ SOLUTION 2
+  callInterval?: number;
 }
 
 interface AudioQueueItem {
@@ -116,7 +117,8 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   prizes, 
   onAudioComplete,
   forceEnable = false,
-  onPrizeAudioComplete // ✅ SOLUTION 2
+  onPrizeAudioComplete, // ✅ SOLUTION 2
+  callInterval = 5
 }) => {
   // State
  // State
@@ -377,13 +379,13 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           handleComplete();
         };
 
-        // Fallback timer - estimate based on text length
-        const estimatedDuration = Math.max(item.text.length * 80, 2000);
+        // Fallback timer - use host's call interval
+        const audioTimeout = callInterval * 1000; // Convert to milliseconds
         fallbackTimer.current = setTimeout(() => {
-          console.warn(`⏰ Audio timeout for: ${item.text}`);
+          console.warn(`⏰ Audio timeout after ${callInterval}s (host setting): ${item.text}`);
           handleComplete();
-        }, estimatedDuration);
-
+        }, audioTimeout);
+        
         window.speechSynthesis.speak(utterance);
         
       } catch (error) {
