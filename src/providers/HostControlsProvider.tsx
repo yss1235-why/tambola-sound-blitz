@@ -68,18 +68,21 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const scheduleNextCall = useCallback(() => {
   if (!isTimerActiveRef.current || !gameData || isCallingRef.current) return;
   
+  // Store gameId in a stable way
+  const currentGameId = gameData.gameId;
+  
   gameTimerRef.current = setTimeout(async () => {
-    if (!isTimerActiveRef.current || !gameData || isCallingRef.current) return;
+    if (!isTimerActiveRef.current || isCallingRef.current) return;
     
     isCallingRef.current = true; // Prevent concurrent calls
     
     try {
-      console.log(`⏰ Timer: Calling next number for ${gameData.gameId}`);
+      console.log(`⏰ Timer: Calling next number for ${currentGameId}`);
       
-      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+      const shouldContinue = await firebaseService.callNextNumberAndContinue(currentGameId);
       
       if (!shouldContinue) {
-        console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
+        console.log(`🏁 Timer: Game complete for ${currentGameId}`);
         stopTimer();
         return;
       }
@@ -95,7 +98,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       isCallingRef.current = false; // Always reset flag
     }
   }, callInterval * 1000);
-}, [gameData, callInterval]);
+}, [callInterval]); // REMOVED gameData dependency
 
   /**
    * Simple timer control
