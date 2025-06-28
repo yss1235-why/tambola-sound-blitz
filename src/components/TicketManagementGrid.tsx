@@ -463,17 +463,19 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 value={bookingForm.playerName}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
                 placeholder="Enter player name"
+                className="text-white placeholder:text-gray-300"
                 required
               />
             </div>
             <div>
               <Label htmlFor="playerPhone" className="text-white font-medium">Phone Number</Label>
               <Input
-                id="playerPhone"
-                value={bookingForm.playerPhone}
-                onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                placeholder="Enter phone number (optional)"
-              />
+                  id="playerPhone"
+                  value={bookingForm.playerPhone}
+                  onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
+                  placeholder="Enter phone number (optional)"
+                  className="text-white placeholder:text-gray-300"
+                />
             </div>
             <div className="bg-gray-50 p-3 rounded">
               <p className="text-sm font-medium">Selected Tickets:</p>
