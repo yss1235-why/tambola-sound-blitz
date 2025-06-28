@@ -163,33 +163,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   // ✅ EXISTING: Full interface for active games (booking, countdown, playing phases)
   return (
     <div className="space-y-6">
-      {/* Game Status Header */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center">
-              <Gamepad2 className="w-6 h-6 mr-2" />
-              Host Control Panel - {gameData.name}
-            </span>
-            <div className="flex items-center space-x-2">
-              <Badge variant={
-                currentPhase === 'playing' && gameData.gameState.isActive ? 'default' :
-                currentPhase === 'countdown' ? 'secondary' :
-                currentPhase === 'finished' ? 'destructive' : 'outline'
-              } className="text-lg px-4">
-                {currentPhase === 'booking' && '🎫 Booking Open'}
-                {currentPhase === 'countdown' && `⏰ Starting in ${hostControls?.countdownTime || 0}s`}
-                {currentPhase === 'playing' && gameData.gameState.isActive && '🔴 Live Game'}
-                {currentPhase === 'playing' && !gameData.gameState.isActive && '⏸️ Game Paused'}
-                {currentPhase === 'finished' && '🏆 Game Complete'}
-              </Badge>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-         
-        </CardContent>
-      </Card>
+      
 
       {/* Game Controls */}
       <Card>
