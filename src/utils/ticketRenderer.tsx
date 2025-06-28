@@ -2,6 +2,7 @@
 import React from 'react';
 import { TambolaTicket } from '@/services/firebase';
 import { Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { computeTicketMetadata } from '../services/prize-engine';
 
 interface TicketRendererProps {
   ticket: TambolaTicket;
@@ -120,7 +121,7 @@ const isPatternPosition = (
   if (!calledNumbers || calledNumbers.length === 0) return false;
   
   // Get all non-zero numbers from this ticket
-  const allTicketNumbers = ticket.rows.flat().filter(n => n > 0);
+  const allTicketNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
   
   // Find ticket numbers that were called, preserving call order
   const calledTicketNumbers = calledNumbers.filter(num => allTicketNumbers.includes(num));
@@ -257,12 +258,12 @@ export const renderTicket = ({
   // ✅ SAFETY CHECK 5: Safe flattening with error handling
   let allNumbers: number[] = [];
   try {
-    allNumbers = ticket.rows.flat();
+    allNumbers = ticket.rows.flat(); // For 27-cell grid display
     
     // Verify we have the expected number of cells (27 total)
-    if (allNumbers.length !== 27) {
-      throw new Error(`Expected 27 cells, got ${allNumbers.length}`);
-    }
+      if (allNumbers.length !== 27) {
+        throw new Error(`Expected 27 cells, got ${allNumbers.length}`);
+      }
   } catch (error) {
     console.error('Error processing ticket rows:', error, ticket);
     return (
