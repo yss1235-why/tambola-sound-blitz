@@ -111,6 +111,7 @@ const scheduleNextCall = useCallback(() => {
    */
   const stopTimer = useCallback(() => {
   console.log(`🛑 Stopping number calling timer`);
+  console.log(`🔍 STOP TIMER CALLED - Stack trace:`, new Error().stack);
   isTimerActiveRef.current = false;
   isCallingRef.current = false; // Reset calling flag
   
@@ -131,6 +132,7 @@ const scheduleNextCall = useCallback(() => {
    * Clear all timers - for cleanup
    */
  const clearAllTimers = useCallback(() => {
+   console.log(`🧹 CLEAR ALL TIMERS CALLED - Stack trace:`, new Error().stack);
     if (gameTimerRef.current) {
       clearTimeout(gameTimerRef.current);
       gameTimerRef.current = null;
