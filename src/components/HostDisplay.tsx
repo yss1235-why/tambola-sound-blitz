@@ -187,61 +187,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Game Statistics */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-2xl font-bold text-blue-600">
-                {gameData.gameState.currentNumber || '-'}
-              </div>
-              <div className="text-sm text-blue-700">Current Number</div>
-            </div>
-            <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="text-2xl font-bold text-green-600">
-                {gameData.gameState.calledNumbers?.length || 0}
-              </div>
-              <div className="text-sm text-green-700">Called</div>
-            </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-              <div className="text-2xl font-bold text-purple-600">
-                {90 - (gameData.gameState.calledNumbers?.length || 0)}
-              </div>
-              <div className="text-sm text-purple-700">Remaining</div>
-            </div>
-            <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-              <div className="text-2xl font-bold text-orange-600">
-                {bookedCount}
-              </div>
-              <div className="text-sm text-orange-700">Players</div>
-            </div>
-            <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-              <div className="text-2xl font-bold text-yellow-600">
-                {Object.values(gameData.prizes).filter(p => p.won).length}
-              </div>
-              <div className="text-sm text-yellow-700">Prizes Won</div>
-            </div>
-          </div>
-
-          {/* Host Information */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-gray-50 p-3 rounded-lg border">
-              <div className="flex items-center">
-                <Phone className="w-4 h-4 mr-2 text-gray-600" />
-                <span className="text-sm text-gray-700">Contact: {gameData.hostPhone || 'Not set'}</span>
-              </div>
-            </div>
-            <div className="bg-gray-50 p-3 rounded-lg border">
-              <div className="flex items-center">
-                <Ticket className="w-4 h-4 mr-2 text-gray-600" />
-                <span className="text-sm text-gray-700">Max Tickets: {gameData.maxTickets}</span>
-              </div>
-            </div>
-            <div className="bg-gray-50 p-3 rounded-lg border">
-              <div className="flex items-center">
-                <Trophy className="w-4 h-4 mr-2 text-gray-600" />
-                <span className="text-sm text-gray-700">Prizes: {Object.keys(gameData.prizes).length}</span>
-              </div>
-            </div>
-          </div>
+         
         </CardContent>
       </Card>
 
@@ -253,15 +199,15 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             Automatic Game Controls
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-3">
           {/* Control Buttons */}
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-2">
             {currentPhase === 'booking' && (
               <Button 
                 onClick={handleStartGame}
                 disabled={bookedCount === 0 || hostControls?.isProcessing}
                 className="flex-1 bg-green-600 hover:bg-green-700"
-                size="lg"
+                size="sm"
               >
                 <Play className="w-4 h-4 mr-2" />
                 {hostControls?.isProcessing ? 'Starting...' : `Start Automatic Game (${bookedCount > 0 ? 'Ready' : 'Need players'})`}
@@ -445,20 +391,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
         </CardContent>
       </Card>
 
-      {/* Current Number Display for Live Games */}
-      {currentPhase === 'playing' && gameData.gameState.currentNumber && (
-        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white border-0">
-          <CardContent className="text-center py-8">
-            <h3 className="text-2xl font-bold mb-4">🔴 LIVE: Current Number</h3>
-            <div className="text-8xl font-bold animate-pulse mb-4">
-              {gameData.gameState.currentNumber}
-            </div>
-            <p className="text-lg opacity-90">
-              Players should mark this number on their tickets
-            </p>
-          </CardContent>
-        </Card>
-      )}
+     
     </div>
   );
 };
