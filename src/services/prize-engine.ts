@@ -365,40 +365,56 @@ const validateSecondFullHouse = (
   prizes: { [prizeId: string]: Prize }
 ): boolean => {
   try {
-    // Only check if Full House is already won
+    // Step 1: Full House must be won first
     if (!prizes.fullHouse.won) {
       console.log(`⏸️ Second Full House check skipped: Full House not won yet`, { ticketId: ticket.ticketId });
       return false;
     }
 
-    // Same logic as Full House - all numbers marked
-    const allSecondNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
-    const hasAllNumbers = allSecondNumbers.every(num => calledNumbers.includes(num));
+    // Step 2: Current ticket must have all numbers marked
+    const allNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
+    const hasAllNumbers = allNumbers.every(num => calledNumbers.includes(num));
     
     console.log(`🔍 Second Full House validation for ${ticket.ticketId}:`, {
-      allNumbers: allSecondNumbers.length,
+      allNumbers: allNumbers.length,
       calledNumbers: calledNumbers.length,
-      hasAllNumbers
+      hasAllNumbers,
+      fullHouseWinners: prizes.fullHouse.winners?.length || 0
     });
-    
-    // Additional check: exclude tickets that already won Full House
-    if (hasAllNumbers && prizes.fullHouse.winners) {
-      const alreadyWonFullHouse = prizes.fullHouse.winners.some(winner => winner.ticketId === ticket.ticketId);
-      if (alreadyWonFullHouse) {
-        console.log(`⏸️ Second Full House excluded: Ticket ${ticket.ticketId} already won Full House`);
-        return false;
-      } else {
-        console.log(`🏆 Second Full House winner found:`, { 
-          ticketId: ticket.ticketId, 
-          playerName: ticket.playerName,
-          allNumbers: allSecondNumbers.length, 
-          hasAllNumbers 
-        });
-        return true;
-      }
+
+    // Step 3: Must have all numbers to proceed
+    if (!hasAllNumbers) {
+      return false;
     }
+
+    // Step 4: 🔧 FIXED - Handle missing/invalid winners list
+    const fullHouseWinners = prizes.fullHouse.winners;
+    if (!fullHouseWinners || !Array.isArray(fullHouseWinners)) {
+      console.warn(`⚠️ Full House won but winners list is invalid:`, { 
+        won: prizes.fullHouse.won, 
+        winners: fullHouseWinners 
+      });
+      // Conservative approach: allow Second Full House if data is corrupted
+      console.log(`🛡️ Allowing Second Full House due to missing Full House winners data`);
+      return true;
+    }
+
+    // Step 5: Check if this ticket already won Full House
+    const alreadyWonFullHouse = fullHouseWinners.some(winner => winner.ticketId === ticket.ticketId);
     
-    return hasAllNumbers;
+    if (alreadyWonFullHouse) {
+      console.log(`⏸️ Second Full House excluded: Ticket ${ticket.ticketId} already won Full House`);
+      return false;
+    }
+
+    // Step 6: Success!
+    console.log(`🏆 Second Full House winner found:`, { 
+      ticketId: ticket.ticketId, 
+      playerName: ticket.playerName,
+      allNumbers: allNumbers.length 
+    });
+    return true;
+
   } catch (error) {
     console.error(`Second Full House validation error for ticket ${ticket.ticketId}:`, error);
     return false;
