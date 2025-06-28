@@ -151,7 +151,7 @@ const handleAudioComplete = useCallback(() => {
   if (isTimerActiveRef.current && gameData && !pendingGameEnd) {
     scheduleNextCall();
   }
-}, [pendingGameEnd, gameData, scheduleNextCall, stopTimer]);
+}, [pendingGameEnd, gameData, scheduleNextCall, stopTimer, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
