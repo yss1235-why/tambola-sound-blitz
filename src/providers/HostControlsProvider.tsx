@@ -173,7 +173,7 @@ const handleAudioComplete = useCallback(() => {
       
       // Update Firebase with retry logic
       try {
-        await firebaseService.updateCountdownTime(gameData!.gameId, timeLeft);
+        firebaseService.updateCountdownTime(gameData!.gameId, timeLeft);
       } catch (error) {
         console.warn('⚠️ Countdown update failed:', error);
       }
@@ -222,7 +222,7 @@ const handleAudioComplete = useCallback(() => {
         
         // ✅ FIX: Update Firebase so all users see countdown
         try {
-          await firebaseService.updateCountdownTime(gameData.gameId, timeLeft);
+          firebaseService.updateCountdownTime(gameData.gameId, timeLeft);
         } catch (error) {
           console.error('Failed to update countdown in Firebase:', error);
         }
