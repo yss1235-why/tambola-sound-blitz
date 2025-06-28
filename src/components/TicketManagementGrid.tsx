@@ -408,24 +408,24 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
               {selectedTickets.length} sel
             </span>
             
-            {/* Name input */}
-            <input
-              type="text"
-              placeholder="Name *"
-              value={bookingForm.playerName}
-              onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              required
-            />
-            
-            {/* Phone input */}
-            <input
-              type="text"
-              placeholder="Phone"
-              value={bookingForm.playerPhone}
-              onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+           {/* Name input */}
+                <input
+                  type="text"
+                  placeholder="Name *"
+                  value={bookingForm.playerName}
+                  onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-white placeholder:text-gray-300"
+                  required
+                />
+                
+                {/* Phone input */}
+                <input
+                  type="text"
+                  placeholder="Phone"
+                  value={bookingForm.playerPhone}
+                  onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
+                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-white placeholder:text-gray-300"
+                />
             
             {/* Book button */}
             <Button
