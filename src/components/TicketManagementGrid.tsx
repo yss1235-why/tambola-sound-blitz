@@ -365,7 +365,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
       {/* UPDATED: 6-Column Tickets Grid for Mobile */}
       <Card>
-       
+        <CardHeader>
+          
+        </CardHeader>
         <CardContent>
           <div className="space-y-4">
             {ticketRows.map((row, rowIndex) => (
