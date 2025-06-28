@@ -245,9 +245,9 @@ class FirebaseService {
     return this.game.validateTicketsForPrizes(tickets, calledNumbers, prizes);
   }
 
-  generatePrizes(selectedPrizes: string[]) {
-    return this.game.generatePrizes(selectedPrizes);
-  }
+ createPrizeConfiguration(selectedPrizes: string[]) {
+  return this.game.createPrizeConfiguration(selectedPrizes);
+}
 
   // ========== CONVENIENCE METHODS FOR BACKWARDS COMPATIBILITY ==========
 
