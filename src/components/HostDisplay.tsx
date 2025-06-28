@@ -339,55 +339,55 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {Object.values(gameData.prizes)
-              .sort((a, b) => (a.order || 0) - (b.order || 0))
-              .map((prize) => (
-              <div
-                key={prize.id}
-                className={`p-3 rounded-lg border-2 transition-all duration-300 ${
-                  prize.won
-                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg'
-                    : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-gray-800'}`}>
-                      {prize.name}
-                    </h3>
-                    <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
-                      {prize.pattern}
+          <div className="grid grid-cols-4 md:grid-cols-2 gap-2 md:gap-4">
+      {Object.values(gameData.prizes)
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map((prize) => (
+        <div
+          key={prize.id}
+          className={`p-1 md:p-3 rounded-lg border-2 transition-all duration-300 ${
+            prize.won
+              ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg'
+              : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
+          }`}
+        >
+          <div className="flex flex-col md:flex-row items-center md:justify-between">
+            <div className="text-center md:text-left flex-1">
+              <h3 className={`text-xs md:text-base font-bold ${prize.won ? 'text-green-800' : 'text-gray-800'}`}>
+                {prize.name}
+              </h3>
+              <p className={`text-xs md:text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'} hidden md:block`}>
+                {prize.pattern}
+              </p>
+              {prize.won && prize.winners && prize.winners.length > 0 && (
+                <div className="mt-1 md:mt-2 hidden md:block">
+                  <p className="text-xs md:text-sm font-medium text-green-700">
+                    Won by: {prize.winners.map(w => w.name).join(', ')}
+                  </p>
+                  {prize.winningNumber && (
+                    <p className="text-xs text-green-600">
+                      Winning number: {prize.winningNumber}
                     </p>
-                    {prize.won && prize.winners && prize.winners.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-sm font-medium text-green-700">
-                          Won by: {prize.winners.map(w => w.name).join(', ')}
-                        </p>
-                        {prize.winningNumber && (
-                          <p className="text-xs text-green-600">
-                            Winning number: {prize.winningNumber}
-                          </p>
-                        )}
-                        {prize.wonAt && (
-                          <p className="text-xs text-green-600">
-                            Won at: {new Date(prize.wonAt).toLocaleTimeString()}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    prize.won 
-                      ? 'bg-green-500 text-white' 
-                      : 'bg-gray-200 text-gray-500'
-                  }`}>
-                    {prize.won ? '✓' : '?'}
-                  </div>
+                  )}
+                  {prize.wonAt && (
+                    <p className="text-xs text-green-600">
+                      Won at: {new Date(prize.wonAt).toLocaleTimeString()}
+                    </p>
+                  )}
                 </div>
-              </div>
-            ))}
+              )}
+            </div>
+            <div className={`w-4 h-4 md:w-8 md:h-8 rounded-full flex items-center justify-center text-xs md:text-base mt-1 md:mt-0 ${
+              prize.won 
+                ? 'bg-green-500 text-white' 
+                : 'bg-gray-200 text-gray-500'
+            }`}>
+              {prize.won ? '✓' : '?'}
+            </div>
           </div>
+        </div>
+      ))}
+    </div>
         </CardContent>
       </Card>
 
