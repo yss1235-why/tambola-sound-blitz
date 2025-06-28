@@ -324,12 +324,82 @@ const handleCloseAdminDialog = (open: boolean) => {
               </DropdownMenu>
             )}
 
-            {/* ✅ NEW: Host Login Dialog (with auth initialization) */}
-           <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
+            {/* ✅ Host Login Dialog */}
+            <Dialog open={isHostLoginOpen} onOpenChange={handleCloseHostDialog}>
+              <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
                 <DialogHeader>
                   <DialogTitle className="text-gray-800 flex items-center">
                     Host Login
                     {!authInitialized && (
+                      <Loader2 className="w-4 h-4 ml-2 animate-spin text-orange-500" />
+                    )}
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {!authInitialized && (
+                    <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                      <p className="text-sm text-orange-800 font-medium">Initializing authentication...</p>
+                      <p className="text-xs text-orange-600">Please wait while we set up the login system</p>
+                    </div>
+                  )}
+                  
+                  {authError && (
+                    <div className="p-3 bg-red-50 rounded-lg border border-red-200">
+                      <p className="text-sm text-red-800">{authError}</p>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <Label htmlFor="host-email" className="text-gray-700 font-medium">Email</Label>
+                    <Input 
+                      id="host-email" 
+                      type="email" 
+                      placeholder="Enter your email" 
+                      required 
+                      value={hostForm.email}
+                      onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      disabled={isLoggingIn || !authInitialized}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="host-password" className="text-gray-700 font-medium">Password</Label>
+                    <Input 
+                      id="host-password" 
+                      type="password" 
+                      placeholder="Enter your password" 
+                      required 
+                      value={hostForm.password}
+                      onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      disabled={isLoggingIn || !authInitialized}
+                    />
+                  </div>
+                  <Button 
+                    onClick={handleHostLogin}
+                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
+                    disabled={isLoggingIn || !authInitialized || !hostForm.email || !hostForm.password}
+                  >
+                    {isLoggingIn ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Logging in...
+                      </>
+                    ) : (
+                      'Login as Host'
+                    )}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            {/* ✅ Admin Login Dialog (with Creation Support) */}
+            <Dialog open={isAdminLoginOpen} onOpenChange={handleCloseAdminDialog}>
+              <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
+                <DialogHeader>
+                  <DialogTitle className="text-gray-800 flex items-center">
+                    {showAdminCreation ? '🔧 Admin Setup' : 'Admin Login'}
+                    {(!authInitialized || checkingAdminStatus) && (
                       <Loader2 className="w-4 h-4 ml-2 animate-spin text-orange-500" />
                     )}
                   </DialogTitle>
@@ -375,7 +445,6 @@ const handleCloseAdminDialog = (open: boolean) => {
                           required 
                           value={adminForm.email}
                           onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
-                          onKeyPress={(e) => e.key === 'Enter' && !adminForm.password && document.getElementById('admin-password')?.focus()}
                           className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                           disabled={isLoggingIn || !authInitialized}
                         />
@@ -389,7 +458,6 @@ const handleCloseAdminDialog = (open: boolean) => {
                           required 
                           value={adminForm.password}
                           onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
-                          onKeyPress={(e) => e.key === 'Enter' && adminForm.email && adminForm.password && authInitialized && handleAdminLogin()}
                           className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
                           disabled={isLoggingIn || !authInitialized}
                         />
