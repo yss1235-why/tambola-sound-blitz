@@ -94,9 +94,7 @@ const scheduleNextCall = useCallback(() => {
         return;
       }
       
-      if (shouldContinue && isTimerActiveRef.current) {
-        scheduleNextCall(); // Continue the timer
-      }
+     
       
     } catch (error: any) {
       console.error('❌ Timer: Number calling error:', error);
@@ -148,10 +146,13 @@ const scheduleNextCall = useCallback(() => {
  * Handle audio completion - simplified version
  */
 const handleAudioComplete = useCallback(() => {
-  console.log(`🔊 Audio completed`);
-  // Audio completion is now handled automatically by the timer
-  // No additional logic needed here
-}, []);
+  console.log(`🔊 Audio completed - scheduling next call`);
+  
+  // Schedule the next number call after audio completes
+  if (isTimerActiveRef.current) {
+    scheduleNextCall();
+  }
+}, [scheduleNextCall]);
 
   // ================== GAME CONTROL METHODS ==================
 
