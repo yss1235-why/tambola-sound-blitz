@@ -901,10 +901,13 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     const prizeUpdates: any = {};
     let allWinners: any = {};
     
-    // Get unwon prizes
-   // Get unwon prizes (special handling for secondFullHouse)
+ // Get unwon prizes (special handling for secondFullHouse)
 const unwonPrizes = Object.fromEntries(
   Object.entries(gameData.prizes).filter(([prizeId, prize]: [string, any]) => {
+    // 🔧 ALWAYS include Full House (needed for Second Full House validation)
+    if (prizeId === 'fullHouse') {
+      return true;
+    }
     // Normal prizes: only check if not won
     if (prizeId !== 'secondFullHouse') {
       return !prize.won;
