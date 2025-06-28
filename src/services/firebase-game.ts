@@ -1006,7 +1006,7 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
     return Object.values(allPrizes).every((prize: any) => prize.won);
   }
 
-  /**
+ /**
    * Start game with countdown setup
    */
   async startGameWithCountdown(gameId: string): Promise<void> {
@@ -1015,12 +1015,27 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
       await update(gameRef, {
         'gameState/isCountdown': true,
         'gameState/countdownTime': 10,
+        'gameState/countdownStartTime': Date.now(), // ✅ ADD: Timestamp for validation
         'gameState/isActive': false,
         'gameState/gameOver': false,
         'updatedAt': new Date().toISOString()
       });
       
       console.log(`✅ Game countdown started: ${gameId}`);
+      
+      // ✅ FIX: Server-side safety timeout
+      setTimeout(async () => {
+        try {
+          const gameData = await this.getGameData(gameId);
+          if (gameData?.gameState.isCountdown) {
+            console.warn(`🚨 Countdown timeout detected for game ${gameId} - force activating`);
+            await this.activateGameAfterCountdown(gameId);
+          }
+        } catch (error) {
+          console.error('❌ Countdown timeout safety check failed:', error);
+        }
+      }, 15000); // 15 second safety timeout
+      
     } catch (error: any) {
       throw new Error(`Failed to start countdown: ${error.message}`);
     }
