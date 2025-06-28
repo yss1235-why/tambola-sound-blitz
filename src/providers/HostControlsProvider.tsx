@@ -170,17 +170,23 @@ const handleAudioComplete = useCallback(() => {
       // 🎯 DELEGATE: Let firebase-game handle game start logic
       await firebaseService.startGameWithCountdown(gameData.gameId);
       
-      // Start countdown timer (UI only)
+    // Start countdown timer (UI + Firebase sync)
       let timeLeft = 10;
       setCountdownTime(timeLeft);
       countdownTimerRef.current = setInterval(async () => {
         timeLeft--;
         setCountdownTime(timeLeft);
         
+        // ✅ FIX: Update Firebase so all users see countdown
+        try {
+          await firebaseService.updateCountdownTime(gameData.gameId, timeLeft);
+        } catch (error) {
+          console.error('Failed to update countdown in Firebase:', error);
+        }
+        
         if (timeLeft <= 0) {
           setCountdownTime(0);
           clearInterval(countdownTimerRef.current!);
-          countdownTimerRef.current = null;
           
           // 🎯 DELEGATE: Let firebase-game activate the game
           await firebaseService.activateGameAfterCountdown(gameData.gameId);
