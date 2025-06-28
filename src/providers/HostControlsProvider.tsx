@@ -84,8 +84,9 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
         return;
       }
       
-      if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-         scheduleNextCall();
+    if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
+        // Wait for audio completion to schedule next call - prevents timer multiplication
+        console.log(`🎯 Timer: Number called, waiting for audio completion to schedule next`);
       } else {
         console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
         stopTimer();
@@ -358,7 +359,7 @@ const handleAudioComplete = useCallback(() => {
         }
         
         if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-          scheduleNextCall(); // This will use the updated callInterval from state
+          
         } else {
           stopTimer();
         }
