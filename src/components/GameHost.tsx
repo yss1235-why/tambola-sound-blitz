@@ -798,14 +798,31 @@ if (cachedWinnerData) {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div className="text-right">
-            <Badge variant={subscriptionStatus.variant} className="mb-2">
+       {/* Unified Header */}
+        <div className="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow-sm border">
+          <div className="flex items-center space-x-4">
+            <span className="text-lg font-semibold text-gray-800">Welcome, {user.name}</span>
+            <Badge variant={subscriptionStatus.variant} className="text-xs">
               {subscriptionStatus.message}
             </Badge>
-            <p className="text-sm text-gray-600">Welcome, {user.name}</p>
+            {(currentView === 'booking' || currentView === 'live') && (
+              <Badge variant={currentView === 'booking' ? 'outline' : 'default'} className="text-xs">
+                {currentView === 'booking' && '🎫 Booking Open'}
+                {currentView === 'live' && '🔴 Live Game'}
+              </Badge>
+            )}
           </div>
+          {(currentView === 'booking' || currentView === 'live') && gameData && (
+            <Button 
+              onClick={() => setEditMode(true)} 
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={operation.inProgress}
+              size="sm"
+            >
+              <Edit className="w-3 h-3 mr-1" />
+              <span className="hidden sm:inline"></span>Edit
+            </Button>
+          )}
         </div>
 
         {/* Status Display */}
@@ -844,24 +861,6 @@ if (cachedWinnerData) {
         {/* Game Booking Phase */}
         {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
-           <div className="flex justify-between items-center py-2">
-              <div className="flex items-center space-x-3">
-                <Badge variant={
-                  currentView === 'booking' ? 'outline' : 'default'
-                } className="text-xs px-2 py-1 text-black">
-                  🎫 Booking Open
-                </Badge>
-              </div>
-              <Button 
-                onClick={() => setEditMode(true)} 
-                className="bg-blue-600 hover:bg-blue-700 text-white"
-                disabled={operation.inProgress}
-                size="sm"
-              >
-                <Edit className="w-3 h-3 mr-1" />
-                <span className="hidden sm:inline">Edit </span>Settings
-              </Button>
-            </div>
 
             <HostControlsProvider userId={user.uid}>
               <HostDisplay />
@@ -894,13 +893,7 @@ if (cachedWinnerData) {
         {/* Live Game Phases */}
 {currentView === 'live' && gameData && (
   <div className="space-y-4">
-    <div className="flex justify-between items-center py-2">
-      <div className="flex items-center space-x-3">
-        <Badge variant="default" className="text-xs px-2 py-1">
-          🔴 Live Game
-        </Badge>
-      </div>
-    </div>
+   
     <HostControlsProvider userId={user.uid}>
       <HostDisplay onCreateNewGame={createNewGame} />
       <AudioManagerWithHostControls
