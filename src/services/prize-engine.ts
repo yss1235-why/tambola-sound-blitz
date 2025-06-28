@@ -523,13 +523,6 @@ export class PrizeEngine {
 }
 
   /**
-   * Generate prizes (alias for compatibility)
-   */
- generatePrizes(selectedPrizes: string[]): { [prizeId: string]: Prize } {
-  return createPrizeConfiguration(selectedPrizes); // ✅ Correct - calls standalone function
-}
-
-  /**
    * Get ticket corners dynamically
    */
   getTicketCorners(ticket: TambolaTicket): number[] {
