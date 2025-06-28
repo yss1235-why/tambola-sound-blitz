@@ -16,6 +16,7 @@ interface HostControlsContextValue {
   // Status
   isProcessing: boolean;
   countdownTime: number;
+  callInterval: number;
   
   // ✅ SOLUTION 1: Audio completion handler
   handleAudioComplete: () => void;
@@ -84,7 +85,7 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
       }
       
       if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-        
+         scheduleNextCall();
       } else {
         console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
         stopTimer();
@@ -335,7 +336,11 @@ const handleAudioComplete = useCallback(() => {
   const updateCallInterval = useCallback((seconds: number) => {
     setCallInterval(seconds);
     console.log(`⏰ Call interval updated to ${seconds} seconds`);
-  }, []);
+    if (isTimerActiveRef.current && gameTimerRef.current) {
+    clearTimeout(gameTimerRef.current);
+    scheduleNextCall(); // Start new timer with new interval
+  }
+  }, [scheduleNextCall]);
 
   // ================== CLEANUP ==================
 
@@ -382,6 +387,7 @@ const handleAudioComplete = useCallback(() => {
   updateCallInterval,
   isProcessing,
   countdownTime,
+  callInterval,
   handleAudioComplete // ✅ SOLUTION 1: Add audio completion handler
 };
 
