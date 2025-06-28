@@ -1025,10 +1025,27 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
       throw new Error(`Failed to start countdown: ${error.message}`);
     }
   }
+/**
+ * Update countdown time in real-time for all users
+ */
+async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
+  try {
+    const gameRef = ref(database, `games/${gameId}`);
+    await update(gameRef, {
+      'gameState/countdownTime': timeLeft,
+      'updatedAt': new Date().toISOString()
+    });
+    
+    console.log(`✅ Countdown updated: ${timeLeft}s remaining for game ${gameId}`);
+  } catch (error: any) {
+    console.error('❌ Failed to update countdown time:', error);
+    throw new Error(`Failed to update countdown: ${error.message}`);
+  }
+}
 
-  /**
-   * Activate game after countdown
-   */
+/**
+ * Activate game after countdown
+ */
   async activateGameAfterCountdown(gameId: string): Promise<void> {
     try {
       const gameRef = ref(database, `games/${gameId}`);
