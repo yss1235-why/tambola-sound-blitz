@@ -924,7 +924,7 @@ if (Object.keys(unwonPrizes).length === 0) {
 }
     
     // Validate tickets for prizes
-    const validationResult = await this.validateTicketsForPrizes(
+    const validationResult = await validateTicketsForPrizes(
       gameData.tickets || {},
       calledNumbers,
       unwonPrizes
@@ -1076,12 +1076,7 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
     }
   }
 
-  // ================== VALIDATION ==================
 
-  async validateTicketsForPrizes(tickets: { [ticketId: string]: TambolaTicket }, calledNumbers: number[], prizes: { [prizeId: string]: Prize }): Promise<{ winners: { [prizeId: string]: any } }> {
-    // Use the actual prize-engine validation logic
-    return await validateTicketsForPrizes(tickets, calledNumbers, prizes)
-  }
 }
 
 // ================== SINGLETON EXPORT ==================
