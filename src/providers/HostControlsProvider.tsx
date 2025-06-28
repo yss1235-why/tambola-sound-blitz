@@ -87,6 +87,7 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
     if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
         // Wait for audio completion to schedule next call - prevents timer multiplication
         console.log(`🎯 Timer: Number called, waiting for audio completion to schedule next`);
+      scheduleNextCall();
       } else {
         console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
         stopTimer();
