@@ -228,7 +228,7 @@ const validateHalfSheetTraditional = (
       if (firstHalfTickets.length === 3) {
         // Verify each ticket has 2+ marked numbers
         const allHave2Plus = firstHalfTickets.every(t => {
-          const allNumbers = t.metadata?.allNumbers || t.rows.flat().filter(n => n > 0);
+          const allNumbers = t.metadata?.allNumbers || computeTicketMetadata(t).allNumbers;
           const markedCount = allNumbers.filter(num => calledNumbers.includes(num)).length;
           return markedCount >= 2;
         });
@@ -249,7 +249,7 @@ const validateHalfSheetTraditional = (
       if (secondHalfTickets.length === 3) {
         // Verify each ticket has 2+ marked numbers
         const allHave2Plus = secondHalfTickets.every(t => {
-          const allNumbers = t.metadata?.allNumbers || t.rows.flat().filter(n => n > 0);
+          const allNumbers = t.metadata?.allNumbers || computeTicketMetadata(t).allNumbers;
           const markedCount = allNumbers.filter(num => calledNumbers.includes(num)).length;
           return markedCount >= 2;
         });
@@ -394,7 +394,7 @@ export const validateTicketsForPrizes = async (
               break;
 
             case 'fullHouse':
-              const allNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
+              const allNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
               hasWon = allNumbers.every(num => calledNumbers.includes(num));
               break;
             case 'secondFullHouse':
@@ -404,7 +404,7 @@ export const validateTicketsForPrizes = async (
     console.log(`⏸️ Second Full House check skipped: Full House not won yet`, { ticketId });
   } else {
     // Same logic as Full House - all numbers marked
-    const allSecondNumbers = ticket.metadata?.allNumbers || ticket.rows.flat().filter(n => n > 0);
+   const allSecondNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
     hasWon = allSecondNumbers.every(num => calledNumbers.includes(num));
     
     console.log(`🔍 Second Full House validation for ${ticketId}:`, {
