@@ -333,15 +333,43 @@ const handleAudioComplete = useCallback(() => {
   /**
    * Update call interval - simple state update
    */
-  const updateCallInterval = useCallback((seconds: number) => {
+ const updateCallInterval = useCallback((seconds: number) => {
   setCallInterval(seconds);
   console.log(`⏰ Call interval updated to ${seconds} seconds`);
   
+  // If timer is running, restart it with new interval immediately
   if (isTimerActiveRef.current && gameTimerRef.current) {
     clearTimeout(gameTimerRef.current);
-    scheduleNextCall();
+    gameTimerRef.current = null;
+    
+    // Create new timer with the new interval directly
+    gameTimerRef.current = setTimeout(async () => {
+      if (!isTimerActiveRef.current || !gameData) return;
+      
+      try {
+        console.log(`⏰ Timer: Calling next number (${seconds}s interval)`);
+        
+        const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+        
+        if (!shouldContinue) {
+          console.log(`🏁 Timer: Game should end, waiting for audio completion`);
+          setPendingGameEnd(true);
+          return;
+        }
+        
+        if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
+          scheduleNextCall(); // This will use the updated callInterval from state
+        } else {
+          stopTimer();
+        }
+        
+      } catch (error: any) {
+        console.error('❌ Timer: Number calling error:', error);
+        stopTimer();
+      }
+    }, seconds * 1000); // Use new interval directly
   }
-}, [scheduleNextCall]);
+}, [gameData, pendingGameEnd, scheduleNextCall, stopTimer]);
   // ================== CLEANUP ==================
 
   useEffect(() => {
