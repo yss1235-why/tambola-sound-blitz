@@ -806,7 +806,7 @@ if (cachedWinnerData) {
               {subscriptionStatus.message}
             </Badge>
             {(currentView === 'booking' || currentView === 'live') && (
-              <Badge variant={currentView === 'booking' ? 'outline' : 'default'} className="text-xs">
+              <Badge variant={currentView === 'booking' ? 'outline' : 'default'} className="text-xs gray-800">
                 {currentView === 'booking' && '🎫 Booking Open'}
                 {currentView === 'live' && '🔴 Live Game'}
               </Badge>
