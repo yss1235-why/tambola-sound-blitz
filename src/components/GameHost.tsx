@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/badge'; 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { HostDisplay } from './HostDisplay';
@@ -851,18 +851,24 @@ if (cachedWinnerData) {
         {/* Game Booking Phase */}
         {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-800">Game Ready for Booking</h2>
-              <div className="flex space-x-2">
-                <Button 
-                  onClick={() => setEditMode(true)} 
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                  disabled={operation.inProgress}
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit Settings
-                </Button>
+           <div className="flex justify-between items-center py-2">
+              <div className="flex items-center space-x-3">
+                <h2 className="text-lg font-bold text-gray-800">Host Dashboard</h2>
+                <Badge variant={
+                  currentView === 'booking' ? 'outline' : 'default'
+                } className="text-xs px-2 py-1">
+                  🎫 Booking Open
+                </Badge>
               </div>
+              <Button 
+                onClick={() => setEditMode(true)} 
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                disabled={operation.inProgress}
+                size="sm"
+              >
+                <Edit className="w-3 h-3 mr-1" />
+                <span className="hidden sm:inline">Edit </span>Settings
+              </Button>
             </div>
 
             <HostControlsProvider userId={user.uid}>
@@ -892,17 +898,27 @@ if (cachedWinnerData) {
           />
         )}
 
-        {/* Live Game Phases */}
+       
         {/* Live Game Phases */}
 {currentView === 'live' && gameData && (
-  <HostControlsProvider userId={user.uid}>
-    <HostDisplay onCreateNewGame={createNewGame} />
-    <AudioManagerWithHostControls
-      currentNumber={gameData.gameState.currentNumber}
-      prizes={Object.values(gameData.prizes)}
-      forceEnable={true}
-    />
-  </HostControlsProvider>
+  <div className="space-y-4">
+    <div className="flex justify-between items-center py-2">
+      <div className="flex items-center space-x-3">
+        <h2 className="text-lg font-bold text-gray-800">Host Dashboard</h2>
+        <Badge variant="default" className="text-xs px-2 py-1">
+          🔴 Live Game
+        </Badge>
+      </div>
+    </div>
+    <HostControlsProvider userId={user.uid}>
+      <HostDisplay onCreateNewGame={createNewGame} />
+      <AudioManagerWithHostControls
+        currentNumber={gameData.gameState.currentNumber}
+        prizes={Object.values(gameData.prizes)}
+        forceEnable={true}
+      />
+    </HostControlsProvider>
+  </div>
 )}
 {gameData && currentView !== 'live' && (
   <AudioManager
