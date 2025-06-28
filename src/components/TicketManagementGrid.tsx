@@ -285,32 +285,39 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                 <div className="text-xs text-orange-700">Selected</div>
               </div>
             </div>
-          {/* Selection Controls */}
-          <div className="flex flex-wrap gap-3 mb-4">
+         {/* Selection Controls */}
+          <div className="flex gap-2 mb-4">
             <Button
               onClick={() => setShowBookingDialog(true)}
               disabled={selectedTickets.length === 0}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white flex-1"
+              size="sm"
             >
-              <UserPlus className="w-4 h-4 mr-2" />
-              Book Selected ({selectedTickets.length})
+              <UserPlus className="w-3 h-3 mr-1" />
+              <span className="hidden sm:inline">Book Selected </span>({selectedTickets.length})
             </Button>
 
             <Button
               onClick={selectedTickets.length === availableCount ? deselectAll : selectAllAvailable}
               variant="outline"
               disabled={availableCount === 0}
+              className="flex-1"
+              size="sm"
             >
-              <CheckSquare className="w-4 h-4 mr-2" />
-              {selectedTickets.length === availableCount ? 'Deselect All' : 'Select All Available'}
+              <CheckSquare className="w-3 h-3 mr-1" />
+              <span className="hidden sm:inline">{selectedTickets.length === availableCount ? 'Deselect All' : 'Select All'}</span>
+              <span className="sm:hidden">{selectedTickets.length === availableCount ? 'Deselect' : 'Select All'}</span>
             </Button>
 
             {selectedTickets.length > 0 && (
               <Button 
                 onClick={deselectAll}
                 variant="outline"
+                className="flex-shrink-0"
+                size="sm"
               >
-                Clear Selection
+                <X className="w-3 h-3 sm:mr-1" />
+                <span className="hidden sm:inline">Clear</span>
               </Button>
             )}
           </div>
