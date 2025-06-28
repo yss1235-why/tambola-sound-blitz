@@ -856,7 +856,7 @@ if (cachedWinnerData) {
                 <h2 className="text-lg font-bold text-gray-800">Host Dashboard</h2>
                 <Badge variant={
                   currentView === 'booking' ? 'outline' : 'default'
-                } className="text-xs px-2 py-1">
+                } className="text-xs px-2 py-1 text-black">
                   🎫 Booking Open
                 </Badge>
               </div>
