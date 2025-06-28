@@ -240,11 +240,6 @@ class FirebaseService {
     return this.core.subscribeToHosts(callback);
   }
 
-  // ========== UTILITY METHODS (delegate to game) ==========
-  async validateTicketsForPrizes(tickets: any, calledNumbers: number[], prizes: any) {
-    return this.game.validateTicketsForPrizes(tickets, calledNumbers, prizes);
-  }
-
  createPrizeConfiguration(selectedPrizes: string[]) {
   return this.game.createPrizeConfiguration(selectedPrizes);
 }
