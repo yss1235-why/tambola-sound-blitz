@@ -122,12 +122,20 @@ const scheduleNextCall = useCallback(() => {
 }, []);
 
   const startTimer = useCallback(() => {
-    console.log(`▶️ Starting number calling timer`);
+  console.log(`▶️ Starting number calling timer`);
+  
+  // Only stop if timer is not already active
+  if (!isTimerActiveRef.current) {
     stopTimer(); // Clear any existing timer
-    isTimerActiveRef.current = true;
+  }
+  
+  isTimerActiveRef.current = true;
+  
+  // Only schedule if no timer is already running
+  if (!gameTimerRef.current) {
     scheduleNextCall();
-  }, [scheduleNextCall]);
-
+  }
+}, [scheduleNextCall]);
   /**
    * Clear all timers - for cleanup
    */
