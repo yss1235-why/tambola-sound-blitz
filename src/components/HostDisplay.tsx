@@ -207,7 +207,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             {currentPhase === 'countdown' && (
               <Button disabled className="flex-1" size="lg">
                 <Clock className="w-4 h-4 mr-2 animate-pulse" />
-               Starting in {hostControls?.countdownTime || 0}s...
+               Starting in {timeUntilAction}s...
               </Button>
             )}
 
