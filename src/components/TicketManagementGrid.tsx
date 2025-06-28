@@ -267,25 +267,24 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-            <div className="text-center p-4 bg-blue-50 rounded-lg">
-              <div className="text-2xl font-bold text-blue-600">{gameData.maxTickets}</div>
-              <div className="text-sm text-blue-700">Total Tickets</div>
+          <div className="grid grid-cols-4 gap-2 mb-4">
+              <div className="text-center p-2 bg-blue-50 rounded">
+                <div className="text-lg font-bold text-blue-600">{gameData.maxTickets}</div>
+                <div className="text-xs text-blue-700">Total</div>
+              </div>
+              <div className="text-center p-2 bg-green-50 rounded">
+                <div className="text-lg font-bold text-green-600">{bookedCount}</div>
+                <div className="text-xs text-green-700">Booked</div>
+              </div>
+              <div className="text-center p-2 bg-gray-50 rounded">
+                <div className="text-lg font-bold text-gray-600">{availableCount}</div>
+                <div className="text-xs text-gray-700">Available</div>
+              </div>
+              <div className="text-center p-2 bg-orange-50 rounded">
+                <div className="text-lg font-bold text-orange-600">{selectedTickets.length}</div>
+                <div className="text-xs text-orange-700">Selected</div>
+              </div>
             </div>
-            <div className="text-center p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{bookedCount}</div>
-              <div className="text-sm text-green-700">Booked</div>
-            </div>
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <div className="text-2xl font-bold text-gray-600">{availableCount}</div>
-              <div className="text-sm text-gray-700">Available</div>
-            </div>
-            <div className="text-center p-4 bg-orange-50 rounded-lg">
-              <div className="text-2xl font-bold text-orange-600">{selectedTickets.length}</div>
-              <div className="text-sm text-orange-700">Selected</div>
-            </div>
-          </div>
-
           {/* Selection Controls */}
           <div className="flex flex-wrap gap-3 mb-4">
             <Button
@@ -557,7 +556,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             <CardContent>
               <div className="space-y-3">
                 {bookedTicketRows.map((row, rowIndex) => (
-                  <div key={rowIndex} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div key={rowIndex} className="grid grid-cols-2 gap-3">
                     {row.map((ticket) => (
                       <div
                         key={ticket.ticketId}
