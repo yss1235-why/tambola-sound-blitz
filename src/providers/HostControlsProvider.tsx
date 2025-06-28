@@ -65,7 +65,7 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
   /**
    * Pure timer function - delegates everything to firebase-game
    */
-  const scheduleNextCall = useCallback(() => {
+ const scheduleNextCall = useCallback(() => {
   if (!isTimerActiveRef.current || !gameData) return;
   
   gameTimerRef.current = setTimeout(async () => {
@@ -78,16 +78,16 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
       const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
       
       if (!shouldContinue) {
-        // ✅ SOLUTION 1: Don't end immediately, wait for audio
-        console.log(`🏁 Timer: Game should end, waiting for audio completion`);
+        console.log(`🏁 Timer: Game should end`);
         setPendingGameEnd(true);
+        stopTimer();
         return;
       }
       
-    if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-        // Wait for audio completion to schedule next call - prevents timer multiplication
-        console.log(`🎯 Timer: Number called, waiting for audio completion to schedule next`);
-      scheduleNextCall();
+      if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
+        // ✅ ROBUST FIX: Always schedule next call to ensure timer continues
+        console.log(`🎯 Timer: Number called, scheduling next call in ${callInterval}s`);
+        scheduleNextCall();
       } else {
         console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
         stopTimer();
@@ -152,7 +152,7 @@ const handleAudioComplete = useCallback(() => {
   
   // Continue with normal scheduling if game is active
   if (isTimerActiveRef.current && gameData && !pendingGameEnd) {
-    scheduleNextCall();
+    console.log(`🔊 Audio completed - timer continues automatically`);
   }
 }, [pendingGameEnd, gameData, scheduleNextCall, stopTimer]);
   
@@ -360,10 +360,11 @@ const handleAudioComplete = useCallback(() => {
         }
         
         if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-          
-        } else {
-          stopTimer();
-        }
+            console.log(`🎯 Timer: Number called with new interval, scheduling next call`);
+            scheduleNextCall();
+          } else {
+            stopTimer();
+          }
         
       } catch (error: any) {
         console.error('❌ Timer: Number calling error:', error);
