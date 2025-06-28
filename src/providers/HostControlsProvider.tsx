@@ -59,17 +59,24 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isTimerActiveRef = useRef(false);
   const isCallingRef = useRef(false);
+  const gameIdRef = useRef<string | null>(null);
 
   // ================== SIMPLE TIMER LOGIC ==================
 
   /**
    * Pure timer function - delegates everything to firebase-game
    */
-  const scheduleNextCall = useCallback(() => {
-  if (!isTimerActiveRef.current || !gameData || isCallingRef.current) return;
+
+
+
+const scheduleNextCall = useCallback(() => {
+  if (!isTimerActiveRef.current || isCallingRef.current) return;
   
-  // Store gameId in a stable way
-  const currentGameId = gameData.gameId;
+  const currentGameId = gameIdRef.current;
+  if (!currentGameId) {
+    console.log('⏰ No game ID available for timer');
+    return;
+  }
   
   gameTimerRef.current = setTimeout(async () => {
     if (!isTimerActiveRef.current || isCallingRef.current) return;
@@ -98,7 +105,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       isCallingRef.current = false; // Always reset flag
     }
   }, callInterval * 1000);
-}, [callInterval]); // REMOVED gameData dependency
+}, [callInterval]); // NO gameData dependency!
 
   /**
    * Simple timer control
@@ -291,6 +298,13 @@ const handleAudioComplete = useCallback(() => {
       clearAllTimers();
     };
   }, [clearAllTimers]);
+
+  // Update gameId ref when gameData changes
+  useEffect(() => {
+    if (gameData?.gameId) {
+      gameIdRef.current = gameData.gameId;
+    }
+  }, [gameData?.gameId]);
 
   // Auto-stop timer when game ends (from real-time updates)
   useEffect(() => {
