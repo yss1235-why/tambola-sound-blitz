@@ -334,7 +334,26 @@ const validateFullSheetTraditional = (
   return winners;
 };
 
-// ================== CORE PRIZE VALIDATION ENGINE ==================
+// ================== INDIVIDUAL PRIZE VALIDATORS ==================
+
+/**
+ * Validates Early Five prize - first player to mark any 5 numbers wins
+ */
+const validateEarlyFive = (
+  ticket: TambolaTicket,
+  calledNumbers: number[]
+): boolean => {
+  try {
+    const markedCount = ticket.metadata?.allNumbers.filter(num => 
+      calledNumbers.includes(num)
+    ).length || 0;
+    return markedCount >= 5;
+  } catch (error) {
+    console.error(`Early Five validation error for ticket ${ticket.ticketId}:`, error);
+    return false;
+  }
+};
+
 
 /**
  * Main prize validation engine - validates all tickets against all prizes
@@ -386,12 +405,9 @@ export const validateTicketsForPrizes = async (
         try {
           console.log(`🎯 Entering switch for: ${prizeId} (ticket: ${ticketId})`);
           switch (prizeId) {
-            case 'earlyFive':
-              const markedCount = ticket.metadata?.allNumbers.filter(num => 
-                calledNumbers.includes(num)
-              ).length || 0;
-              hasWon = markedCount >= 5;
-              break;
+           case 'earlyFive':
+            hasWon = validateEarlyFive(ticket, calledNumbers);
+            break;
 
             case 'fullHouse':
               const allNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
