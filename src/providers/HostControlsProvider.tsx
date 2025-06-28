@@ -152,6 +152,49 @@ const handleAudioComplete = useCallback(() => {
     scheduleNextCall();
   }
 }, [pendingGameEnd, gameData, scheduleNextCall, stopTimer]);
+  
+  // ================== COUNTDOWN RECOVERY LOGIC ==================
+
+  /**
+   * Resume countdown timer from current Firebase value
+   * Handles page refresh and network recovery scenarios
+   */
+  const resumeCountdownTimer = useCallback((currentTimeLeft: number) => {
+    if (countdownTimerRef.current || currentTimeLeft <= 0) return;
+    
+    console.log(`🔄 Resuming countdown from ${currentTimeLeft}s`);
+    
+    let timeLeft = currentTimeLeft;
+    setCountdownTime(timeLeft);
+    
+    countdownTimerRef.current = setInterval(async () => {
+      timeLeft--;
+      setCountdownTime(timeLeft);
+      
+      // Update Firebase with retry logic
+      try {
+        await firebaseService.updateCountdownTime(gameData!.gameId, timeLeft);
+      } catch (error) {
+        console.warn('⚠️ Countdown update failed:', error);
+      }
+      
+      if (timeLeft <= 0) {
+        setCountdownTime(0);
+        clearInterval(countdownTimerRef.current!);
+        countdownTimerRef.current = null;
+        
+        // Activate game after countdown
+        try {
+          await firebaseService.activateGameAfterCountdown(gameData!.gameId);
+          startTimer();
+        } catch (error) {
+          console.error('❌ Failed to activate game after countdown:', error);
+        }
+      }
+    }, 1000);
+  }, [gameData, startTimer]);
+
+
   // ================== GAME CONTROL METHODS ==================
 
   /**
@@ -310,6 +353,24 @@ const handleAudioComplete = useCallback(() => {
       stopTimer();
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
+
+
+  // Auto-resume countdown on page refresh/reconnect
+  useEffect(() => {
+    if (gameData?.gameState.isCountdown && !countdownTimerRef.current && !isProcessing) {
+      const currentCountdown = gameData.gameState.countdownTime || 0;
+      
+      if (currentCountdown > 0) {
+        console.log(`🚨 Detected lost countdown timer - auto-resuming from ${currentCountdown}s`);
+        resumeCountdownTimer(currentCountdown);
+      } else if (currentCountdown === 0) {
+        console.log(`🚨 Countdown expired during disconnect - activating game`);
+        firebaseService.activateGameAfterCountdown(gameData.gameId)
+          .then(() => startTimer())
+          .catch(error => console.error('❌ Failed to activate game:', error));
+      }
+    }
+  }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime, isProcessing, resumeCountdownTimer, startTimer]);
 
   // ================== CONTEXT VALUE ==================
 
