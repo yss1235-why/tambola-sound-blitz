@@ -164,13 +164,8 @@ class FirebaseService {
 
   // ========== OPTION A: NEW METHODS FOR SIMPLIFIED HOSTCONTROLSPROVIDER ==========
 
-  /**
-   * 🎯 NEW: Main method for HostControlsProvider timer
-   * Complete number calling with simple boolean response
-   * 
-   * @param gameId - Game to call number for
-   * @returns boolean - true if game should continue, false if game should stop
-   */
+
+
   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
     return this.game.callNextNumberAndContinue(gameId);
   }
@@ -182,6 +177,9 @@ class FirebaseService {
   async startGameWithCountdown(gameId: string): Promise<void> {
     return this.game.startGameWithCountdown(gameId);
   }
+  async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
+  return this.game.updateCountdownTime(gameId, timeLeft);
+}
 
   /**
    * 🎯 NEW: Activate game after countdown completes
