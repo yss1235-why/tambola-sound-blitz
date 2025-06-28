@@ -15,7 +15,13 @@ import {
   off
 } from 'firebase/database';
 import { database, removeUndefinedValues } from './firebase-core'; 
-import { prizeEngine } from './prize-engine';
+import { 
+  validateTicketsForPrizes, 
+  createPrizeConfiguration,
+  computeTicketMetadata,
+  getTicketCorners,
+  getStarCorners
+} from './prize-engine';
 import type { 
   GameData, 
   TambolaTicket, 
@@ -33,51 +39,6 @@ interface TicketRowData {
   numbers: number[];
 }
 
-// ================== UTILITY FUNCTIONS ==================
-
-const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
-  if (!ticket.rows || !Array.isArray(ticket.rows) || ticket.rows.length !== 3) {
-    console.warn(`Invalid ticket structure for ${ticket.ticketId}`);
-    return {
-      corners: [],
-      center: 0,
-      hasValidCorners: false,
-      hasValidCenter: false,
-      allNumbers: []
-    };
-  }
-
-  for (let i = 0; i < 3; i++) {
-    if (!Array.isArray(ticket.rows[i]) || ticket.rows[i].length !== 9) {
-      console.warn(`Invalid row ${i} for ticket ${ticket.ticketId}`);
-      return {
-        corners: [],
-        center: 0,
-        hasValidCorners: false,
-        hasValidCenter: false,
-        allNumbers: []
-      };
-    }
-  }
-
-  const corners = [
-    ticket.rows[0][0], // Top-left
-    ticket.rows[0][8], // Top-right
-    ticket.rows[2][0], // Bottom-left
-    ticket.rows[2][8]  // Bottom-right
-  ].filter(num => num > 0);
-
-  const center = ticket.rows[1][4] || 0;
-  const allNumbers = ticket.rows.flat().filter(num => num > 0);
-
-  return {
-    corners,
-    center,
-    hasValidCorners: corners.length === 4,
-    hasValidCenter: center > 0,
-    allNumbers
-  };
-};
 
 // ================== FIREBASE GAME SERVICE ==================
 
@@ -184,7 +145,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
   }
 
   const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
-  const prizes = prizeEngine.createPrizeConfiguration(selectedPrizes);
+  const prizes = createPrizeConfiguration(selectedPrizes)
 
   const gameData: GameData = {
     gameId,
@@ -310,7 +271,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
         if (updates.selectedPrizes) {
           console.log(`🏆 Processing prize changes for game: ${gameId}`);
           
-         const newPrizes = prizeEngine.createPrizeConfiguration(updates.selectedPrizes);
+         const newPrizes = createPrizeConfiguration(updates.selectedPrizes);
           
           Object.keys(currentGame.prizes || {}).forEach(prizeId => {
             const currentPrize = currentGame.prizes[prizeId];
@@ -1119,7 +1080,7 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
 
   async validateTicketsForPrizes(tickets: { [ticketId: string]: TambolaTicket }, calledNumbers: number[], prizes: { [prizeId: string]: Prize }): Promise<{ winners: { [prizeId: string]: any } }> {
     // Use the actual prize-engine validation logic
-    return await prizeEngine.validateTicketsForPrizes(tickets, calledNumbers, prizes);
+    return await validateTicketsForPrizes(tickets, calledNumbers, prizes)
   }
 }
 
