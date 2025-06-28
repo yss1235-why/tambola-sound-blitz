@@ -70,6 +70,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
 
 const scheduleNextCall = useCallback(() => {
+  console.log(`🔍 scheduleNextCall called: isTimerActive=${isTimerActiveRef.current}, isCalling=${isCallingRef.current}, gameId=${gameIdRef.current}`);
   if (!isTimerActiveRef.current || isCallingRef.current) return;
   
   const currentGameId = gameIdRef.current;
@@ -147,10 +148,13 @@ const scheduleNextCall = useCallback(() => {
  */
 const handleAudioComplete = useCallback(() => {
   console.log(`🔊 Audio completed - scheduling next call`);
+  console.log(`🔍 Debug: isTimerActive=${isTimerActiveRef.current}, gameId=${gameIdRef.current}`);
   
   // Schedule the next number call after audio completes
   if (isTimerActiveRef.current) {
     scheduleNextCall();
+  } else {
+    console.log(`❌ Timer not active - cannot schedule next call`);
   }
 }, [scheduleNextCall]);
 
