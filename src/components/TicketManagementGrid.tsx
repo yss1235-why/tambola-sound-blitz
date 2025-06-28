@@ -457,7 +457,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="playerName">Player Name *</Label>
+              <Label htmlFor="playerName" className="text-white font-medium">Player Name *</Label>
               <Input
                 id="playerName"
                 value={bookingForm.playerName}
@@ -467,7 +467,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
               />
             </div>
             <div>
-              <Label htmlFor="playerPhone">Phone Number</Label>
+              <Label htmlFor="playerPhone" className="text-white font-medium">Phone Number</Label>
               <Input
                 id="playerPhone"
                 value={bookingForm.playerPhone}
@@ -478,7 +478,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             <div className="bg-gray-50 p-3 rounded">
               <p className="text-sm font-medium">Selected Tickets:</p>
               <p className="text-sm text-gray-600">
-                {selectedTickets.map(id => `#${id}`).join(', ')}
+                {selectedTickets.map(id => `${id}`).join(', ')}
               </p>
             </div>
             <div className="flex justify-end space-x-3">
