@@ -85,18 +85,13 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
       }
       
       if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-          // ✅ FIX: Wait for interval before scheduling next call
           console.log(`🎯 Timer: Number called, scheduling next call in ${callInterval}s`);
-          setTimeout(() => {
-            if (isTimerActiveRef.current && !pendingGameEnd) {
-              scheduleNextCall();
-            }
-          }, callInterval * 1000);
+          scheduleNextCall();
         } else {
           console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
           stopTimer();
         }
-      
+              
     } catch (error: any) {
       console.error('❌ Timer: Number calling error:', error);
       stopTimer();
