@@ -87,15 +87,15 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
       console.log('📞 Timer fired - calling next number...');
       
       // SIMPLIFIED: Let Firebase handle ALL the complex stuff (sessionCache + random + prizes)
-      const result = await firebaseService.callNextNumberAndContinue(gameData.gameId);
-      
-      if (result.shouldContinue) {
-        console.log('✅ Number called, audio will play, waiting for audio completion...');
-        // Audio completion will call scheduleNextCall() when done
-      } else {
-        console.log('🏁 Game should end');
-        isTimerActiveRef.current = false;
-      }
+     const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+
+        if (shouldContinue) {
+          console.log('✅ Number called, audio will play, waiting for audio completion...');
+          // Audio completion will call scheduleNextCall() when done
+        } else {
+          console.log('🏁 Game should end');
+          isTimerActiveRef.current = false;
+        }
       
     } catch (error) {
       console.error('❌ Number calling failed:', error);
