@@ -157,27 +157,15 @@ const handleAudioComplete = useCallback(() => {
   
   // Check if game should end after audio completes
   if (pendingGameEnd) {
-    console.log(`🏁 Audio complete, waiting for prize announcements before ending game`);
+    console.log(`🏁 Audio complete, ending game now`);
+    setPendingGameEnd(false);
     
-    // Check if there are any pending prize announcements
-    const hasPendingPrizes = gameData?.prizes && Object.values(gameData.prizes).some((prize: any) => 
-      prize.won && !prize.audioCompleted
-    );
+    // Immediately end the game - don't wait for prize audio since it may have already played
+    firebaseService.endGame(gameData!.gameId)
+      .then(() => console.log('✅ Game ended after audio completion'))
+      .catch(err => console.error('❌ Failed to end game:', err));
     
-    if (!hasPendingPrizes) {
-      console.log(`🏁 No pending prize announcements, ending game now`);
-      setPendingGameEnd(false);
-      
-      // Actually end the game in Firebase
-      firebaseService.endGame(gameData!.gameId)
-        .then(() => console.log('✅ Game ended after audio completion'))
-        .catch(err => console.error('❌ Failed to end game:', err));
-      
-      stopTimer();
-    } else {
-      console.log(`🏆 Waiting for ${Object.values(gameData.prizes).filter((p: any) => p.won && !p.audioCompleted).length} prize announcements`);
-      // Keep pendingGameEnd true, will check again after prize audio
-    }
+    stopTimer();
     return;
   }
   
