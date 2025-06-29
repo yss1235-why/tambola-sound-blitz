@@ -85,13 +85,17 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
       }
       
       if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-        // ✅ ROBUST FIX: Always schedule next call to ensure timer continues
-        console.log(`🎯 Timer: Number called, scheduling next call in ${callInterval}s`);
-        scheduleNextCall();
-      } else {
-        console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
-        stopTimer();
-      }
+          // ✅ FIX: Wait for interval before scheduling next call
+          console.log(`🎯 Timer: Number called, scheduling next call in ${callInterval}s`);
+          setTimeout(() => {
+            if (isTimerActiveRef.current && !pendingGameEnd) {
+              scheduleNextCall();
+            }
+          }, callInterval * 1000);
+        } else {
+          console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
+          stopTimer();
+        }
       
     } catch (error: any) {
       console.error('❌ Timer: Number calling error:', error);
@@ -359,12 +363,16 @@ const handleAudioComplete = useCallback(() => {
           return;
         }
         
-        if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-            console.log(`🎯 Timer: Number called with new interval, scheduling next call`);
-            scheduleNextCall();
-          } else {
-            stopTimer();
-          }
+       if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
+          console.log(`🎯 Timer: Number called with new interval, scheduling next call`);
+          setTimeout(() => {
+            if (isTimerActiveRef.current && !pendingGameEnd) {
+              scheduleNextCall();
+            }
+          }, seconds * 1000); // Use the new interval
+        } else {
+          stopTimer();
+        }
         
       } catch (error: any) {
         console.error('❌ Timer: Number calling error:', error);
