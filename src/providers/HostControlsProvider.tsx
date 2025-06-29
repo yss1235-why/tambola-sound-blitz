@@ -90,10 +90,12 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
         return;
       }
       
-      if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-          console.log(`🎯 Timer: Number called, scheduling next call in ${callInterval}s`);
-          
-        } else {
+     if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
+          console.log(`🚀🚀🚀 NEW CODE VERSION 12345 - AUDIO WAIT MODE 🚀🚀🚀`);
+          console.log(`🎯 Timer: Number called, waiting for audio completion`);
+          console.log(`🔍 DEBUG: Timer should NOT schedule here`);
+          // Wait for audio completion - no scheduling here
+      } else {
           console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
           stopTimer();
         }
