@@ -7,12 +7,12 @@ import {
   push, 
   update, 
   remove, 
-  runTransaction,
   query,
   orderByChild,
   equalTo,
   onValue, 
-  off
+  off,
+  runTransaction
 } from 'firebase/database';
 import { database, removeUndefinedValues } from './firebase-core'; 
 import { 
@@ -782,112 +782,134 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
    * Complete number calling with all business logic
    */
   private async processCompleteNumberCall(gameId: string): Promise<{
-    success: boolean;
-    gameEnded: boolean;
-    hasMoreNumbers: boolean;
-    number?: number;
-    winners?: any;
-  }> {
-    try {
-      console.log(`📞 Processing complete number call for game: ${gameId}`);
-      
-      // Get fresh game data
-      const gameRef = ref(database, `games/${gameId}`);
-      const gameSnapshot = await get(gameRef);
-      
-      if (!gameSnapshot.exists()) {
+  success: boolean;
+  gameEnded: boolean;
+  hasMoreNumbers: boolean;
+  number?: number;
+  winners?: any;
+}> {
+  try {
+    console.log(`📞 Processing complete number call for game: ${gameId}`);
+    
+    // Use Firebase transaction for atomic operation
+    const gameRef = ref(database, `games/${gameId}`);
+    
+    const transactionResult = await runTransaction(gameRef, (currentGame) => {
+      if (!currentGame) {
         throw new Error('Game not found');
       }
       
-      const gameData = gameSnapshot.val();
-      const calledNumbers = gameData.gameState.calledNumbers || [];
+      const calledNumbers = currentGame.gameState.calledNumbers || [];
+      console.log(`🔄 Transaction: Current called numbers length: ${calledNumbers.length}`);
       
       // Select next number
       let selectedNumber: number;
       
-      
-      if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
-        selectedNumber = gameData.sessionCache[calledNumbers.length];
-        console.log(`🎯 Using predetermined number ${selectedNumber} (position ${calledNumbers.length + 1})`);
+      if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
+        selectedNumber = currentGame.sessionCache[calledNumbers.length];
+        console.log(`🎯 Transaction: Using predetermined number ${selectedNumber} (position ${calledNumbers.length + 1})`);
       } else {
-       
         const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
           .filter(num => !calledNumbers.includes(num));
         
         if (availableNumbers.length === 0) {
-          console.log(`🏁 No more numbers available - ending game`);
-          await this.endGameNoMoreNumbers(gameId);
+          console.log(`🏁 Transaction: No more numbers available - ending game`);
+          // End game in transaction
           return {
-            success: true,
-            gameEnded: true,
-            hasMoreNumbers: false
+            ...currentGame,
+            gameState: {
+              ...currentGame.gameState,
+              isActive: false,
+              gameOver: true,
+              updatedAt: new Date().toISOString()
+            }
           };
         }
         
         const randomIndex = Math.floor(Math.random() * availableNumbers.length);
         selectedNumber = availableNumbers[randomIndex];
-        console.log(`🎲 Using random number ${selectedNumber}`);
+        console.log(`🎲 Transaction: Using random number ${selectedNumber}`);
       }
       
+      // Update game state atomically
       const updatedCalledNumbers = [...calledNumbers, selectedNumber];
       
-      
-      console.log(`🎲 Selected number: ${selectedNumber}`);
-      
-      // Process prizes and winners
-      const prizeResult = await this.processNumberForPrizes(
-        gameData,
-        selectedNumber,
-        updatedCalledNumbers
-      );
-      
-      // Build complete update
-      const gameUpdates: any = {
+      return {
+        ...currentGame,
         gameState: {
-          ...gameData.gameState,
+          ...currentGame.gameState,
           calledNumbers: updatedCalledNumbers,
           currentNumber: selectedNumber,
           updatedAt: new Date().toISOString()
+        },
+        _transactionMeta: {
+          selectedNumber,
+          updatedCalledNumbers
         }
       };
-      
-      // Add prize updates if any
-      if (prizeResult.hasWinners) {
-        Object.assign(gameUpdates, prizeResult.prizeUpdates);
-        gameUpdates.lastWinnerAnnouncement = prizeResult.announcements.join(' ');
-        gameUpdates.lastWinnerAt = new Date().toISOString();
-      }
-      
-      // Check if game should end
-      const allPrizesWon = this.checkAllPrizesWon(gameData.prizes, prizeResult.prizeUpdates);
-      const isLastNumber = updatedCalledNumbers.length >= 90;
-      const shouldEndGame = allPrizesWon || isLastNumber;
-      
-      if (shouldEndGame) {
-        console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
-        gameUpdates.gameState.isActive = false;
-        gameUpdates.gameState.gameOver = true;
-      }
-      
-      // Apply all updates atomically
-      await update(gameRef, gameUpdates);
-      
-      console.log(`✅ Number ${selectedNumber} called successfully`);
-      
+    });
+    
+    // Check if transaction was aborted or failed
+    if (!transactionResult.committed) {
+      console.log(`🔄 Transaction aborted - another call in progress`);
       return {
         success: true,
-        gameEnded: shouldEndGame,
-        hasMoreNumbers: updatedCalledNumbers.length < 90,
-        number: selectedNumber,
-        winners: prizeResult.hasWinners ? prizeResult.winners : undefined
+        gameEnded: false,
+        hasMoreNumbers: true
+      };
+    }
+    
+    const updatedGame = transactionResult.snapshot.val();
+    const selectedNumber = updatedGame._transactionMeta.selectedNumber;
+    const updatedCalledNumbers = updatedGame._transactionMeta.updatedCalledNumbers;
+    
+    console.log(`✅ Transaction committed: Number ${selectedNumber} called successfully`);
+    
+    // Process prizes (outside transaction for performance)
+    const prizeResult = await this.processNumberForPrizes(
+      updatedGame,
+      selectedNumber,
+      updatedCalledNumbers
+    );
+    
+    // Update prizes if any winners (separate update to avoid conflicts)
+    if (prizeResult.hasWinners) {
+      const prizeUpdates: any = {
+        ...prizeResult.prizeUpdates,
+        lastWinnerAnnouncement: prizeResult.announcements.join(' '),
+        lastWinnerAt: new Date().toISOString()
       };
       
-    } catch (error: any) {
-      console.error('❌ Error in processCompleteNumberCall:', error);
-      throw error;
+      await update(gameRef, prizeUpdates);
+      console.log(`🏆 Prize updates applied for number ${selectedNumber}`);
     }
-  }
-
+    
+    // Check if game should end
+    const allPrizesWon = this.checkAllPrizesWon(updatedGame.prizes, prizeResult.prizeUpdates);
+    const isLastNumber = updatedCalledNumbers.length >= 90;
+    const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
+    
+    if (shouldEndGame && !updatedGame.gameState.gameOver) {
+      console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+      await update(gameRef, {
+        'gameState/isActive': false,
+        'gameState/gameOver': true
+      });
+    }
+    
+    return {
+          success: true,
+          gameEnded: shouldEndGame,
+          hasMoreNumbers: updatedCalledNumbers.length < 90,
+          number: selectedNumber,
+          winners: prizeResult.hasWinners ? prizeResult.winners : undefined
+        };
+        
+      } catch (error: any) {
+        console.error('❌ Error in processCompleteNumberCall transaction:', error);
+        throw error;
+      }
+    }
   /**
    * Process number for all prize detection
    */
