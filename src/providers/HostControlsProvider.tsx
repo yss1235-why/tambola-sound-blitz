@@ -154,7 +154,7 @@ const handleAudioComplete = useCallback(() => {
   if (isTimerActiveRef.current && gameData && !pendingGameEnd) {
     console.log(`🔊 Audio completed - timer continues automatically`);
   }
-}, [pendingGameEnd, gameData, scheduleNextCall, stopTimer]);
+}, [pendingGameEnd, stopTimer]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
