@@ -68,6 +68,12 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
  const scheduleNextCall = useCallback(() => {
   if (!isTimerActiveRef.current || !gameData) return;
   
+  // Prevent multiple timers
+  if (gameTimerRef.current) {
+    clearTimeout(gameTimerRef.current);
+    gameTimerRef.current = null;
+  }
+  
   gameTimerRef.current = setTimeout(async () => {
     if (!isTimerActiveRef.current || !gameData) return;
     
@@ -149,11 +155,13 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
-  // Schedule next call now that audio is complete
-  if (isTimerActiveRef.current && gameData && !pendingGameEnd) {
-    console.log(`🔊 Audio completed - scheduling next call in ${callInterval}s`);
-    scheduleNextCall();
-  }
+ // Schedule next call now that audio is complete
+if (isTimerActiveRef.current && gameData && !pendingGameEnd && !gameTimerRef.current) {
+  console.log(`🔊 Audio completed - scheduling next call in ${callInterval}s`);
+  scheduleNextCall();
+} else if (gameTimerRef.current) {
+  console.log(`🔊 Audio completed but timer already scheduled`);
+}
 }, [pendingGameEnd, stopTimer, scheduleNextCall, gameData, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
@@ -339,14 +347,9 @@ const handleAudioComplete = useCallback(() => {
   setCallInterval(seconds);
   console.log(`⏰ Call interval updated to ${seconds} seconds`);
   
-  // ✅ FIX: If timer is running, restart it completely to apply new interval
-  if (isTimerActiveRef.current) {
-    console.log(`🔄 Restarting timer with new ${seconds}s interval`);
-    stopTimer(); // Stop current timer
-    isTimerActiveRef.current = true; // Keep timer active
-    scheduleNextCall(); // Start new timer with new interval
-  }
-}, [scheduleNextCall, stopTimer]);
+  // Don't restart timer here - it will restart naturally after current audio completes
+  // This prevents race conditions
+}, []);
   // ================== CLEANUP ==================
 
   useEffect(() => {
