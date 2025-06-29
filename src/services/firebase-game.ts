@@ -889,13 +889,11 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     const isLastNumber = updatedCalledNumbers.length >= 90;
     const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
     
-    if (shouldEndGame && !updatedGame.gameState.gameOver) {
-      console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
-      await update(gameRef, {
-        'gameState/isActive': false,
-        'gameState/gameOver': true
-      });
-    }
+   if (shouldEndGame && !updatedGame.gameState.gameOver) {
+  console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+  // Don't set gameOver immediately - let the audio complete first
+  // The HostControlsProvider will handle actual game ending after audio
+}
     
     return {
           success: true,
