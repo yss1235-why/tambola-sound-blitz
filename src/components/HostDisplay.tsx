@@ -257,8 +257,8 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 <Input
                   id="call-interval"
                   type="range"
-                  min="3"
-                  max="15"
+                  min="1"
+                  max="10"
                   value={callInterval}
                   onChange={(e) => handleIntervalChange(parseInt(e.target.value))}
                   className="flex-1"
