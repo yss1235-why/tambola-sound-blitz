@@ -65,7 +65,10 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
   /**
    * Pure timer function - delegates everything to firebase-game
    */
- const scheduleNextCall = useCallback(() => {
+ // Add time tracking ref
+const lastCallTimeRef = useRef<number>(0);
+
+const scheduleNextCall = useCallback(() => {
   // Clear any existing timer first (prevents duplicates)
   if (gameTimerRef.current) {
     clearTimeout(gameTimerRef.current);
@@ -78,30 +81,38 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
     return;
   }
 
-  console.log(`⏰ Scheduling next call in ${callInterval}s`);
+  // Calculate proper delay to ensure full interval between calls
+  const now = Date.now();
+  const timeSinceLastCall = now - lastCallTimeRef.current;
+  const audioTime = 3000; // 3 seconds for audio (fixed)
+  const totalInterval = (callInterval * 1000) + audioTime; // Total time between call starts
+  const remainingDelay = Math.max(0, totalInterval - timeSinceLastCall);
+
+  console.log(`⏰ Scheduling next call in ${remainingDelay/1000}s (total interval: ${totalInterval/1000}s)`);
   
   gameTimerRef.current = setTimeout(async () => {
     if (!isTimerActiveRef.current || !gameData) return;
     
     try {
       console.log('📞 Timer fired - calling next number...');
+      lastCallTimeRef.current = Date.now(); // Track when call started
       
-      // SIMPLIFIED: Let Firebase handle ALL the complex stuff (sessionCache + random + prizes)
-     const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
 
-        if (shouldContinue) {
-          console.log('✅ Number called, audio will play, waiting for audio completion...');
-          // Audio completion will call scheduleNextCall() when done
-        } else {
-          console.log('🏁 Game should end');
-          isTimerActiveRef.current = false;
-        }
+      if (shouldContinue) {
+        console.log('✅ Number called, audio will play, waiting for audio completion...');
+        // Audio completion will call scheduleNextCall() when done
+      } else {
+        console.log('🏁 Game should end');
+        setPendingGameEnd(true);
+        isTimerActiveRef.current = false;
+      }
       
     } catch (error) {
       console.error('❌ Number calling failed:', error);
       isTimerActiveRef.current = false;
     }
-  }, callInterval * 1000);
+  }, remainingDelay);
 }, [gameData, callInterval]);
 
   /**
@@ -117,12 +128,13 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
     }
   }, []);
 
-  const startTimer = useCallback(() => {
-    console.log(`▶️ Starting number calling timer`);
-    stopTimer(); // Clear any existing timer
-    isTimerActiveRef.current = true;
-    scheduleNextCall();
-  }, [scheduleNextCall]);
+ const startTimer = useCallback(() => {
+  console.log(`▶️ Starting number calling timer`);
+  stopTimer(); // Clear any existing timer
+  isTimerActiveRef.current = true;
+  lastCallTimeRef.current = 0; // Reset timing on start
+  scheduleNextCall();
+}, [scheduleNextCall]);
 
   /**
    * Clear all timers - for cleanup
@@ -154,14 +166,14 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
- // Schedule next call now that audio is complete
-if (isTimerActiveRef.current && gameData && !pendingGameEnd && !gameTimerRef.current) {
-  console.log(`🔊 Audio completed - scheduling next call in ${callInterval}s`);
-  scheduleNextCall();
-} else if (gameTimerRef.current) {
-  console.log(`🔊 Audio completed but timer already scheduled`);
-}
-}, [pendingGameEnd, stopTimer, scheduleNextCall, gameData, callInterval]);
+  // Always schedule next call when audio completes (if game active)
+  if (isTimerActiveRef.current && gameData) {
+    console.log(`🔊 Audio completed - scheduling next call`);
+    scheduleNextCall();
+  } else {
+    console.log(`🔊 Audio completed but game inactive`);
+  }
+}, [pendingGameEnd, stopTimer, scheduleNextCall, gameData]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
