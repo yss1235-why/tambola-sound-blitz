@@ -86,7 +86,7 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
       
       if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
           console.log(`🎯 Timer: Number called, scheduling next call in ${callInterval}s`);
-          scheduleNextCall();
+          
         } else {
           console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
           stopTimer();
