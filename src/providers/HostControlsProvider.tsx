@@ -70,9 +70,12 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
   
   // Prevent multiple timers
   if (gameTimerRef.current) {
+    console.log(`🛑 TIMER ALREADY EXISTS - Clearing old timer before creating new one`);
     clearTimeout(gameTimerRef.current);
     gameTimerRef.current = null;
   }
+  
+  console.log(`🎯 CREATING NEW TIMER for game: ${gameData.gameId}`);
   
   gameTimerRef.current = setTimeout(async () => {
     if (!isTimerActiveRef.current || !gameData) return;
