@@ -59,40 +59,54 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isTimerActiveRef = useRef(false);
+  const lastCallTimeRef = useRef<number>(0); 
 
   // ================== SIMPLE TIMER LOGIC ==================
-
-  /**
-   * Pure timer function - delegates everything to firebase-game
-   */
- // Add time tracking ref
-// Add time tracking ref
-const lastCallTimeRef = useRef<number>(0);
-
 const scheduleNextCall = useCallback(() => {
   if (!isTimerActiveRef.current || !gameData) {
     console.log('🛑 Not scheduling - timer inactive or no game data');
     return;
   }
+  
+  // Clear any existing timer
   if (gameTimerRef.current) {
     clearTimeout(gameTimerRef.current);
     gameTimerRef.current = null;
   }
+  
+  // ✅ FIX: Better timing calculation
   const now = Date.now();
-  const timeSinceLastCall = now - lastCallTimeRef.current;
-  const delay = Math.max(0, callInterval * 1000 - timeSinceLastCall);
+  const timeSinceLastCall = lastCallTimeRef.current ? (now - lastCallTimeRef.current) : 0;
+  const delay = Math.max(1000, callInterval * 1000 - timeSinceLastCall); // Minimum 1 second
+  
   console.log(`⏰ Scheduling next call in ${delay / 1000}s`);
+  
   gameTimerRef.current = setTimeout(async () => {
-    if (!isTimerActiveRef.current || !gameData) return;
+    if (!isTimerActiveRef.current || !gameData) {
+      console.log('⏰ Timer fired but game inactive');
+      return;
+    }
+    
     console.log('📞 Timer fired - calling next number...');
     lastCallTimeRef.current = Date.now();
-    const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
-    if (shouldContinue) {
-      console.log('✅ Number called, waiting for audio completion...');
-    } else {
-      console.log('🏁 Game should end');
-      setPendingGameEnd(true);
-      isTimerActiveRef.current = false;
+    
+    try {
+      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+      
+      if (shouldContinue && isTimerActiveRef.current) {
+        console.log('✅ Number called successfully, waiting for audio...');
+        // Audio completion will trigger next call
+      } else {
+        console.log('🏁 Game should end or timer inactive');
+        setPendingGameEnd(true);
+        isTimerActiveRef.current = false;
+      }
+    } catch (error) {
+      console.error('❌ Error calling number:', error);
+      // ✅ FIX: Retry on error if game still active
+      if (isTimerActiveRef.current) {
+        setTimeout(() => scheduleNextCall(), 2000);
+      }
     }
   }, delay);
 }, [gameData, callInterval]);
@@ -110,12 +124,12 @@ const scheduleNextCall = useCallback(() => {
     }
   }, []);
 
- const startTimer = useCallback(() => {
+const startTimer = useCallback(() => {
   if (!gameData) return;
   console.log('▶️ Starting timer');
   stopTimer(); // Ensure no existing timer is running
   isTimerActiveRef.current = true;
-  lastCallTimeRef.current = Date.now(); // Reset to current time
+  lastCallTimeRef.current = Date.now(); // ✅ FIX: Initialize timing reference
   scheduleNextCall();
 }, [gameData, scheduleNextCall, stopTimer]);
   /**
@@ -138,7 +152,7 @@ const scheduleNextCall = useCallback(() => {
  * ✅ SOLUTION 1: Handle audio completion and check for pending game end
  */
 const handleAudioComplete = useCallback(() => {
-  console.log(`🔊 Audio completed`);
+  console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}, Has game: ${!!gameData}`);
   
   // Check if game should end after audio completes
   if (pendingGameEnd) {
@@ -148,13 +162,21 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
- // Always schedule next call when audio completes (if game active)
-  if (isTimerActiveRef.current && gameData) {
+  // ✅ FIX: Always schedule next call if game is active (check game state, not just timer)
+  if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver) {
     console.log(`🔊 Audio completed - scheduling next call`);
-    lastCallTimeRef.current = Date.now(); // Update timing after audio completion
+    
+    // Ensure timer is active
+    if (!isTimerActiveRef.current) {
+      console.log(`⚠️ Timer was inactive, reactivating`);
+      isTimerActiveRef.current = true;
+    }
+    
+    lastCallTimeRef.current = Date.now(); // Update timing after audio
     scheduleNextCall();
   } else {
-    console.log(`🔊 Audio completed but game inactive`);
+    console.log(`🔊 Audio completed but game inactive or ended`);
+    isTimerActiveRef.current = false;
   }
 }, [pendingGameEnd, stopTimer, scheduleNextCall, gameData]);
   
@@ -206,48 +228,51 @@ const handleAudioComplete = useCallback(() => {
    * Start game with countdown - delegates game logic to firebase-game
    */
   const startGame = useCallback(async () => {
-    if (!gameData || isProcessing) return;
-    
-    setIsProcessing(true);
-    try {
-      console.log(`🎮 Starting game: ${gameData.gameId}`);
-      
-      // Clear any existing timers
-      clearAllTimers();
-      
-      // 🎯 DELEGATE: Let firebase-game handle game start logic
-      await firebaseService.startGameWithCountdown(gameData.gameId);
-      
-    // Start countdown timer (UI + Firebase sync)
-      // Start countdown timer (UI + Firebase sync)
-let timeLeft = 10;
-setCountdownTime(timeLeft);
-const countdownTimer = setInterval(async () => {
-  timeLeft--;
-  setCountdownTime(timeLeft);
+  if (!gameData || isProcessing) return;
+  
+  setIsProcessing(true);
   try {
-    await firebaseService.updateCountdownTime(gameData.gameId, timeLeft);
-  } catch (error) {
-    console.error('Failed to update countdown in Firebase:', error);
-  }
-  if (timeLeft <= 0) {
-    clearInterval(countdownTimer);
-    await firebaseService.activateGameAfterCountdown(gameData.gameId);
-    startTimer();
-  }
-}, 1000);
+    console.log(`🎮 Starting game: ${gameData.gameId}`);
+    
+    // Clear any existing timers
+    clearAllTimers();
+    
+    // 🎯 DELEGATE: Let firebase-game handle game start logic
+    await firebaseService.startGameWithCountdown(gameData.gameId);
+    
+    // Start countdown timer (UI + Firebase sync)
+    let timeLeft = 10;
+    setCountdownTime(timeLeft);
+    
+    countdownTimerRef.current = setInterval(async () => {  // ✅ USE REF HERE
+      timeLeft--;
+      setCountdownTime(timeLeft);
       
-      console.log(`✅ Game start initiated: ${gameData.gameId}`);
+      try {
+        await firebaseService.updateCountdownTime(gameData.gameId, timeLeft);
+      } catch (error) {
+        console.error('Failed to update countdown in Firebase:', error);
+      }
       
-          } catch (error: any) {
-          console.error('❌ Start game error:', error);
-          clearAllTimers();
-          setCountdownTime(0);  // ✅ Move this line BEFORE throw
-          throw new Error(error.message || 'Failed to start game');
-        } finally {
-      setIsProcessing(false);
-    }
-  }, [gameData, isProcessing, clearAllTimers, startTimer]);
+      if (timeLeft <= 0) {
+        clearInterval(countdownTimerRef.current!);  // ✅ USE REF HERE
+        countdownTimerRef.current = null;           // ✅ CLEAR REF
+        await firebaseService.activateGameAfterCountdown(gameData.gameId);
+        startTimer();
+      }
+    }, 1000);
+    
+    console.log(`✅ Game start initiated: ${gameData.gameId}`);
+    
+  } catch (error: any) {
+    console.error('❌ Start game error:', error);
+    clearAllTimers();
+    setCountdownTime(0);
+    throw new Error(error.message || 'Failed to start game');
+  } finally {
+    setIsProcessing(false);
+  }
+}, [gameData, isProcessing, clearAllTimers, startTimer]);
 
   /**
    * Pause game - simple timer stop + database update
@@ -274,13 +299,23 @@ const countdownTimer = setInterval(async () => {
   const resumeGame = useCallback(async () => {
   if (!gameData || isProcessing) return;
   setIsProcessing(true);
+  
   try {
     console.log(`▶️ Resuming game: ${gameData.gameId}`);
+    
+    // ✅ FIX: Ensure timer state is set BEFORE Firebase update
+    isTimerActiveRef.current = true;
+    
     await firebaseService.resumeGame(gameData.gameId);
+    
+    // ✅ FIX: Reset timing reference and start fresh
+    lastCallTimeRef.current = Date.now();
     startTimer();
+    
     console.log(`✅ Game resumed: ${gameData.gameId}`);
   } catch (error: any) {
     console.error('❌ Resume game error:', error);
+    isTimerActiveRef.current = false; // Reset on error
     throw new Error(error.message || 'Failed to resume game');
   } finally {
     setIsProcessing(false);
