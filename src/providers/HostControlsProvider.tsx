@@ -66,49 +66,43 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
    * Pure timer function - delegates everything to firebase-game
    */
  const scheduleNextCall = useCallback(() => {
-  if (!isTimerActiveRef.current || !gameData) return;
-  
-  // Prevent multiple timers
+  // Clear any existing timer first (prevents duplicates)
   if (gameTimerRef.current) {
-    console.log(`🛑 TIMER ALREADY EXISTS - Clearing old timer before creating new one`);
     clearTimeout(gameTimerRef.current);
     gameTimerRef.current = null;
   }
-  
-  console.log(`🎯 CREATING NEW TIMER for game: ${gameData.gameId}`);
+
+  // Only schedule if game is active
+  if (!isTimerActiveRef.current || !gameData) {
+    console.log('🛑 Not scheduling - game inactive');
+    return;
+  }
+
+  console.log(`⏰ Scheduling next call in ${callInterval}s`);
   
   gameTimerRef.current = setTimeout(async () => {
     if (!isTimerActiveRef.current || !gameData) return;
     
     try {
-      console.log(`⏰ Timer: Calling next number for ${gameData.gameId}`);
+      console.log('📞 Timer fired - calling next number...');
       
-      // 🎯 DELEGATE: All logic handled by firebase-game
-      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+      // SIMPLIFIED: Let Firebase handle ALL the complex stuff (sessionCache + random + prizes)
+      const result = await firebaseService.callNextNumberAndContinue(gameData.gameId);
       
-      if (!shouldContinue) {
-        console.log(`🏁 Timer: Game should end`);
-        setPendingGameEnd(true);
-        stopTimer();
-        return;
+      if (result.shouldContinue) {
+        console.log('✅ Number called, audio will play, waiting for audio completion...');
+        // Audio completion will call scheduleNextCall() when done
+      } else {
+        console.log('🏁 Game should end');
+        isTimerActiveRef.current = false;
       }
       
-     if (shouldContinue && isTimerActiveRef.current && !pendingGameEnd) {
-          console.log(`🚀🚀🚀 NEW CODE VERSION 12345 - AUDIO WAIT MODE 🚀🚀🚀`);
-          console.log(`🎯 Timer: Number called, waiting for audio completion`);
-          console.log(`🔍 DEBUG: Timer should NOT schedule here`);
-          // Wait for audio completion - no scheduling here
-      } else {
-          console.log(`🏁 Timer: Game complete for ${gameData.gameId}`);
-          stopTimer();
-        }
-              
-    } catch (error: any) {
-      console.error('❌ Timer: Number calling error:', error);
-      stopTimer();
+    } catch (error) {
+      console.error('❌ Number calling failed:', error);
+      isTimerActiveRef.current = false;
     }
   }, callInterval * 1000);
-}, [gameData, callInterval, pendingGameEnd]);
+}, [gameData, callInterval]);
 
   /**
    * Simple timer control
