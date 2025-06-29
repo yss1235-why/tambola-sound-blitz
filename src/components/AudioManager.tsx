@@ -347,15 +347,20 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
 
         currentUtterance.current = utterance;
 
-        // Handle completion
-        // Handle completion
+
+        // Fixed timer completion - don't trust browser events
         const handleComplete = () => {
           console.log(`✅ Completed: ${item.text}`);
           
-          // Clear fallback timer
+          // Clear timer
           if (fallbackTimer.current) {
             clearTimeout(fallbackTimer.current);
             fallbackTimer.current = null;
+          }
+          
+          // Cancel any ongoing speech
+          if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.cancel();
           }
           
           currentUtterance.current = null;
@@ -373,19 +378,24 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           // Process next item after short delay
           setTimeout(processNext, 500);
         };
-        utterance.onend = handleComplete;
+
+        // Don't rely on browser events - use fixed timer only
+        utterance.onend = () => {
+          console.log(`🔊 Browser reported audio end (ignored)`);
+        };
         
         utterance.onerror = (event) => {
-          console.warn('Speech error:', event.error);
-          handleComplete();
+          console.warn('Speech error (ignored):', event.error);
         };
 
-        // Fallback timer - use host's call interval
-        const audioTimeout = callInterval * 1000; // Convert to milliseconds
+        // Fixed 3-second timer - enough time for any number announcement
+        const audioPlayTime = 3000; // 3 seconds fixed
+        console.log(`⏰ Setting fixed ${audioPlayTime/1000}s timer for: ${item.text}`);
+        
         fallbackTimer.current = setTimeout(() => {
-          console.warn(`⏰ Audio timeout after ${callInterval}s (host setting): ${item.text}`);
+          console.log(`⏰ Fixed timer completed after ${audioPlayTime/1000}s: ${item.text}`);
           handleComplete();
-        }, audioTimeout);
+        }, audioPlayTime);
         
         window.speechSynthesis.speak(utterance);
         
@@ -409,7 +419,7 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
     processNext();
   }, [forceEnable]);
 
- // Handle number announcements
+
 // Handle number announcements
 useEffect(() => {
   // ✅ SOLUTION 3: Don't announce numbers if blocked by prize announcement
