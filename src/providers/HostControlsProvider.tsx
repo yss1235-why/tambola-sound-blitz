@@ -132,7 +132,7 @@ const scheduleNextCall = useCallback(() => {
   console.log(`▶️ Starting number calling timer`);
   stopTimer(); // Clear any existing timer
   isTimerActiveRef.current = true;
-  lastCallTimeRef.current = 0; // Reset timing on start
+  lastCallTimeRef.current = Date.now(); // Reset timing to current time
   scheduleNextCall();
 }, [scheduleNextCall]);
 
@@ -166,9 +166,10 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
-  // Always schedule next call when audio completes (if game active)
+ // Always schedule next call when audio completes (if game active)
   if (isTimerActiveRef.current && gameData) {
     console.log(`🔊 Audio completed - scheduling next call`);
+    lastCallTimeRef.current = Date.now(); // Update timing after audio completion
     scheduleNextCall();
   } else {
     console.log(`🔊 Audio completed but game inactive`);
