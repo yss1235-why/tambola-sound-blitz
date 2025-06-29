@@ -20,6 +20,7 @@ interface HostControlsContextValue {
   
   // ✅ SOLUTION 1: Audio completion handler
   handleAudioComplete: () => void;
+   handlePrizeAudioComplete: (prizeId: string) => void;
 }
 
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
@@ -156,9 +157,27 @@ const handleAudioComplete = useCallback(() => {
   
   // Check if game should end after audio completes
   if (pendingGameEnd) {
-    console.log(`🏁 Audio complete, ending game now`);
-    setPendingGameEnd(false);
-    stopTimer();
+    console.log(`🏁 Audio complete, waiting for prize announcements before ending game`);
+    
+    // Check if there are any pending prize announcements
+    const hasPendingPrizes = gameData?.prizes && Object.values(gameData.prizes).some((prize: any) => 
+      prize.won && !prize.audioCompleted
+    );
+    
+    if (!hasPendingPrizes) {
+      console.log(`🏁 No pending prize announcements, ending game now`);
+      setPendingGameEnd(false);
+      
+      // Actually end the game in Firebase
+      firebaseService.endGame(gameData!.gameId)
+        .then(() => console.log('✅ Game ended after audio completion'))
+        .catch(err => console.error('❌ Failed to end game:', err));
+      
+      stopTimer();
+    } else {
+      console.log(`🏆 Waiting for ${Object.values(gameData.prizes).filter((p: any) => p.won && !p.audioCompleted).length} prize announcements`);
+      // Keep pendingGameEnd true, will check again after prize audio
+    }
     return;
   }
   
@@ -392,7 +411,37 @@ const handleAudioComplete = useCallback(() => {
       }
     }
   }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime, isProcessing, resumeCountdownTimer, startTimer]);
-
+/**
+ * Handle prize audio completion
+ */
+const handlePrizeAudioComplete = useCallback((prizeId: string) => {
+  console.log(`🏆 Prize audio completed: ${prizeId}`);
+  
+  if (pendingGameEnd && gameData) {
+    // Mark this prize as audio completed
+    const updatedPrizes = { ...gameData.prizes };
+    if (updatedPrizes[prizeId]) {
+      updatedPrizes[prizeId].audioCompleted = true;
+    }
+    
+    // Check if all prize audio is complete
+    const hasPendingPrizes = Object.values(updatedPrizes).some((prize: any) => 
+      prize.won && !prize.audioCompleted
+    );
+    
+    if (!hasPendingPrizes) {
+      console.log(`🏁 All prize announcements complete, ending game now`);
+      setPendingGameEnd(false);
+      
+      // Actually end the game
+      firebaseService.endGame(gameData.gameId)
+        .then(() => console.log('✅ Game ended after all audio completion'))
+        .catch(err => console.error('❌ Failed to end game:', err));
+      
+      stopTimer();
+    }
+  }
+}, [pendingGameEnd, gameData, stopTimer]);
   // ================== CONTEXT VALUE ==================
 
   const value: HostControlsContextValue = {
@@ -404,7 +453,8 @@ const handleAudioComplete = useCallback(() => {
   isProcessing,
   countdownTime,
   callInterval,
-  handleAudioComplete // ✅ SOLUTION 1: Add audio completion handler
+  handleAudioComplete,
+  handlePrizeAudioComplete
 };
 
   return (
