@@ -149,11 +149,12 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
-  // Continue with normal scheduling if game is active
+  // Schedule next call now that audio is complete
   if (isTimerActiveRef.current && gameData && !pendingGameEnd) {
-    console.log(`🔊 Audio completed - timer continues automatically`);
+    console.log(`🔊 Audio completed - scheduling next call in ${callInterval}s`);
+    scheduleNextCall();
   }
-}, [pendingGameEnd, stopTimer]);
+}, [pendingGameEnd, stopTimer, scheduleNextCall, gameData, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
