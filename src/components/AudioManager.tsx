@@ -348,6 +348,7 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
         currentUtterance.current = utterance;
 
         // Handle completion
+        // Handle completion
         const handleComplete = () => {
           console.log(`✅ Completed: ${item.text}`);
           
@@ -359,9 +360,10 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           
           currentUtterance.current = null;
           
-          // Call item callback
+          // Call item callback - ALWAYS call for number announcements
           if (item.callback) {
             try {
+              console.log(`🔊 Calling audio completion callback for: ${item.text}`);
               item.callback();
             } catch (error) {
               console.error('Audio callback error:', error);
@@ -371,7 +373,6 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           // Process next item after short delay
           setTimeout(processNext, 500);
         };
-
         utterance.onend = handleComplete;
         
         utterance.onerror = (event) => {
@@ -409,6 +410,7 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
   }, [forceEnable]);
 
  // Handle number announcements
+// Handle number announcements
 useEffect(() => {
   // ✅ SOLUTION 3: Don't announce numbers if blocked by prize announcement
   if (currentNumber && currentNumber !== lastCalledNumber.current && !isBlockedForAnnouncement) {
@@ -416,13 +418,18 @@ useEffect(() => {
     
     const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
     
-    console.log(`📢 Announcing number: ${currentNumber}`);
+    console.log(`📢 Announcing number: ${currentNumber} - will trigger timer continuation`);
     
     addToQueue({
       id: `number-${currentNumber}`,
       text: callText,
       priority: 'high',
-      callback: onAudioComplete // Only call completion for number announcements
+      callback: () => {
+        console.log(`🔊 Number ${currentNumber} audio completed - triggering next timer`);
+        if (onAudioComplete) {
+          onAudioComplete();
+        }
+      }
     });
   }
 }, [currentNumber, addToQueue, onAudioComplete, isBlockedForAnnouncement]);
