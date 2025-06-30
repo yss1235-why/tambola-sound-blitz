@@ -726,11 +726,11 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       console.log(`✅ Number called successfully. Continue: ${shouldContinue}`);
       return shouldContinue;
       
-   // ✅ REPLACE WITH THIS FIXED CODE
-catch (error: any) {
+   
+    }catch (error: any) {
   console.error('❌ Firebase-game: Number calling error:', error);
   
-  // DON'T end game automatically - just return false to pause timer
+  
   return false;
 }
   }
