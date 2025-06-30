@@ -727,7 +727,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       return shouldContinue;
       
    
-    }catch (error: any) {
+    } catch (error: any) {
   console.error('❌ Firebase-game: Number calling error:', error);
   
   
