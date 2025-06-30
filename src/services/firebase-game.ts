@@ -726,18 +726,13 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       console.log(`✅ Number called successfully. Continue: ${shouldContinue}`);
       return shouldContinue;
       
-    } catch (error: any) {
-      console.error('❌ Firebase-game: Number calling error:', error);
-      
-      // Try to end the game gracefully on critical errors
-      try {
-        await this.endGameDueToError(gameId, error.message);
-      } catch (endError) {
-        console.error('❌ Failed to end game after error:', endError);
-      }
-      
-      return false; // Stop the timer
-    }
+   // ✅ REPLACE WITH THIS FIXED CODE
+catch (error: any) {
+  console.error('❌ Firebase-game: Number calling error:', error);
+  
+  // DON'T end game automatically - just return false to pause timer
+  return false;
+}
   }
 
   /**
