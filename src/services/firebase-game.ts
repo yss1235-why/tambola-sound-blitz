@@ -1189,9 +1189,6 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
       console.error('❌ Failed to end game after error:', endError);
     }
   }
-
-
-}
 // ================== FIREBASE RETRY MECHANISM ==================
   
   /**
