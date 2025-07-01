@@ -43,6 +43,9 @@ interface TicketRowData {
 // ================== FIREBASE GAME SERVICE ==================
 
 class FirebaseGameService {
+  private firebaseRetryIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private firebaseRetryActive: Map<string, boolean> = new Map();
+
   // ================== TRANSACTION UTILITIES ==================
 
   async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
@@ -727,12 +730,16 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       return shouldContinue;
       
    
-     } catch (error: any) {
+    } catch (error: any) {
     console.error('❌ Firebase-game: Number calling error:', error);
     
-    // NEVER stop the game for any error - always keep trying
-    console.log('🔄 Error encountered - will retry on next interval');
-    return true;  // Always continue, regardless of error type
+    // PAUSE the timer but don't end the game
+    console.log('⏸️ Firebase error - PAUSING timer, will keep retrying in background');
+    
+    // Start background retry mechanism
+    this.startFirebaseRetry(gameId);
+    
+    return false;  // PAUSE the timer (but game is not ended)
   }
 }
 
@@ -854,13 +861,10 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     
     // Check if transaction was aborted or failed
   // Check if transaction was aborted or failed
+    // Check if transaction was aborted or failed
     if (!transactionResult.committed) {
-      console.log(`🔄 Transaction aborted - another call in progress`);
-      return {
-        success: true,
-        gameEnded: false,
-        hasMoreNumbers: true
-      };
+      console.log(`❌ Firebase transaction failed - connection issue`);
+      throw new Error('Firebase transaction failed - connection lost');
     }
     
     const updatedGame = transactionResult.snapshot.val();
@@ -1188,7 +1192,71 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
 
 
 }
+// ================== FIREBASE RETRY MECHANISM ==================
+  
+  /**
+   * Start retrying Firebase connection in background
+   */
+  private async startFirebaseRetry(gameId: string): Promise<void> {
+    // Don't start multiple retry loops for same game
+    if (this.firebaseRetryActive.get(gameId)) {
+      console.log('🔄 Firebase retry already active for game:', gameId);
+      return;
+    }
+    
+    this.firebaseRetryActive.set(gameId, true);
+    console.log('🔄 Starting Firebase retry mechanism for game:', gameId);
+    
+    // Clear any existing interval
+    const existingInterval = this.firebaseRetryIntervals.get(gameId);
+    if (existingInterval) {
+      clearInterval(existingInterval);
+    }
+    
+    // Retry every 3 seconds
+    const retryInterval = setInterval(async () => {
+      try {
+        console.log('🔄 Attempting Firebase connection test...');
+        
+        // Test Firebase with a simple read
+        const testRef = ref(database, `games/${gameId}/gameState/isActive`);
+        await get(testRef);
+        
+        console.log('✅ Firebase connection restored!');
+        
+        // Update game state to signal recovery
+        await update(ref(database, `games/${gameId}`), {
+          firebaseRecovered: true,
+          firebaseRecoveredAt: new Date().toISOString()
+        });
+        
+        // Stop retry mechanism
+        this.stopFirebaseRetry(gameId);
+        
+      } catch (error) {
+        console.log('❌ Firebase still unavailable, will retry in 3 seconds...');
+      }
+    }, 3000);
+    
+    this.firebaseRetryIntervals.set(gameId, retryInterval);
+  }
+  
+  /**
+   * Stop Firebase retry mechanism
+   */
+  private stopFirebaseRetry(gameId: string): void {
+    const interval = this.firebaseRetryIntervals.get(gameId);
+    if (interval) {
+      clearInterval(interval);
+      this.firebaseRetryIntervals.delete(gameId);
+    }
+    this.firebaseRetryActive.set(gameId, false);
+    console.log('🛑 Stopped Firebase retry mechanism for game:', gameId);
+  }
+}
 
-// ================== SINGLETON EXPORT ==================
+  // ================== SINGLETON EXPORT ==================
 
 export const firebaseGame = new FirebaseGameService();
+
+
