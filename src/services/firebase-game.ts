@@ -29,7 +29,9 @@ import type {
   GameState, 
   HostSettings,
   CreateGameConfig,
-  TicketMetadata
+  TicketMetadata,
+  SessionMetadata,
+  NumberGenerationResult
 } from './firebase-core';
 
 interface TicketRowData {
@@ -641,37 +643,30 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     const calledNumbers = gameData.gameState.calledNumbers || [];
     let newNumber: number;
 
-    // ✅ NEW: Check for predetermined sequence first
+    // Check for pre-generated sequence (REQUIRED)
     if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
       newNumber = gameData.sessionCache[calledNumbers.length];
-      console.log(`🎯 Using predetermined number ${newNumber} (position ${calledNumbers.length + 1})`);
+      console.log(`🎯 Using pre-generated number ${newNumber} (position ${calledNumbers.length + 1})`);
     } else {
-      // EXISTING: Random selection fallback
-      const availableNumbers = Array.from({length: 90}, (_, i) => i + 1)
-        .filter(num => !calledNumbers.includes(num));
-
-      if (availableNumbers.length === 0) {
-        await this.endGame(gameId);
-        return null;
-      }
-
-      const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-      newNumber = availableNumbers[randomIndex];
-      console.log(`🎲 Using random number ${newNumber}`);
+      // No pre-generated sequence available - end game
+      console.error('❌ No pre-generated sequence available - ending game');
+      await this.endGame(gameId);
+      return null;
     }
-      const updates = {
-        calledNumbers: [...calledNumbers, newNumber],
-        currentNumber: newNumber
-      };
 
-      await update(ref(database, `games/${gameId}/gameState`), updates);
-      console.log(`📢 Called number ${newNumber} for game ${gameId}`);
-      
-      return newNumber;
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to call next number');
-    }
+    const updates = {
+      calledNumbers: [...calledNumbers, newNumber],
+      currentNumber: newNumber
+    };
+
+    await update(ref(database, `games/${gameId}/gameState`), updates);
+    console.log(`📢 Called pre-generated number ${newNumber} for game ${gameId}`);
+    
+    return newNumber;
+  } catch (error: any) {
+    throw new Error(error.message || 'Failed to call next number');
   }
+}
 
   async processNumberCall(gameId: string, number: number): Promise<void> {
     try {
@@ -704,45 +699,290 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
    * @param gameId - Game to call number for
    * @returns boolean - true if game should continue, false if game should stop
    */
-  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
-    try {
-      console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
-      
-      // Step 1: Validate game can accept calls
-      const canCall = await this.validateGameForCalling(gameId);
-      if (!canCall.isValid) {
-        console.log(`🚫 Cannot call number: ${canCall.reason}`);
-        return false; // Stop the timer
-      }
-      
-      // Step 2: Call the number with full processing
-      const result = await this.processCompleteNumberCall(gameId);
-      
-      if (!result.success) {
-        console.log(`❌ Number calling failed - stopping game`);
-        return false; // Stop the timer
-      }
-      
-      // Step 3: Check if game should continue
-      const shouldContinue = !result.gameEnded && result.hasMoreNumbers;
-      
-      console.log(`✅ Number called successfully. Continue: ${shouldContinue}`);
-      return shouldContinue;
-      
-   
-    } catch (error: any) {
+   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
+  try {
+    console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
+    
+    // Step 1: Validate game can accept calls
+    const canCall = await this.validateGameForCalling(gameId);
+    if (!canCall.isValid) {
+      console.log(`🚫 Cannot call number: ${canCall.reason}`);
+      return false;
+    }
+    
+    // Step 2: Ensure pre-generated sequence exists
+    const gameData = await this.getGameData(gameId);
+    if (!gameData?.sessionCache || gameData.sessionCache.length === 0) {
+      console.error('❌ No pre-generated sequence found - game cannot continue');
+      throw new Error('Pre-generated sequence is required but not found');
+    }
+    
+    // Step 3: Call the number with full processing
+    const result = await this.processCompleteNumberCall(gameId);
+    
+    if (!result.success) {
+      console.log(`❌ Number calling failed - stopping game`);
+      return false;
+    }
+    
+    // Step 4: Check if game should continue
+    const shouldContinue = !result.gameEnded && result.hasMoreNumbers;
+    
+    console.log(`✅ Number called successfully. Continue: ${shouldContinue}`);
+    return shouldContinue;
+    
+  } catch (error: any) {
     console.error('❌ Firebase-game: Number calling error:', error);
-    
-    // PAUSE the timer but don't end the game
-    console.log('⏸️ Firebase error - PAUSING timer, will keep retrying in background');
-    
-    // Start background retry mechanism
-    this.startFirebaseRetry(gameId);
-    
-    return false;  // PAUSE the timer (but game is not ended)
+    return false;
   }
 }
+/**
+   * Generate and validate pre-game number sequence
+   */
+  async generateGameNumbers(gameId: string): Promise<NumberGenerationResult> {
+    try {
+      console.log(`🎯 Starting number generation for game: ${gameId}`);
+      
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) {
+        throw new Error('Game not found');
+      }
 
+      // Step 1: Check if admin has already generated numbers
+      if (gameData.sessionCache && gameData.sessionMeta?.source === 'admin') {
+        console.log(`🔒 Admin numbers detected - validating existing sequence`);
+        
+        const validation = await this.validateExistingSequence(gameData);
+        if (validation.isValid) {
+          return {
+            success: true,
+            numbers: gameData.sessionCache,
+            source: 'admin'
+          };
+        } else {
+          console.log(`🔧 Admin sequence needs repair: ${validation.issues.join(', ')}`);
+          const repaired = await this.repairSequence(gameData);
+          return repaired;
+        }
+      }
+
+      // Step 2: Check if host has already generated numbers
+      if (gameData.sessionCache && gameData.sessionMeta?.source === 'host') {
+        console.log(`🏠 Host numbers detected - validating existing sequence`);
+        
+        const validation = await this.validateExistingSequence(gameData);
+        if (validation.isValid) {
+          return {
+            success: true,
+            numbers: gameData.sessionCache,
+            source: 'host'
+          };
+        } else {
+          console.log(`🔧 Host sequence needs repair: ${validation.issues.join(', ')}`);
+          const repaired = await this.repairSequence(gameData);
+          return repaired;
+        }
+      }
+
+      // Step 3: Generate new host sequence
+      console.log(`🎲 Generating new host sequence`);
+      const generated = await this.generateHostSequence(gameId);
+      return generated;
+
+    } catch (error: any) {
+      console.error('❌ Number generation failed:', error);
+      return {
+        success: false,
+        numbers: [],
+        source: 'host',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Validate existing sequence for completeness and correctness
+   */
+  private async validateExistingSequence(gameData: GameData): Promise<{
+    isValid: boolean;
+    issues: string[];
+  }> {
+    const issues: string[] = [];
+    
+    try {
+      // Check if sessionCache exists and has correct length
+      if (!gameData.sessionCache || gameData.sessionCache.length !== 90) {
+        issues.push(`Sequence length is ${gameData.sessionCache?.length || 0}, expected 90`);
+      }
+      
+      // Check for duplicates
+      if (gameData.sessionCache) {
+        const uniqueNumbers = new Set(gameData.sessionCache);
+        if (uniqueNumbers.size !== gameData.sessionCache.length) {
+          issues.push('Duplicate numbers found in sequence');
+        }
+        
+        // Check if all numbers 1-90 are present
+        for (let i = 1; i <= 90; i++) {
+          if (!gameData.sessionCache.includes(i)) {
+            issues.push(`Missing number: ${i}`);
+          }
+        }
+        
+        // Check for invalid numbers (outside 1-90 range)
+        const invalidNumbers = gameData.sessionCache.filter(num => num < 1 || num > 90);
+        if (invalidNumbers.length > 0) {
+          issues.push(`Invalid numbers found: ${invalidNumbers.join(', ')}`);
+        }
+      }
+      
+      console.log(`✅ Validation complete. Issues found: ${issues.length}`);
+      return {
+        isValid: issues.length === 0,
+        issues
+      };
+      
+    } catch (error: any) {
+      console.error('❌ Validation error:', error);
+      return {
+        isValid: false,
+        issues: [`Validation failed: ${error.message}`]
+      };
+    }
+  }
+
+  /**
+   * Repair existing sequence by fixing issues
+   */
+  private async repairSequence(gameData: GameData): Promise<NumberGenerationResult> {
+    try {
+      console.log(`🔧 Starting sequence repair for game: ${gameData.gameId}`);
+      
+      let numbers = [...(gameData.sessionCache || [])];
+      
+      // Fix number sequence
+      if (numbers.length !== 90) {
+        console.log(`🔧 Fixing sequence length: ${numbers.length} → 90`);
+        
+        // Get all numbers that should be present
+        const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
+        const existingNumbers = new Set(numbers.filter(num => num >= 1 && num <= 90));
+        const missingNumbers = allNumbers.filter(num => !existingNumbers.has(num));
+        
+        // Remove duplicates and invalid numbers
+        numbers = Array.from(existingNumbers);
+        
+        // Add missing numbers in random positions
+        missingNumbers.forEach(num => {
+          const randomIndex = Math.floor(Math.random() * (numbers.length + 1));
+          numbers.splice(randomIndex, 0, num);
+        });
+        
+        // Ensure exactly 90 numbers
+        numbers = numbers.slice(0, 90);
+      }
+      
+      // Create repaired metadata
+      const sessionMeta: SessionMetadata = {
+        created: new Date().toISOString(),
+        source: gameData.sessionMeta?.source || 'host',
+        validated: true,
+        totalNumbers: 90
+      };
+      
+      await this.saveGameNumbers(gameData.gameId, numbers, sessionMeta);
+      
+      console.log(`✅ Sequence repaired successfully`);
+      return {
+        success: true,
+        numbers,
+        source: sessionMeta.source
+      };
+      
+    } catch (error: any) {
+      console.error('❌ Sequence repair failed:', error);
+      return {
+        success: false,
+        numbers: [],
+        source: 'host',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Generate new host sequence
+   */
+  private async generateHostSequence(gameId: string): Promise<NumberGenerationResult> {
+    try {
+      console.log(`🎲 Generating new host sequence for game: ${gameId}`);
+      
+      // Generate random sequence of numbers 1-90
+      const numbers = this.shuffleArray(Array.from({ length: 90 }, (_, i) => i + 1));
+      
+      // Create simple metadata
+      const sessionMeta: SessionMetadata = {
+        created: new Date().toISOString(),
+        source: 'host',
+        validated: true,
+        totalNumbers: 90
+      };
+      
+      // Save to Firebase
+      await this.saveGameNumbers(gameId, numbers, sessionMeta);
+      
+      console.log(`✅ Host sequence generated successfully`);
+      return {
+        success: true,
+        numbers,
+        source: 'host'
+      };
+      
+    } catch (error: any) {
+      console.error('❌ Host sequence generation failed:', error);
+      return {
+        success: false,
+        numbers: [],
+        source: 'host',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Save generated numbers to Firebase
+   */
+  private async saveGameNumbers(
+    gameId: string, 
+    numbers: number[], 
+    sessionMeta: SessionMetadata
+  ): Promise<void> {
+    try {
+      const updates = {
+        sessionCache: numbers,
+        sessionMeta: sessionMeta
+      };
+      
+      await update(ref(database, `games/${gameId}`), updates);
+      console.log(`✅ Game numbers saved to Firebase: ${gameId}`);
+      
+    } catch (error: any) {
+      console.error('❌ Failed to save game numbers:', error);
+      throw new Error(`Failed to save game numbers: ${error.message}`);
+    }
+  }
+
+  /**
+   * Utility function to shuffle array
+   */
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  }
   /**
    * Validate if game can accept number calls
    */
@@ -815,32 +1055,15 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       // Select next number
       let selectedNumber: number;
       
-      if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
-        selectedNumber = currentGame.sessionCache[calledNumbers.length];
-        console.log(`🎯 Transaction: Using predetermined number ${selectedNumber} (position ${calledNumbers.length + 1})`);
-      } else {
-        const availableNumbers = Array.from({ length: 90 }, (_, i) => i + 1)
-          .filter(num => !calledNumbers.includes(num));
-        
-        if (availableNumbers.length === 0) {
-          console.log(`🏁 Transaction: No more numbers available - setting pending end`);
-          // Set pending end instead of immediate end - but we need a number first
-          // Return without calling a number since there are none left
-          return {
-            ...currentGame,
-            gameState: {
-              ...currentGame.gameState,
-              pendingGameEnd: true,
-              updatedAt: new Date().toISOString()
-            }
-          };
-        }
-        
-        const randomIndex = Math.floor(Math.random() * availableNumbers.length);
-        selectedNumber = availableNumbers[randomIndex];
-        console.log(`🎲 Transaction: Using random number ${selectedNumber}`);
-      }
-      
+     // Check for pre-generated sequence (REQUIRED)
+if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
+  selectedNumber = currentGame.sessionCache[calledNumbers.length];
+  console.log(`🎯 Transaction: Using pre-generated number ${selectedNumber} (position ${calledNumbers.length + 1})`);
+} else {
+  // No pre-generated sequence available - this should not happen
+  console.error('❌ No pre-generated sequence available - game cannot continue');
+  throw new Error('Pre-generated sequence is required but not available');
+}
       // Update game state atomically
       const updatedCalledNumbers = [...calledNumbers, selectedNumber];
       
