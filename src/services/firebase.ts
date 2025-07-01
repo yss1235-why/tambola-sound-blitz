@@ -14,7 +14,8 @@ export type {
   Prize,
   GameState,
   HostSettings,
-  CreateGameConfig
+  CreateGameConfig,
+   NumberGenerationResult
 } from './firebase-core';
 
 // Re-export utility functions
@@ -187,6 +188,13 @@ class FirebaseService {
    */
   async activateGameAfterCountdown(gameId: string): Promise<void> {
     return this.game.activateGameAfterCountdown(gameId);
+  }
+  
+  /**
+   * 🎯 NEW: Generate and validate game numbers for pre-generation
+   */
+  async generateGameNumbers(gameId: string): Promise<NumberGenerationResult> {
+    return this.game.generateGameNumbers(gameId);
   }
 
   // ========== LEGACY NUMBER CALLING METHODS ==========
