@@ -20,15 +20,18 @@ interface HostControlsContextValue {
   countdownTime: number;
   callInterval: number;
   
-  // ✅ SOLUTION 1: Audio completion handler
- // ✅ SOLUTION 1: Audio completion handler
+  // Audio completion handlers
   handleAudioComplete: () => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
   
   // Firebase status
   firebasePaused: boolean;
+  
+  // ✅ ADD these new properties:
+  isPreparingGame: boolean;
+  preparationStatus: string;
+  preparationProgress: number;
 }
-
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
 
 interface HostControlsProviderProps {
@@ -62,7 +65,11 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
  const [callInterval, setCallInterval] = React.useState(5);
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
-  
+
+// ✅ ADD these new state variables:
+const [isPreparingGame, setIsPreparingGame] = React.useState(false);
+const [preparationStatus, setPreparationStatus] = React.useState<string>('');
+const [preparationProgress, setPreparationProgress] = React.useState(0);
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -242,15 +249,68 @@ const handleAudioComplete = useCallback(() => {
   /**
    * Start game with countdown - delegates game logic to firebase-game
    */
-  const startGame = useCallback(async () => {
+   // ✅ ADD new preparation method:
+const prepareGame = useCallback(async (): Promise<boolean> => {
+  if (!gameData) return false;
+  
+  setIsPreparingGame(true);
+  setPreparationStatus('Checking existing numbers...');
+  setPreparationProgress(20);
+  
+  try {
+    // Generate/validate numbers
+    const result = await firebaseService.generateGameNumbers(gameData.gameId);
+    
+    if (!result.success) {
+      setPreparationStatus(`Failed: ${result.error}`);
+      setPreparationProgress(0);
+      return false;
+    }
+    
+    if (result.source === 'admin') {
+      setPreparationStatus('Using admin-generated numbers');
+    } else {
+      setPreparationStatus('Host numbers generated successfully');
+    }
+    setPreparationProgress(80);
+    
+    // Small delay for user feedback
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    setPreparationStatus('Game ready to start');
+    setPreparationProgress(100);
+    
+    // Small delay before finishing
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    return true;
+    
+  } catch (error: any) {
+    console.error('❌ Game preparation failed:', error);
+    setPreparationStatus(`Preparation failed: ${error.message}`);
+    setPreparationProgress(0);
+    return false;
+  } finally {
+    setIsPreparingGame(false);
+  }
+}, [gameData]);
+ const startGame = useCallback(async () => {
   if (!gameData || isProcessing) return;
   
   setIsProcessing(true);
   try {
-    console.log(`🎮 Starting game: ${gameData.gameId}`);
+    console.log(`🎮 Starting game preparation: ${gameData.gameId}`);
     
     // Clear any existing timers
     clearAllTimers();
+    
+    // ✅ NEW: Prepare game first (generate/validate numbers)
+    const preparationSuccess = await prepareGame();
+    if (!preparationSuccess) {
+      throw new Error('Game preparation failed');
+    }
+    
+    console.log(`🎮 Starting countdown for: ${gameData.gameId}`);
     
     // 🎯 DELEGATE: Let firebase-game handle game start logic
     await firebaseService.startGameWithCountdown(gameData.gameId);
@@ -259,7 +319,7 @@ const handleAudioComplete = useCallback(() => {
     let timeLeft = 10;
     setCountdownTime(timeLeft);
     
-    countdownTimerRef.current = setInterval(async () => {  // ✅ USE REF HERE
+    countdownTimerRef.current = setInterval(async () => {
       timeLeft--;
       setCountdownTime(timeLeft);
       
@@ -270,8 +330,8 @@ const handleAudioComplete = useCallback(() => {
       }
       
       if (timeLeft <= 0) {
-        clearInterval(countdownTimerRef.current!);  // ✅ USE REF HERE
-        countdownTimerRef.current = null;           // ✅ CLEAR REF
+        clearInterval(countdownTimerRef.current!);
+        countdownTimerRef.current = null;
         await firebaseService.activateGameAfterCountdown(gameData.gameId);
         startTimer();
       }
@@ -287,8 +347,7 @@ const handleAudioComplete = useCallback(() => {
   } finally {
     setIsProcessing(false);
   }
-}, [gameData, isProcessing, clearAllTimers, startTimer]);
-
+}, [gameData, isProcessing, clearAllTimers, startTimer, prepareGame]);
   /**
    * Pause game - simple timer stop + database update
    */
@@ -523,7 +582,7 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
 }, [pendingGameEnd, gameData, stopTimer]);
   // ================== CONTEXT VALUE ==================
 
-  const value: HostControlsContextValue = {
+ const value: HostControlsContextValue = {
   startGame,
   pauseGame,
   resumeGame,
@@ -534,7 +593,11 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   callInterval,
   handleAudioComplete,
   handlePrizeAudioComplete,
-  firebasePaused
+  firebasePaused,
+  // ✅ ADD new properties:
+  isPreparingGame,
+  preparationStatus,
+  preparationProgress
 };
 
   return (
