@@ -5,12 +5,11 @@ import { Prize } from '@/services/firebase';
 interface AudioManagerProps {
   currentNumber: number | null;
   prizes: Prize[];
-  onAudioComplete?: () => void;
+  onAudioComplete?: () => void; // ✅ FIX: This should ONLY report completion
   forceEnable?: boolean;
-  onPrizeAudioComplete?: (prizeId: string) => void; // ✅ SOLUTION 2
-  callInterval?: number;
+  onPrizeAudioComplete?: (prizeId: string) => void;
+  // ✅ REMOVED: callInterval - AudioManager doesn't need to know about timing
 }
-
 interface AudioQueueItem {
   id: string;
   text: string;
@@ -18,7 +17,7 @@ interface AudioQueueItem {
   callback?: () => void;
 }
 
-// Traditional Tambola number calls
+
 const numberCalls: { [key: number]: string } = {
   1: "Kelly's Eyes, number one",
   2: "One little duck, number two",
@@ -117,8 +116,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   prizes, 
   onAudioComplete,
   forceEnable = false,
-  onPrizeAudioComplete, // ✅ SOLUTION 2
-  callInterval = 5
+  onPrizeAudioComplete
 }) => {
   // State
  // State
@@ -366,14 +364,14 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           currentUtterance.current = null;
           
           // Call item callback - ALWAYS call for number announcements
-          if (item.callback) {
-            try {
-              console.log(`🔊 Calling audio completion callback for: ${item.text}`);
-              item.callback();
-            } catch (error) {
-              console.error('Audio callback error:', error);
-            }
+         if (item.callback) {
+          try {
+            console.log(`🔊 Audio completed for: ${item.text} - notifying completion only`);
+            item.callback(); // This should ONLY notify completion, not call next number
+          } catch (error) {
+            console.error('Audio callback error:', error);
           }
+        }
           
           // Process next item after short delay
           setTimeout(processNext, 500);
