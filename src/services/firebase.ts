@@ -168,9 +168,20 @@ class FirebaseService {
 
 
   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
-    return this.game.callNextNumberAndContinue(gameId);
+  // ✅ ADD: Detect who's calling this method
+  const stack = new Error().stack;
+  console.log(`🎯 FirebaseService: callNextNumberAndContinue called for ${gameId}`);
+  console.log(`📞 Called from: ${stack?.split('\n')[2]?.trim()}`);
+  
+  // Only allow calls from HostControlsProvider
+  if (stack && !stack.includes('HostControlsProvider')) {
+    console.error('🚫 BLOCKED: Number calling from non-HostControlsProvider source');
+    console.error('📍 Call stack:', stack);
+    throw new Error('Only HostControlsProvider can call numbers');
   }
-
+  
+  return this.game.callNextNumberAndContinue(gameId);
+}
   /**
    * 🎯 NEW: Start game with countdown setup
    * Sets up countdown state in database
@@ -203,29 +214,20 @@ class FirebaseService {
    * @deprecated Use callNextNumberAndContinue instead for Option A
    * Kept for backward compatibility
    */
-  async callNextNumber(gameId: string) {
-    // For backward compatibility, convert new method response to old format
-    try {
-      const shouldContinue = await this.game.callNextNumberAndContinue(gameId);
-      return { 
-        success: shouldContinue, 
-        gameEnded: !shouldContinue 
-      };
-    } catch (error) {
-      return { 
-        success: false, 
-        gameEnded: true 
-      };
-    }
-  }
+ async callNextNumber(gameId: string) {
+  console.log('🚫 BLOCKED: Legacy callNextNumber method called');
+  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
+  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
+}
 
   /**
    * @deprecated Use callNextNumberAndContinue instead
    */
-  async processNumberCall(gameId: string, number: number) {
-    return this.game.processNumberCall(gameId, number);
-  }
-
+ async processNumberCall(gameId: string, number: number) {
+  console.log('🚫 BLOCKED: Legacy processNumberCall method called');
+  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
+  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
+}
   async announceWinners(gameId: string, winners: any) {
     return this.game.announceWinners(gameId, winners);
   }
@@ -257,22 +259,11 @@ class FirebaseService {
    * @deprecated Use callNextNumberAndContinue for new implementations
    */
   async callNumberWithPrizeValidation(gameId: string, number: number) {
-    // Legacy support - converts new method to old interface
-    try {
-      const shouldContinue = await this.game.callNextNumberAndContinue(gameId);
-      return {
-        success: true,
-        gameEnded: !shouldContinue,
-        number: number // Note: actual number is selected by firebase-game
-      };
-    } catch (error) {
-      return {
-        success: false,
-        gameEnded: true,
-        error: error.message
-      };
-    }
-  }
+  console.log('🚫 BLOCKED: Legacy callNumberWithPrizeValidation method called');
+  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
+  console.log(`📍 Attempted to call with gameId: ${gameId}, number: ${number}`);
+  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
+}
 }
 
 // ================== SINGLETON EXPORT ==================
