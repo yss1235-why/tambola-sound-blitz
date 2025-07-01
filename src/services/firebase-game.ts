@@ -824,14 +824,14 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
           .filter(num => !calledNumbers.includes(num));
         
         if (availableNumbers.length === 0) {
-          console.log(`🏁 Transaction: No more numbers available - ending game`);
-          // End game in transaction
+          console.log(`🏁 Transaction: No more numbers available - setting pending end`);
+          // Set pending end instead of immediate end - but we need a number first
+          // Return without calling a number since there are none left
           return {
             ...currentGame,
             gameState: {
               ...currentGame.gameState,
-              isActive: false,
-              gameOver: true,
+              pendingGameEnd: true,
               updatedAt: new Date().toISOString()
             }
           };
@@ -861,6 +861,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     });
     
     // Check if transaction was aborted or failed
+  // Check if transaction was aborted or failed
     if (!transactionResult.committed) {
       console.log(`🔄 Transaction aborted - another call in progress`);
       return {
@@ -871,6 +872,17 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
     
     const updatedGame = transactionResult.snapshot.val();
+    
+    // Handle case where no numbers were available
+    if (updatedGame.gameState.pendingGameEnd && !updatedGame._transactionMeta) {
+      console.log(`🏁 No more numbers available - game should end after current state`);
+      return {
+        success: true,
+        gameEnded: true,
+        hasMoreNumbers: false
+      };
+    }
+    
     const selectedNumber = updatedGame._transactionMeta.selectedNumber;
     const updatedCalledNumbers = updatedGame._transactionMeta.updatedCalledNumbers;
     
@@ -900,19 +912,25 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     const isLastNumber = updatedCalledNumbers.length >= 90;
     const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
     
-   if (shouldEndGame && !updatedGame.gameState.gameOver) {
-  console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
-  // Don't set gameOver immediately - let the audio complete first
-  // The HostControlsProvider will handle actual game ending after audio
-}
+   if (shouldEndGame && !updatedGame.gameState.gameOver && !updatedGame.gameState.pendingGameEnd) {
+      console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+      
+      // Set pending end in Firebase for all clients to see
+      await update(gameRef, {
+        'gameState/pendingGameEnd': true,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Pending game end set in Firebase`);
+    }
     
     return {
-          success: true,
-          gameEnded: shouldEndGame,
-          hasMoreNumbers: updatedCalledNumbers.length < 90,
-          number: selectedNumber,
-          winners: prizeResult.hasWinners ? prizeResult.winners : undefined
-        };
+      success: true,
+      gameEnded: shouldEndGame,
+      hasMoreNumbers: updatedCalledNumbers.length < 90 && !updatedGame.gameState.pendingGameEnd,
+      number: selectedNumber,
+      winners: prizeResult.hasWinners ? prizeResult.winners : undefined
+    };
         
       } catch (error: any) {
         console.error('❌ Error in processCompleteNumberCall transaction:', error);
@@ -1105,6 +1123,40 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
       console.log(`✅ Game activated after countdown: ${gameId}`);
     } catch (error: any) {
       throw new Error(`Failed to activate game: ${error.message}`);
+    }
+  }
+  /**
+   * Actually end the game after audio completion
+   */
+  async finalizeGameEnd(gameId: string): Promise<void> {
+    try {
+      console.log(`🏁 Finalizing game end for ${gameId}`);
+      
+      const gameRef = ref(database, `games/${gameId}`);
+      
+      await runTransaction(gameRef, (currentGame) => {
+        if (!currentGame) {
+          throw new Error('Game not found');
+        }
+        
+        return {
+          ...currentGame,
+          gameState: {
+            ...currentGame.gameState,
+            isActive: false,
+            gameOver: true,
+            pendingGameEnd: false,
+            gameEndedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        };
+      });
+      
+      console.log(`✅ Game ${gameId} ended successfully after audio completion`);
+      
+    } catch (error: any) {
+      console.error('❌ Failed to finalize game end:', error);
+      throw new Error(error.message || 'Failed to finalize game end');
     }
   }
 
