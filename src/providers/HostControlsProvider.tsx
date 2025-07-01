@@ -278,10 +278,14 @@ const handleAudioComplete = useCallback(() => {
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
         
-        // Activate game after countdown
+       // Activate game after countdown
         try {
           await firebaseService.activateGameAfterCountdown(gameData!.gameId);
-          startTimer();
+          // ✅ FIXED: Add delay to ensure activation completes
+          setTimeout(() => {
+            console.log('🎮 Starting timer after countdown completion');
+            startTimer();
+          }, 500);
         } catch (error) {
           console.error('❌ Failed to activate game after countdown:', error);
         }
@@ -378,10 +382,12 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
       if (timeLeft <= 0) {
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
-        await firebaseService.activateGameAfterCountdown(gameData.gameId);
-        startTimer();
-      }
-    }, 1000);
+       await firebaseService.activateGameAfterCountdown(gameData.gameId);
+        // ✅ FIXED: Add delay to ensure proper initialization
+        setTimeout(() => {
+          console.log('🎮 Starting timer after game activation');
+          startTimer();
+        }, 1000);
     
     console.log(`✅ Game start initiated: ${gameData.gameId}`);
     
@@ -538,27 +544,28 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
 
-  // Auto-resume when host returns to active game
+  // Auto-resume when host returns to active game - FIXED: Only resume if manually paused
   useEffect(() => {
     if (gameData?.gameState?.isActive && 
         !gameData?.gameState?.gameOver && 
         !gameData?.gameState?.isCountdown &&
         !isTimerActiveRef.current && 
-        !isProcessing) {
+        !isProcessing &&
+        firebasePaused) { // ✅ ADDED: Only resume if explicitly paused
       
-      console.log(`🔄 Host returned to active game - auto-resuming timer`);
+      console.log(`🔄 Host returned to active game - auto-resuming timer (was paused)`);
       lastCallTimeRef.current = Date.now();
       startTimer();
     }
-  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer]);
-// Monitor Firebase recovery
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer, firebasePaused]);
+// Monitor Firebase recovery - FIXED: Manual recovery only
   useEffect(() => {
     if (!gameData?.gameId) return;
     
     const recoveryRef = ref(database, `games/${gameData.gameId}/firebaseRecovered`);
     const unsubscribe = onValue(recoveryRef, async (snapshot) => {
       if (snapshot.val() === true) {
-        console.log('🎉 Firebase recovery detected - auto-resuming game!');
+        console.log('🎉 Firebase recovery detected - marking for manual resume');
         
         // Clear the recovery flag
         await update(ref(database, `games/${gameData.gameId}`), {
@@ -566,18 +573,17 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
           firebaseRecoveredAt: null
         });
         
-      // Resume the timer if game is active
-        if (gameData.gameState.isActive && !gameData.gameState.gameOver && !isTimerActiveRef.current) {
-          console.log('▶️ Auto-resuming timer after Firebase recovery');
+        // ✅ FIXED: Don't auto-start timer, just update state
+        if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
+          console.log('✅ Firebase recovered - timer can be manually resumed');
           setFirebasePaused(false);
-          lastCallTimeRef.current = Date.now();
-          startTimer();
+          // Host must manually resume game via UI controls
         }
       }
     });
     
     return () => off(recoveryRef, 'value', unsubscribe);
-  }, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.gameOver, startTimer]);
+  }, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.gameOver]);
 
   // Auto-resume countdown on page refresh/reconnect
   useEffect(() => {
