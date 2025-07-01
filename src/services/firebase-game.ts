@@ -727,13 +727,29 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       return shouldContinue;
       
    
-    } catch (error: any) {
-  console.error('❌ Firebase-game: Number calling error:', error);
-  
-  
-  return true;
-}
+     } catch (error: any) {
+    console.error('❌ Firebase-game: Number calling error:', error);
+    
+    // Check if it's a temporary issue (network, browser, etc)
+    const isTemporaryError = 
+      error.code === 'NETWORK_ERROR' ||
+      error.message?.toLowerCase().includes('network') ||
+      error.message?.toLowerCase().includes('fetch') ||
+      error.message?.toLowerCase().includes('firebase') ||
+      error.message?.toLowerCase().includes('offline') ||
+      error.message?.toLowerCase().includes('timeout') ||
+      !navigator.onLine;  // Browser says we're offline
+
+    if (isTemporaryError) {
+      console.log('🔄 Temporary error - will retry same number');
+      return true;  // Keep trying
+    }
+
+    // For non-network errors, stop the timer (but don't end game)
+    console.log('❌ Non-network error - stopping timer');
+    return true;
   }
+}
 
   /**
    * Validate if game can accept number calls
