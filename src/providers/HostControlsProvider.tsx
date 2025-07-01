@@ -1,7 +1,9 @@
 // src/providers/HostControlsProvider.tsx - SIMPLIFIED: Pure Timer Implementation (Option A)
 import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react';
-import { firebaseService } from '@/services/firebase';
+import { ref, onValue, off, update } from 'firebase/database';
+import { firebaseService, database } from '@/services/firebase';
 import { useGameData } from './GameDataProvider';
+
 
 interface HostControlsContextValue {
   // Game flow controls
@@ -19,8 +21,12 @@ interface HostControlsContextValue {
   callInterval: number;
   
   // ✅ SOLUTION 1: Audio completion handler
+ // ✅ SOLUTION 1: Audio completion handler
   handleAudioComplete: () => void;
-   handlePrizeAudioComplete: (prizeId: string) => void;
+  handlePrizeAudioComplete: (prizeId: string) => void;
+  
+  // Firebase status
+  firebasePaused: boolean;
 }
 
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
@@ -55,6 +61,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const [countdownTime, setCountdownTime] = React.useState(0);
  const [callInterval, setCallInterval] = React.useState(5);
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
+const [firebasePaused, setFirebasePaused] = React.useState(false);
   
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -92,22 +99,23 @@ const scheduleNextCall = useCallback(() => {
     lastCallTimeRef.current = Date.now();
     
     try {
-      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+     const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
       
       if (shouldContinue && isTimerActiveRef.current) {
         console.log('✅ Number called successfully, waiting for audio...');
+        setFirebasePaused(false);
         // Audio completion will trigger next call
-      } else {
-        console.log('🏁 Game should end or timer inactive');
-        setPendingGameEnd(true);
+    } else {
+        console.log('⏸️ Timer paused - waiting for Firebase recovery');
+        setFirebasePaused(true);
+        // Timer is paused, but game is not ended
+        // Firebase retry mechanism is running in background
         isTimerActiveRef.current = false;
       }
     } catch (error) {
-      console.error('❌ Error calling number:', error);
-      // ✅ FIX: Retry on error if game still active
-      if (isTimerActiveRef.current) {
-        setTimeout(() => scheduleNextCall(), 2000);
-      }
+      console.error('❌ Error in timer scheduling:', error);
+      // Don't retry here - let Firebase recovery handle it
+      isTimerActiveRef.current = false;
     }
   }, delay);
 }, [gameData, callInterval]);
@@ -438,6 +446,33 @@ const handleAudioComplete = useCallback(() => {
       startTimer();
     }
   }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer]);
+// Monitor Firebase recovery
+  useEffect(() => {
+    if (!gameData?.gameId) return;
+    
+    const recoveryRef = ref(database, `games/${gameData.gameId}/firebaseRecovered`);
+    const unsubscribe = onValue(recoveryRef, async (snapshot) => {
+      if (snapshot.val() === true) {
+        console.log('🎉 Firebase recovery detected - auto-resuming game!');
+        
+        // Clear the recovery flag
+        await update(ref(database, `games/${gameData.gameId}`), {
+          firebaseRecovered: null,
+          firebaseRecoveredAt: null
+        });
+        
+      // Resume the timer if game is active
+        if (gameData.gameState.isActive && !gameData.gameState.gameOver && !isTimerActiveRef.current) {
+          console.log('▶️ Auto-resuming timer after Firebase recovery');
+          setFirebasePaused(false);
+          lastCallTimeRef.current = Date.now();
+          startTimer();
+        }
+      }
+    });
+    
+    return () => off(recoveryRef, 'value', unsubscribe);
+  }, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.gameOver, startTimer]);
 
   // Auto-resume countdown on page refresh/reconnect
   useEffect(() => {
@@ -498,7 +533,8 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   countdownTime,
   callInterval,
   handleAudioComplete,
-  handlePrizeAudioComplete
+  handlePrizeAudioComplete,
+  firebasePaused
 };
 
   return (
