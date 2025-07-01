@@ -89,10 +89,8 @@ const scheduleNextCall = useCallback(() => {
     gameTimerRef.current = null;
   }
   
-  // ✅ FIX: Better timing calculation
-  const now = Date.now();
-  const timeSinceLastCall = lastCallTimeRef.current ? (now - lastCallTimeRef.current) : 0;
-  const delay = Math.max(1000, callInterval * 1000 - timeSinceLastCall); // Minimum 1 second
+  // ✅ FIX: Always use full interval - no complex calculations
+  const delay = callInterval * 1000;
   
   console.log(`⏰ Scheduling next call in ${delay / 1000}s`);
   
@@ -106,27 +104,22 @@ const scheduleNextCall = useCallback(() => {
     lastCallTimeRef.current = Date.now();
     
     try {
-     const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
       
       if (shouldContinue && isTimerActiveRef.current) {
         console.log('✅ Number called successfully, waiting for audio...');
         setFirebasePaused(false);
         // Audio completion will trigger next call
-    } else {
-        console.log('⏸️ Timer paused - waiting for Firebase recovery');
-        setFirebasePaused(true);
-        // Timer is paused, but game is not ended
-        // Firebase retry mechanism is running in background
+      } else {
+        console.log('⏸️ Game should stop');
         isTimerActiveRef.current = false;
       }
     } catch (error) {
       console.error('❌ Error in timer scheduling:', error);
-      // Don't retry here - let Firebase recovery handle it
       isTimerActiveRef.current = false;
     }
   }, delay);
 }, [gameData, callInterval]);
-
   /**
    * Simple timer control
    */
@@ -142,12 +135,43 @@ const scheduleNextCall = useCallback(() => {
 
 const startTimer = useCallback(() => {
   if (!gameData) return;
-  console.log('▶️ Starting timer');
+  console.log('▶️ Starting timer with initial delay');
+  
   stopTimer(); // Ensure no existing timer is running
   isTimerActiveRef.current = true;
-  lastCallTimeRef.current = Date.now(); // ✅ FIX: Initialize timing reference
-  scheduleNextCall();
-}, [gameData, scheduleNextCall, stopTimer]);
+  lastCallTimeRef.current = Date.now();
+  
+  // ✅ FIX: Add initial delay before first call
+  const initialDelay = callInterval * 1000;
+  
+  console.log(`⏰ Initial call scheduled in ${initialDelay / 1000}s`);
+  
+  gameTimerRef.current = setTimeout(async () => {
+    if (!isTimerActiveRef.current || !gameData) {
+      console.log('⏰ Initial timer fired but game inactive');
+      return;
+    }
+    
+    console.log('📞 Initial timer fired - calling first number...');
+    lastCallTimeRef.current = Date.now();
+    
+    try {
+      const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+      
+      if (shouldContinue && isTimerActiveRef.current) {
+        console.log('✅ First number called successfully, waiting for audio...');
+        // Audio completion will schedule the next call
+      } else {
+        console.log('⏸️ Game should stop after first call');
+        isTimerActiveRef.current = false;
+      }
+    } catch (error) {
+      console.error('❌ Error in initial call:', error);
+      isTimerActiveRef.current = false;
+    }
+  }, initialDelay);
+  
+}, [gameData, callInterval, stopTimer]);
   /**
    * Clear all timers - for cleanup
    */
@@ -168,14 +192,13 @@ const startTimer = useCallback(() => {
  * ✅ SOLUTION 1: Handle audio completion and check for pending game end
  */
 const handleAudioComplete = useCallback(() => {
-  console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}, Has game: ${!!gameData}`);
+  console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
   
   // Check if game should end after audio completes
   if (pendingGameEnd) {
     console.log(`🏁 Audio complete, ending game now`);
     setPendingGameEnd(false);
     
-    // Immediately end the game - don't wait for prize audio since it may have already played
     firebaseService.endGame(gameData!.gameId)
       .then(() => console.log('✅ Game ended after audio completion'))
       .catch(err => console.error('❌ Failed to end game:', err));
@@ -184,23 +207,45 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
-  // ✅ FIX: Always schedule next call if game is active (check game state, not just timer)
-  if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver) {
-    console.log(`🔊 Audio completed - scheduling next call`);
+  // ✅ FIX: Only schedule next call if game is active AND timer is active
+  if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerActiveRef.current) {
+    console.log(`🔊 Audio completed - scheduling next call with full interval`);
     
-    // Ensure timer is active
-    if (!isTimerActiveRef.current) {
-      console.log(`⚠️ Timer was inactive, reactivating`);
-      isTimerActiveRef.current = true;
-    }
+    // ✅ FIX: Always wait full interval after audio completion
+    const delay = callInterval * 1000;
     
-    lastCallTimeRef.current = Date.now(); // Update timing after audio
-    scheduleNextCall();
+    console.log(`⏰ Next call scheduled in ${delay / 1000}s after audio completion`);
+    
+    gameTimerRef.current = setTimeout(async () => {
+      if (!isTimerActiveRef.current || !gameData) {
+        console.log('⏰ Post-audio timer fired but game inactive');
+        return;
+      }
+      
+      console.log('📞 Post-audio timer fired - calling next number...');
+      lastCallTimeRef.current = Date.now();
+      
+      try {
+        const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+        
+        if (shouldContinue && isTimerActiveRef.current) {
+          console.log('✅ Number called successfully, waiting for audio...');
+          // Audio completion will schedule the next call
+        } else {
+          console.log('⏸️ Game should stop');
+          isTimerActiveRef.current = false;
+        }
+      } catch (error) {
+        console.error('❌ Error in post-audio call:', error);
+        isTimerActiveRef.current = false;
+      }
+    }, delay);
+    
   } else {
     console.log(`🔊 Audio completed but game inactive or ended`);
     isTimerActiveRef.current = false;
   }
-}, [pendingGameEnd, stopTimer, scheduleNextCall, gameData]);
+}, [pendingGameEnd, stopTimer, gameData, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
