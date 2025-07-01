@@ -730,24 +730,9 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
      } catch (error: any) {
     console.error('❌ Firebase-game: Number calling error:', error);
     
-    // Check if it's a temporary issue (network, browser, etc)
-    const isTemporaryError = 
-      error.code === 'NETWORK_ERROR' ||
-      error.message?.toLowerCase().includes('network') ||
-      error.message?.toLowerCase().includes('fetch') ||
-      error.message?.toLowerCase().includes('firebase') ||
-      error.message?.toLowerCase().includes('offline') ||
-      error.message?.toLowerCase().includes('timeout') ||
-      !navigator.onLine;  // Browser says we're offline
-
-    if (isTemporaryError) {
-      console.log('🔄 Temporary error - will retry same number');
-      return true;  // Keep trying
-    }
-
-    // For non-network errors, stop the timer (but don't end game)
-    console.log('❌ Non-network error - stopping timer');
-    return true;
+    // NEVER stop the game for any error - always keep trying
+    console.log('🔄 Error encountered - will retry on next interval');
+    return true;  // Always continue, regardless of error type
   }
 }
 
@@ -762,19 +747,14 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       const gameData = await this.getGameData(gameId);
       
       if (!gameData) {
-        return { isValid: false, reason: 'Game not found' };
+        // Don't stop for missing game data - might be network issue
+        console.log('⚠️ Game data not found - treating as temporary issue');
+        return { isValid: true };
       }
       
-      if (!gameData.gameState.isActive) {
-        return { isValid: false, reason: 'Game is not active' };
-      }
-      
+      // Only stop for definitive end conditions
       if (gameData.gameState.gameOver) {
         return { isValid: false, reason: 'Game has ended' };
-      }
-      
-      if (gameData.gameState.isCountdown) {
-        return { isValid: false, reason: 'Game is in countdown' };
       }
       
       const calledNumbers = gameData.gameState.calledNumbers || [];
@@ -782,10 +762,22 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
         return { isValid: false, reason: 'All numbers have been called' };
       }
       
+      // Allow calling even if game appears inactive or in countdown
+      // These might be temporary states due to network issues
+      if (!gameData.gameState.isActive) {
+        console.log('⚠️ Game appears inactive - but continuing anyway');
+      }
+      
+      if (gameData.gameState.isCountdown) {
+        console.log('⚠️ Game appears in countdown - but continuing anyway');
+      }
+      
       return { isValid: true };
       
     } catch (error: any) {
-      return { isValid: false, reason: `Validation error: ${error.message}` };
+      // Don't stop for validation errors - treat as temporary
+      console.log(`⚠️ Validation error - treating as temporary: ${error.message}`);
+      return { isValid: true };
     }
   }
 
