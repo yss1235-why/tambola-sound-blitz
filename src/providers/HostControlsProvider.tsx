@@ -388,6 +388,8 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
           console.log('🎮 Starting timer after game activation');
           startTimer();
         }, 1000);
+        } // ✅ ADD this missing closing brace
+    }, 1000);
     
     console.log(`✅ Game start initiated: ${gameData.gameId}`);
     
@@ -409,6 +411,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
   try {
     console.log(`⏸️ Pausing game: ${gameData.gameId}`);
     stopTimer();
+    setFirebasePaused(true);
     await firebaseService.pauseGame(gameData.gameId);
     console.log(`✅ Game paused: ${gameData.gameId}`);
   } catch (error: any) {
@@ -436,6 +439,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
     
     // ✅ FIX: Reset timing reference and start fresh
     lastCallTimeRef.current = Date.now();
+    setFirebasePaused(false);
     startTimer();
     
     console.log(`✅ Game resumed: ${gameData.gameId}`);
