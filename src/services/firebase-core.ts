@@ -569,7 +569,7 @@ async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void
 
   // ================== REAL-TIME SUBSCRIPTIONS ==================
 
-  subscribeToGame(gameId: string, callback: (gameData: GameData | null) => void): () => void {
+subscribeToGame(gameId: string, callback: (gameData: GameData | null) => void): () => void {
     const gameRef = ref(database, `games/${gameId}`);
     
     const unsubscribe = onValue(gameRef, (snapshot) => {
@@ -581,7 +581,9 @@ async updateGameState(gameId: string, updates: Partial<GameState>): Promise<void
       }
     }, (error) => {
       console.error('Firebase subscription error:', error);
-      callback(null);
+      console.log('🔄 Firebase will auto-reconnect, maintaining current state...');
+      // DON'T call callback(null) - let Firebase handle reconnection
+      // The UI will keep the last known good state
     });
 
     return () => off(gameRef, 'value', unsubscribe);
