@@ -193,6 +193,7 @@ const startTimer = useCallback(() => {
  */
 const handleAudioComplete = useCallback(() => {
   console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
+  console.log(`🔊 IMPORTANT: This is the ONLY system that should call numbers`);
   
   // Check if game should end after audio completes
   if (pendingGameEnd) {
@@ -209,12 +210,12 @@ const handleAudioComplete = useCallback(() => {
   
   // ✅ FIX: Only schedule next call if game is active AND timer is active
   if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerActiveRef.current) {
-    console.log(`🔊 Audio completed - scheduling next call with full interval`);
+    console.log(`🔊 Audio completed - scheduling next call with HOST'S configured interval: ${callInterval}s`);
     
-    // ✅ FIX: Always wait full interval after audio completion
-    const delay = callInterval * 1000;
+    // ✅ FIX: Always use HOST'S configured delay (not hardcoded)
+    const delay = callInterval * 1000; // Host's configured timing
     
-    console.log(`⏰ Next call scheduled in ${delay / 1000}s after audio completion`);
+    console.log(`⏰ Next call scheduled in ${delay / 1000}s (HOST'S SETTING) after audio completion`);
     
     gameTimerRef.current = setTimeout(async () => {
       if (!isTimerActiveRef.current || !gameData) {
