@@ -89,6 +89,22 @@ export interface Prize {
   wonAt?: string;
 }
 
+// Add these new interfaces BEFORE the GameData interface
+export interface SessionMetadata {
+  created: string;                      // When sequence was created
+  source: 'admin' | 'host';            // Who generated the sequence
+  validated: boolean;                   // Whether sequence is validated
+  totalNumbers: number;                 // Should always be 90
+}
+
+export interface NumberGenerationResult {
+  success: boolean;
+  numbers: number[];
+  source: 'admin' | 'host';
+  error?: string;
+}
+
+// MODIFY the existing GameData interface - replace sessionMeta?: any; with:
 export interface GameData {
   gameId: string;
   name: string;
@@ -103,8 +119,8 @@ export interface GameData {
   lastWinnerAnnouncement?: string;
   lastWinnerAt?: string;
   updatedAt?: string;
-  sessionCache?: number[];
-  sessionMeta?: any;
+  sessionCache?: number[];              // ✅ Already exists
+  sessionMeta?: SessionMetadata;        // ✅ CHANGE: Replace 'any' with 'SessionMetadata'
 }
 
 export interface HostUser {
