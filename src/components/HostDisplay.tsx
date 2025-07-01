@@ -40,6 +40,12 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const { gameData, currentPhase, timeUntilAction, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   const hostControls = useHostControls();
+// ✅ Extract new properties
+const {
+  isPreparingGame,
+  preparationStatus,
+  preparationProgress
+} = hostControls || {};
   const [callInterval, setCallInterval] = React.useState(5);
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
 
@@ -193,17 +199,54 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           {/* Control Buttons */}
           <div className="flex flex-wrap gap-2">
             {currentPhase === 'booking' && (
-              <Button 
-                onClick={handleStartGame}
-                disabled={bookedCount === 0 || hostControls?.isProcessing}
-                className="flex-1 bg-green-600 hover:bg-green-700"
-                size="sm"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                {hostControls?.isProcessing ? 'Starting...' : `Start Automatic Game (${bookedCount > 0 ? 'Ready' : 'Need players'})`}
-              </Button>
-            )}
-
+  <>
+    {/* ✅ NEW: Preparation Status Display */}
+    {isPreparingGame && (
+      <div className="mb-3 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="flex items-center space-x-3">
+          <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-blue-800">
+              Preparing Game...
+            </p>
+            <p className="text-xs text-blue-600 mt-1">
+              {preparationStatus}
+            </p>
+            {/* Progress Bar */}
+            <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${preparationProgress}%` }}
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    
+    <Button 
+      onClick={handleStartGame}
+      disabled={bookedCount === 0 || hostControls?.isProcessing || isPreparingGame}
+      className="flex-1 bg-green-600 hover:bg-green-700"
+      size="sm"
+    >
+      <Play className="w-4 h-4 mr-2" />
+      {isPreparingGame 
+        ? 'Preparing Game...' 
+        : hostControls?.isProcessing 
+          ? 'Starting...' 
+          : `Start Automatic Game (${bookedCount > 0 ? 'Ready' : 'Need players'})`
+      }
+    </Button>
+    
+    {/* ✅ NEW: Preparation instructions */}
+    {!isPreparingGame && !hostControls?.isProcessing && (
+      <div className="text-xs text-gray-500 text-center mt-2">
+        Preparing Game.... Please wait .....
+      </div>
+    )}
+  </>
+)}
             {currentPhase === 'countdown' && (
               <Button disabled className="flex-1" size="lg">
                 <Clock className="w-4 h-4 mr-2 animate-pulse" />
@@ -249,7 +292,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             )}
           </div>
 
-          {/* Call Interval Control */}
+{/* Call Interval Control */}
           {(currentPhase === 'booking' || (currentPhase === 'playing' && !gameData.gameState.gameOver)) && (
             <div className="space-y-2">
               <Label htmlFor="call-interval">Automatic Call Interval: {callInterval} seconds</Label>
