@@ -668,14 +668,11 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
   }
 }
 
-  async processNumberCall(gameId: string, number: number): Promise<void> {
-    try {
-      await this.callNextNumber(gameId);
-      // Additional processing logic can be added here
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to process number call');
-    }
-  }
+ async processNumberCall(gameId: string, number: number): Promise<void> {
+  console.log('🚫 BLOCKED: Legacy processNumberCall in firebase-game.ts called');
+  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
+  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
+}
 
   async announceWinners(gameId: string, winners: any): Promise<void> {
     try {
