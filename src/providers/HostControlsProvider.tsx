@@ -320,9 +320,10 @@ const handleAudioComplete = useCallback(() => {
     startTimer();
     
     console.log(`✅ Game resumed: ${gameData.gameId}`);
-  } catch (error: any) {
+ } catch (error: any) {
     console.error('❌ Resume game error:', error);
-    isTimerActiveRef.current = false; // Reset on error
+    // Don't reset timer state on error - let it retry naturally
+    console.log('🔄 Resume failed, but timer will continue trying...');
     throw new Error(error.message || 'Failed to resume game');
   } finally {
     setIsProcessing(false);
@@ -367,12 +368,54 @@ const handleAudioComplete = useCallback(() => {
 }, []);
   // ================== CLEANUP ==================
 
+ // ================== CLEANUP ==================
+
   useEffect(() => {
     return () => {
       console.log(`🧹 Cleaning up HostControlsProvider`);
       clearAllTimers();
     };
   }, [clearAllTimers]);
+
+  // Handle screen lock/unlock and browser tab visibility
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && 
+          gameData?.gameState?.isActive && 
+          !gameData?.gameState?.gameOver &&
+          !gameData?.gameState?.isCountdown) {
+        
+        console.log('🔄 Screen became visible - checking timer state');
+        
+        // If timer should be running but isn't, restart it
+        if (!isTimerActiveRef.current) {
+          console.log('🔄 Restarting timer after screen unlock');
+          lastCallTimeRef.current = Date.now();
+          startTimer();
+        }
+      }
+    };
+
+    const handleOnlineStatus = () => {
+      if (navigator.onLine && 
+          gameData?.gameState?.isActive && 
+          !gameData?.gameState?.gameOver &&
+          !isTimerActiveRef.current) {
+        
+        console.log('🔄 Network reconnected - checking timer state');
+        lastCallTimeRef.current = Date.now();
+        startTimer();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnlineStatus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnlineStatus);
+    };
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer]);
 
   // Auto-stop timer when game ends (from real-time updates)
   useEffect(() => {
@@ -382,6 +425,19 @@ const handleAudioComplete = useCallback(() => {
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
 
+  // Auto-resume when host returns to active game
+  useEffect(() => {
+    if (gameData?.gameState?.isActive && 
+        !gameData?.gameState?.gameOver && 
+        !gameData?.gameState?.isCountdown &&
+        !isTimerActiveRef.current && 
+        !isProcessing) {
+      
+      console.log(`🔄 Host returned to active game - auto-resuming timer`);
+      lastCallTimeRef.current = Date.now();
+      startTimer();
+    }
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer]);
 
   // Auto-resume countdown on page refresh/reconnect
   useEffect(() => {
