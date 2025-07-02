@@ -705,37 +705,41 @@ if (cachedWinnerData) {
 
   // ================== VIEW CALCULATION ==================
 
-  const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
+ const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
+  // Safe access to prevent temporal dead zone errors
+  const safeUIState = uiState || 'calculated';
+  const safeGameData = gameData || null;
+  
   console.log('🎯 GameHost: Calculating current view:', {
-    uiState,
-    hasGameData: !!gameData,
-    gameOver: gameData?.gameState.gameOver,
-    isActive: gameData?.gameState.isActive,
-    isCountdown: gameData?.gameState.isCountdown,
-    calledNumbers: gameData?.gameState.calledNumbers?.length || 0
+    uiState: safeUIState,
+    hasGameData: !!safeGameData,
+    gameOver: safeGameData?.gameState.gameOver,
+    isActive: safeGameData?.gameState.isActive,
+    isCountdown: safeGameData?.gameState.isCountdown,
+    calledNumbers: safeGameData?.gameState.calledNumbers?.length || 0
   });
   
-  if (uiState === 'winners') {
+  if (safeUIState === 'winners') {
     console.log('🏆 GameHost: Returning winners view');
     return 'winners';
   }
-  if (uiState === 'setup') {
+  if (safeUIState === 'setup') {
     console.log('🎮 GameHost: Returning setup view');
     return 'setup';
   }
-  if (!gameData) {
+  if (!safeGameData) {
     console.log('❌ GameHost: No game data, returning setup');
     return 'setup';
   }
-  if (gameData.gameState.gameOver) {
+  if (safeGameData.gameState.gameOver) {
     console.log('🏁 GameHost: Game over, returning winners');
     return 'winners';
   }
-  if (gameData.gameState.isActive || gameData.gameState.isCountdown) {
+  if (safeGameData.gameState.isActive || safeGameData.gameState.isCountdown) {
     console.log('🎮 GameHost: Game started - returning LIVE view');
     return 'live';
   }
-  console.log('🎫 GameHost: Default - returning booking view');
+ console.log('🎫 GameHost: Default - returning booking view');
   return 'booking';
 };
 
