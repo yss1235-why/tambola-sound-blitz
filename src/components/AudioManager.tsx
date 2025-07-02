@@ -5,10 +5,11 @@ import { Prize } from '@/services/firebase';
 interface AudioManagerProps {
   currentNumber: number | null;
   prizes: Prize[];
-  onAudioComplete?: () => void; // ✅ FIX: This should ONLY report completion
+   gameState?: any;
+  onAudioComplete?: () => void;
   forceEnable?: boolean;
   onPrizeAudioComplete?: (prizeId: string) => void;
-  // ✅ REMOVED: callInterval - AudioManager doesn't need to know about timing
+  onGameOverAudioComplete?: () => void;
 }
 interface AudioQueueItem {
   id: string;
@@ -114,27 +115,75 @@ const numberCalls: { [key: number]: string } = {
 export const AudioManager: React.FC<AudioManagerProps> = ({ 
   currentNumber, 
   prizes, 
+  gameState, 
   onAudioComplete,
   forceEnable = false,
-  onPrizeAudioComplete
+  onPrizeAudioComplete,
+  onGameOverAudioComplete 
 }) => {
-  // State
- // State
+  
 const [isAudioSupported, setIsAudioSupported] = useState(false);
 const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 const [isPlaying, setIsPlaying] = useState(false);
 const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false); // ✅ SOLUTION 3
   
-  // Refs
+
+// Refs for voice management - FIXED: Proper scope
+  const femaleVoice = useRef<SpeechSynthesisVoice | null>(null);
+  const maleVoice = useRef<SpeechSynthesisVoice | null>(null);
+  const fallbackVoice = useRef<SpeechSynthesisVoice | null>(null);
+  
+  // Other refs
   const lastCalledNumber = useRef<number | null>(null);
   const announcedPrizes = useRef<Set<string>>(new Set());
-  const selectedVoice = useRef<SpeechSynthesisVoice | null>(null);
-  
-  // Audio Queue System
   const audioQueue = useRef<AudioQueueItem[]>([]);
   const isProcessingQueue = useRef<boolean>(false);
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
   const fallbackTimer = useRef<NodeJS.Timeout | null>(null);
+
+  // FIXED: Clean voice loading function with proper scope
+  const loadVoices = useCallback(() => {
+    const voices = window.speechSynthesis.getVoices();
+    console.log('🎤 Available voices:', voices.map(v => v.name));
+    
+    // Find female US voice (for numbers, prizes)
+    const femalePreferences = [
+      'Google US English Female',
+      'Google US English Female (en-US)',
+      'Google US English'
+    ];
+    
+    for (const prefName of femalePreferences) {
+      const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+      if (voice) {
+        femaleVoice.current = voice;
+        console.log('👩 Selected female voice:', voice.name);
+        break;
+      }
+    }
+    
+    // Find male US voice (for game over)
+    const malePreferences = [
+      'Google US English Male',
+      'Google US English Male (en-US)',
+      'Google US English (Male)'
+    ];
+    
+    for (const prefName of malePreferences) {
+      const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+      if (voice) {
+        maleVoice.current = voice;
+        console.log('👨 Selected male voice:', voice.name);
+        break;
+      }
+    }
+    
+    // Fallback to any English voice
+    fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
+    if (fallbackVoice.current) {
+      console.log('📱 Fallback voice:', fallbackVoice.current.name);
+    }
+  }, []);
 
   // Initialize speech synthesis
   useEffect(() => {
@@ -147,37 +196,8 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
 
       setIsAudioSupported(true);
 
-      // Load voices
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        
-        // Find best voice for users (more natural sounding)
-        const voicePreferences = [
-          'Google UK English Female',
-          'Google UK English Male', 
-          'Microsoft Zira',
-          'Microsoft David',
-          'Google US English',
-          'Microsoft Mark'
-        ];
+      // Set up voice loading
 
-        for (const prefName of voicePreferences) {
-          const voice = voices.find(v => v.name.includes(prefName));
-          if (voice) {
-            selectedVoice.current = voice;
-            console.log('🎤 Selected voice:', voice.name);
-            break;
-          }
-        }
-
-        // Fallback to any English voice
-        if (!selectedVoice.current) {
-          selectedVoice.current = voices.find(v => v.lang.startsWith('en')) || null;
-          if (selectedVoice.current) {
-            console.log('🎤 Fallback voice:', selectedVoice.current.name);
-          }
-        }
-      };
 
       if (window.speechSynthesis.onvoiceschanged !== undefined) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
@@ -196,7 +216,7 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
     return () => {
       stopAllAudio();
     };
-  }, [forceEnable]);
+}, [forceEnable, loadVoices]);
 
   // ✅ FIXED: Better user interaction detection for audio
   useEffect(() => {
@@ -267,7 +287,7 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
     setIsPlaying(false);
   }, []);
 
-  // Add to queue
+
   // Add to queue
 const addToQueue = useCallback((item: AudioQueueItem) => {
   if (!isAudioSupported || !isAudioEnabled) {
@@ -304,7 +324,7 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
   if (!isProcessingQueue.current) {
     processQueue();
   }
-}, [isAudioSupported, isAudioEnabled]);
+}, [isAudioSupported, isAudioEnabled, processQueue]);
 
   // Process audio queue
   const processQueue = useCallback(() => {
@@ -332,11 +352,24 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           window.speechSynthesis.cancel();
         }
 
-        const utterance = new SpeechSynthesisUtterance(item.text);
-        
-        if (selectedVoice.current) {
-          utterance.voice = selectedVoice.current;
-        }
+       const utterance = new SpeechSynthesisUtterance(item.text);
+
+// ✅ NEW: Choose voice based on content type
+let chosenVoice = null;
+
+if (item.id === 'game-over') {
+  // Use male voice for game over
+  chosenVoice = maleVoice.current || fallbackVoice.current;
+  console.log('👨 Using male voice for Game Over');
+} else {
+  // Use female voice for numbers and prizes
+  chosenVoice = femaleVoice.current || fallbackVoice.current;
+  console.log('👩 Using female voice for:', item.id);
+}
+
+if (chosenVoice) {
+  utterance.voice = chosenVoice;
+}
         
         // ✅ FIXED: Better audio settings for users
         utterance.rate = forceEnable ? 0.9 : 0.85; // Slightly slower for users
@@ -387,13 +420,22 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
         };
 
         // Fixed 3-second timer - enough time for any number announcement
-        const audioPlayTime = 4500; // 3 seconds fixed
-        console.log(`⏰ Setting fixed ${audioPlayTime/1000}s timer for: ${item.text}`);
-        
-        fallbackTimer.current = setTimeout(() => {
-          console.log(`⏰ Fixed timer completed after ${audioPlayTime/1000}s: ${item.text}`);
-          handleComplete();
-        }, audioPlayTime);
+       // ✅ FIX: Dynamic timer based on content type
+let audioPlayTime;
+if (item.id === 'game-over') {
+  audioPlayTime = 5500; // 12 seconds for Game Over message
+} else if (item.id.startsWith('prize-')) {
+  audioPlayTime = 4500;  // 8 seconds for prize announcements
+} else {
+  audioPlayTime = 3000;  // 4.5 seconds for number announcements
+}
+
+console.log(`⏰ Setting ${audioPlayTime/1000}s timer for: ${item.text}`);
+
+fallbackTimer.current = setTimeout(() => {
+  console.log(`⏰ Timer completed after ${audioPlayTime/1000}s: ${item.text}`);
+  handleComplete();
+}, audioPlayTime);
         
         window.speechSynthesis.speak(utterance);
         
@@ -448,7 +490,7 @@ useEffect(() => {
     if (prize.won && !announcedPrizes.current.has(prize.id)) {
       announcedPrizes.current.add(prize.id);
       
-      let announcement = ` Congratulations! ${prize.name} has been won`;
+      let announcement = `Congratulations! ${prize.name} has been won`;
       
       if (prize.winners && prize.winners.length > 0) {
         if (prize.winners.length === 1) {
@@ -484,6 +526,24 @@ useEffect(() => {
     }
   });
 }, [prizes, addToQueue, onPrizeAudioComplete]);
+  // ✅ NEW: Handle Game Over audio announcement
+useEffect(() => {
+  if (gameState?.triggerGameOverAudio && gameState?.pendingGameEnd) {
+    console.log(`🏁 Game Over audio triggered`);
+    
+    addToQueue({
+      id: 'game-over',
+      text: 'Congratulations to all winners! This tambola game has ended. Thank you for playing!',
+      priority: 'high',
+      callback: () => {
+        console.log(`🏁 Game Over audio completed - triggering final game end`);
+        if (onGameOverAudioComplete) {
+          onGameOverAudioComplete();
+        }
+      }
+    });
+  }
+}, [gameState?.triggerGameOverAudio, gameState?.pendingGameEnd, addToQueue, onGameOverAudioComplete]);
 
   // Reset announced prizes when game resets
   useEffect(() => {
