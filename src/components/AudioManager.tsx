@@ -141,49 +141,7 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
   const fallbackTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // FIXED: Clean voice loading function with proper scope
-  const loadVoices = useCallback(() => {
-    const voices = window.speechSynthesis.getVoices();
-    console.log('🎤 Available voices:', voices.map(v => v.name));
-    
-    // Find female US voice (for numbers, prizes)
-    const femalePreferences = [
-      'Google US English Female',
-      'Google US English Female (en-US)',
-      'Google US English'
-    ];
-    
-    for (const prefName of femalePreferences) {
-      const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
-      if (voice) {
-        femaleVoice.current = voice;
-        console.log('👩 Selected female voice:', voice.name);
-        break;
-      }
-    }
-    
-    // Find male US voice (for game over)
-    const malePreferences = [
-      'Google US English Male',
-      'Google US English Male (en-US)',
-      'Google US English (Male)'
-    ];
-    
-    for (const prefName of malePreferences) {
-      const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
-      if (voice) {
-        maleVoice.current = voice;
-        console.log('👨 Selected male voice:', voice.name);
-        break;
-      }
-    }
-    
-    // Fallback to any English voice
-    fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
-    if (fallbackVoice.current) {
-      console.log('📱 Fallback voice:', fallbackVoice.current.name);
-    }
-  }, []);
+ 
 
   // Initialize speech synthesis
   useEffect(() => {
@@ -199,10 +157,54 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
       // Set up voice loading
 
 
+    // Set up voice loading
+      const loadVoicesInternal = () => {
+        const voices = window.speechSynthesis.getVoices();
+        console.log('🎤 Available voices:', voices.map(v => v.name));
+        
+        // Find female US voice (for numbers, prizes)
+        const femalePreferences = [
+          'Google US English Female',
+          'Google US English Female (en-US)',
+          'Google US English'
+        ];
+        
+        for (const prefName of femalePreferences) {
+          const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+          if (voice) {
+            femaleVoice.current = voice;
+            console.log('👩 Selected female voice:', voice.name);
+            break;
+          }
+        }
+        
+        // Find male US voice (for game over)
+        const malePreferences = [
+          'Google US English Male',
+          'Google US English Male (en-US)',
+          'Google US English (Male)'
+        ];
+        
+        for (const prefName of malePreferences) {
+          const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+          if (voice) {
+            maleVoice.current = voice;
+            console.log('👨 Selected male voice:', voice.name);
+            break;
+          }
+        }
+        
+        // Fallback to any English voice
+        fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
+        if (fallbackVoice.current) {
+          console.log('📱 Fallback voice:', fallbackVoice.current.name);
+        }
+      };
+
       if (window.speechSynthesis.onvoiceschanged !== undefined) {
-        window.speechSynthesis.onvoiceschanged = loadVoices;
+        window.speechSynthesis.onvoiceschanged = loadVoicesInternal;
       }
-      loadVoices();
+      loadVoicesInternal();
 
       // ✅ FIXED: Enable audio if forced (for hosts) or try auto-enable for users
       if (forceEnable) {
@@ -216,7 +218,7 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
     return () => {
       stopAllAudio();
     };
-}, [forceEnable, loadVoices]);
+}, [forceEnable, stopAllAudio]);
 
   // ✅ FIXED: Better user interaction detection for audio
   useEffect(() => {
@@ -271,62 +273,7 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
     };
   }, [isAudioSupported, isAudioEnabled, forceEnable]);
 
-  // Stop all audio
-  const stopAllAudio = useCallback(() => {
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
-    }
-    
-    if (fallbackTimer.current) {
-      clearTimeout(fallbackTimer.current);
-      fallbackTimer.current = null;
-    }
-    
-    currentUtterance.current = null;
-    isProcessingQueue.current = false;
-    setIsPlaying(false);
-  }, []);
-
-
-  // Add to queue
-const addToQueue = useCallback((item: AudioQueueItem) => {
-  if (!isAudioSupported || !isAudioEnabled) {
-    console.log('🔇 Audio not available, skipping:', item.text);
-    // Call callback immediately if audio not available
-    if (item.callback) {
-      setTimeout(item.callback, 100);
-    }
-    return;
-  }
-
-  // ✅ SOLUTION 3: Handle blocking for prize announcements
-  if (item.id.startsWith('prize-')) {
-    setIsBlockedForAnnouncement(true);
-    
-    // Wrap original callback to unblock
-    const originalCallback = item.callback;
-    item.callback = () => {
-      setIsBlockedForAnnouncement(false);
-      if (originalCallback) originalCallback();
-    };
-  }
-
-  // If high priority, add to front of queue
-  if (item.priority === 'high') {
-    audioQueue.current.unshift(item);
-  } else {
-    audioQueue.current.push(item);
-  }
-
-  console.log(`🔊 Queued: ${item.text} (Priority: ${item.priority})`);
-  
-  // Start processing if not already processing
-  if (!isProcessingQueue.current) {
-    processQueue();
-  }
-}, [isAudioSupported, isAudioEnabled, processQueue]);
-
-  // Process audio queue
+  // Process audio queue - MUST BE DEFINED BEFORE addToQueue
   const processQueue = useCallback(() => {
     if (isProcessingQueue.current || audioQueue.current.length === 0) {
       return;
@@ -352,65 +299,55 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           window.speechSynthesis.cancel();
         }
 
-       const utterance = new SpeechSynthesisUtterance(item.text);
+        const utterance = new SpeechSynthesisUtterance(item.text);
 
-// ✅ NEW: Choose voice based on content type
-let chosenVoice = null;
+        // Choose voice based on content type
+        let chosenVoice = null;
 
-if (item.id === 'game-over') {
-  // Use male voice for game over
-  chosenVoice = maleVoice.current || fallbackVoice.current;
-  console.log('👨 Using male voice for Game Over');
-} else {
-  // Use female voice for numbers and prizes
-  chosenVoice = femaleVoice.current || fallbackVoice.current;
-  console.log('👩 Using female voice for:', item.id);
-}
+        if (item.id === 'game-over') {
+          chosenVoice = maleVoice.current || fallbackVoice.current;
+          console.log('👨 Using male voice for Game Over');
+        } else {
+          chosenVoice = femaleVoice.current || fallbackVoice.current;
+          console.log('👩 Using female voice for:', item.id);
+        }
 
-if (chosenVoice) {
-  utterance.voice = chosenVoice;
-}
+        if (chosenVoice) {
+          utterance.voice = chosenVoice;
+        }
         
-        // ✅ FIXED: Better audio settings for users
-        utterance.rate = forceEnable ? 0.9 : 0.85; // Slightly slower for users
+        utterance.rate = forceEnable ? 0.9 : 0.85;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
         currentUtterance.current = utterance;
 
-
-        // Fixed timer completion - don't trust browser events
         const handleComplete = () => {
           console.log(`✅ Completed: ${item.text}`);
           
-          // Clear timer
           if (fallbackTimer.current) {
             clearTimeout(fallbackTimer.current);
             fallbackTimer.current = null;
           }
           
-          // Cancel any ongoing speech
           if (window.speechSynthesis.speaking) {
             window.speechSynthesis.cancel();
           }
           
           currentUtterance.current = null;
           
-          // Call item callback - ALWAYS call for number announcements
-         if (item.callback) {
-          try {
-            console.log(`🔊 Audio completed for: ${item.text} - notifying completion only`);
-            item.callback(); // This should ONLY notify completion, not call next number
-          } catch (error) {
-            console.error('Audio callback error:', error);
+          if (item.callback) {
+            try {
+              console.log(`🔊 Audio completed for: ${item.text} - notifying completion only`);
+              item.callback();
+            } catch (error) {
+              console.error('Audio callback error:', error);
+            }
           }
-        }
           
-          // Process next item after short delay
           setTimeout(processNext, 500);
         };
 
-        // Don't rely on browser events - use fixed timer only
         utterance.onend = () => {
           console.log(`🔊 Browser reported audio end (ignored)`);
         };
@@ -419,30 +356,28 @@ if (chosenVoice) {
           console.warn('Speech error (ignored):', event.error);
         };
 
-        // Fixed 3-second timer - enough time for any number announcement
-       // ✅ FIX: Dynamic timer based on content type
-let audioPlayTime;
-if (item.id === 'game-over') {
-  audioPlayTime = 5500; // 12 seconds for Game Over message
-} else if (item.id.startsWith('prize-')) {
-  audioPlayTime = 4500;  // 8 seconds for prize announcements
-} else {
-  audioPlayTime = 3000;  // 4.5 seconds for number announcements
-}
+        // Dynamic timer based on content type
+        let audioPlayTime;
+        if (item.id === 'game-over') {
+          audioPlayTime = 5500;
+        } else if (item.id.startsWith('prize-')) {
+          audioPlayTime = 4500;
+        } else {
+          audioPlayTime = 3000;
+        }
 
-console.log(`⏰ Setting ${audioPlayTime/1000}s timer for: ${item.text}`);
+        console.log(`⏰ Setting ${audioPlayTime/1000}s timer for: ${item.text}`);
 
-fallbackTimer.current = setTimeout(() => {
-  console.log(`⏰ Timer completed after ${audioPlayTime/1000}s: ${item.text}`);
-  handleComplete();
-}, audioPlayTime);
+        fallbackTimer.current = setTimeout(() => {
+          console.log(`⏰ Timer completed after ${audioPlayTime/1000}s: ${item.text}`);
+          handleComplete();
+        }, audioPlayTime);
         
         window.speechSynthesis.speak(utterance);
         
       } catch (error) {
         console.error('Speech synthesis error:', error);
         
-        // Call callback on error
         if (item.callback) {
           try {
             item.callback();
@@ -451,13 +386,61 @@ fallbackTimer.current = setTimeout(() => {
           }
         }
         
-        // Continue with next item
         setTimeout(processNext, 100);
       }
     };
 
     processNext();
   }, [forceEnable]);
+  // Stop all audio
+  const stopAllAudio = useCallback(() => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    
+    if (fallbackTimer.current) {
+      clearTimeout(fallbackTimer.current);
+      fallbackTimer.current = null;
+    }
+    
+    currentUtterance.current = null;
+    isProcessingQueue.current = false;
+    setIsPlaying(false);
+  }, []);
+
+// Add to queue
+  const addToQueue = useCallback((item: AudioQueueItem) => {
+    if (!isAudioSupported || !isAudioEnabled) {
+      console.log('🔇 Audio not available, skipping:', item.text);
+      if (item.callback) {
+        setTimeout(item.callback, 100);
+      }
+      return;
+    }
+
+    // Handle blocking for prize announcements
+    if (item.id.startsWith('prize-')) {
+      setIsBlockedForAnnouncement(true);
+      
+      const originalCallback = item.callback;
+      item.callback = () => {
+        setIsBlockedForAnnouncement(false);
+        if (originalCallback) originalCallback();
+      };
+    }
+
+    if (item.priority === 'high') {
+      audioQueue.current.unshift(item);
+    } else {
+      audioQueue.current.push(item);
+    }
+
+    console.log(`🔊 Queued: ${item.text} (Priority: ${item.priority})`);
+    
+    if (!isProcessingQueue.current) {
+      processQueue();
+    }
+  }, [isAudioSupported, isAudioEnabled, processQueue]);
 
 
 // Handle number announcements
