@@ -395,7 +395,7 @@ useEffect(() => {
           }
         }
         
-        setTimeout(processNext, 50);
+        setTimeout(processNext, 100);
       }
     };
 
@@ -453,114 +453,68 @@ useEffect(() => {
 
 
 // Handle number announcements
-// Handle number announcements
 useEffect(() => {
+  // ✅ SOLUTION 3: Don't announce numbers if blocked by prize announcement
   if (currentNumber && currentNumber !== lastCalledNumber.current && !isBlockedForAnnouncement) {
     lastCalledNumber.current = currentNumber;
     
     const callText = numberCalls[currentNumber] || `Number ${currentNumber}`;
     
-    // ✅ FIX: Check if this number has winning prizes
-    const newWinningPrizes = prizes.filter(prize => 
-      prize.won && 
-      prize.winningNumber === currentNumber && 
-      !announcedPrizes.current.has(prize.id)
-    );
-    
-    console.log(`📢 Announcing number: ${currentNumber}`, {
-      hasWinningPrizes: newWinningPrizes.length > 0,
-      winningPrizes: newWinningPrizes.map(p => p.name)
-    });
-    
-    // ✅ FIX: Bundle number + prize announcements together
-    let fullAnnouncement = callText;
-    
-    if (newWinningPrizes.length > 0) {
-      // Mark prizes as announced immediately
-      newWinningPrizes.forEach(prize => {
-        announcedPrizes.current.add(prize.id);
-      });
-      
-      // Add prize announcements to the same text
-      newWinningPrizes.forEach(prize => {
-        let prizeText = `... Congratulations! ${prize.name} has been won`;
-        
-        if (prize.winners && prize.winners.length > 0) {
-          if (prize.winners.length === 1) {
-            const winner = prize.winners[0];
-            prizeText += ` by ${winner.name} with ticket ${winner.ticketId}`;
-          } else if (prize.winners.length === 2) {
-            const winner1 = prize.winners[0];
-            const winner2 = prize.winners[1];
-            prizeText += ` by ${winner1.name} with ticket ${winner1.ticketId} and ${winner2.name} with ticket ${winner2.ticketId}`;
-          } else {
-            const firstWinner = prize.winners[0];
-            prizeText += ` by ${prize.winners.length} players including ${firstWinner.name} with ticket ${firstWinner.ticketId}`;
-          }
-        }
-        
-        prizeText += '! Well done!';
-        fullAnnouncement += prizeText;
-      });
-    }
+    console.log(`📢 Announcing number: ${currentNumber} - will trigger timer continuation`);
     
     addToQueue({
       id: `number-${currentNumber}`,
-      text: fullAnnouncement,
+      text: callText,
       priority: 'high',
       callback: () => {
-        console.log(`🔊 Complete announcement finished for ${currentNumber}`);
+        console.log(`🔊 Number ${currentNumber} audio completed - triggering next timer`);
         if (onAudioComplete) {
           onAudioComplete();
         }
       }
     });
   }
-}, [currentNumber, addToQueue, onAudioComplete, isBlockedForAnnouncement, prizes]);
+}, [currentNumber, addToQueue, onAudioComplete, isBlockedForAnnouncement]);
 
 // Handle prize announcements
-// Handle prize announcements (for non-number-triggered prizes only)
 useEffect(() => {
   prizes.forEach(prize => {
     if (prize.won && !announcedPrizes.current.has(prize.id)) {
-      // ✅ FIX: Only announce prizes that weren't bundled with number announcements
-      const wasAnnouncedWithNumber = prize.winningNumber && 
-        lastCalledNumber.current === prize.winningNumber;
+      announcedPrizes.current.add(prize.id);
       
-      if (!wasAnnouncedWithNumber) {
-        announcedPrizes.current.add(prize.id);
-        
-        let announcement = `Congratulations! ${prize.name} has been won`;
-        
-        if (prize.winners && prize.winners.length > 0) {
-          if (prize.winners.length === 1) {
-            const winner = prize.winners[0];
-            announcement += ` by ${winner.name} with ticket ${winner.ticketId}`;
-          } else if (prize.winners.length === 2) {
-            const winner1 = prize.winners[0];
-            const winner2 = prize.winners[1];
-            announcement += ` by ${winner1.name} with ticket ${winner1.ticketId} and ${winner2.name} with ticket ${winner2.ticketId}`;
-          } else {
-            const firstWinner = prize.winners[0];
-            announcement += ` by ${prize.winners.length} players including ${firstWinner.name} with ticket ${firstWinner.ticketId}`;
+      let announcement = `Congratulations! ${prize.name} has been won`;
+      
+      if (prize.winners && prize.winners.length > 0) {
+        if (prize.winners.length === 1) {
+          const winner = prize.winners[0];
+          announcement += ` by ${winner.name} with ticket ${winner.ticketId}`;
+        } else if (prize.winners.length === 2) {
+          // For 2 winners, mention both
+          const winner1 = prize.winners[0];
+          const winner2 = prize.winners[1];
+          announcement += ` by ${winner1.name} with ticket ${winner1.ticketId} and ${winner2.name} with ticket ${winner2.ticketId}`;
+        } else {
+          // For 3+ winners, mention count and first winner as example
+          const firstWinner = prize.winners[0];
+          announcement += ` by ${prize.winners.length} players including ${firstWinner.name} with ticket ${firstWinner.ticketId}`;
+        }
+      }
+      
+      announcement += '! Well done!';
+      
+      console.log(`🏆 Announcing prize: ${prize.name}`);
+      
+      addToQueue({
+        id: `prize-${prize.id}`,
+        text: announcement,
+        priority: 'normal',
+        // ✅ SOLUTION 2: Add callback to signal completion
+        callback: () => {
+          if (onPrizeAudioComplete) {
+            onPrizeAudioComplete(prize.id);
           }
         }
-        
-        announcement += '! Well done!';
-        
-        console.log(`🏆 Announcing standalone prize: ${prize.name}`);
-        
-        addToQueue({
-          id: `prize-${prize.id}`,
-          text: announcement,
-          priority: 'normal',
-          callback: () => {
-            if (onPrizeAudioComplete) {
-              onPrizeAudioComplete(prize.id);
-            }
-          }
-        });
-      }
+      });
     }
   });
 }, [prizes, addToQueue, onPrizeAudioComplete]);
