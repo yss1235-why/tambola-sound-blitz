@@ -131,7 +131,8 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
   // Refs
   const lastCalledNumber = useRef<number | null>(null);
   const announcedPrizes = useRef<Set<string>>(new Set());
-  const selectedVoice = useRef<SpeechSynthesisVoice | null>(null);
+ // ✅ NEW: Multiple voice references
+const loadVoices = () => {
   
   // Audio Queue System
   const audioQueue = useRef<AudioQueueItem[]>([]);
@@ -151,36 +152,53 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
       setIsAudioSupported(true);
 
       // Load voices
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices();
-        
-        // Find best voice for users (more natural sounding)
-        const voicePreferences = [
-          'Google UK English Female',
-          'Google UK English Male', 
-          'Microsoft Zira',
-          'Microsoft David',
-          'Google US English',
-          'Microsoft Mark'
-        ];
+     // ✅ NEW: Store multiple voices instead of just one
+const femaleVoice = useRef<SpeechSynthesisVoice | null>(null);
+const maleVoice = useRef<SpeechSynthesisVoice | null>(null);
+const fallbackVoice = useRef<SpeechSynthesisVoice | null>(null);
 
-        for (const prefName of voicePreferences) {
-          const voice = voices.find(v => v.name.includes(prefName));
-          if (voice) {
-            selectedVoice.current = voice;
-            console.log('🎤 Selected voice:', voice.name);
-            break;
-          }
-        }
-
-        // Fallback to any English voice
-        if (!selectedVoice.current) {
-          selectedVoice.current = voices.find(v => v.lang.startsWith('en')) || null;
-          if (selectedVoice.current) {
-            console.log('🎤 Fallback voice:', selectedVoice.current.name);
-          }
-        }
-      };
+const loadVoices = () => {
+  const voices = window.speechSynthesis.getVoices();
+  console.log('🎤 Available voices:', voices.map(v => v.name));
+  
+  // Find female US voice (for numbers, prizes)
+  const femalePreferences = [
+    'Google US English Female',
+    'Google US English Female (en-US)',
+    'Google US English'
+  ];
+  
+  for (const prefName of femalePreferences) {
+    const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+    if (voice) {
+      femaleVoice.current = voice;
+      console.log('👩 Selected female voice:', voice.name);
+      break;
+    }
+  }
+  
+  // Find male US voice (for game over)
+  const malePreferences = [
+    'Google US English Male',
+    'Google US English Male (en-US)',
+    'Google US English (Male)'
+  ];
+  
+  for (const prefName of malePreferences) {
+    const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+    if (voice) {
+      maleVoice.current = voice;
+      console.log('👨 Selected male voice:', voice.name);
+      break;
+    }
+  }
+  
+  // Fallback to any English voice
+  fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
+  if (fallbackVoice.current) {
+    console.log('📱 Fallback voice:', fallbackVoice.current.name);
+  }
+};
 
       if (window.speechSynthesis.onvoiceschanged !== undefined) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
@@ -335,11 +353,24 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
           window.speechSynthesis.cancel();
         }
 
-        const utterance = new SpeechSynthesisUtterance(item.text);
-        
-        if (selectedVoice.current) {
-          utterance.voice = selectedVoice.current;
-        }
+       const utterance = new SpeechSynthesisUtterance(item.text);
+
+// ✅ NEW: Choose voice based on content type
+let chosenVoice = null;
+
+if (item.id === 'game-over') {
+  // Use male voice for game over
+  chosenVoice = maleVoice.current || fallbackVoice.current;
+  console.log('👨 Using male voice for Game Over');
+} else {
+  // Use female voice for numbers and prizes
+  chosenVoice = femaleVoice.current || fallbackVoice.current;
+  console.log('👩 Using female voice for:', item.id);
+}
+
+if (chosenVoice) {
+  utterance.voice = chosenVoice;
+}
         
         // ✅ FIXED: Better audio settings for users
         utterance.rate = forceEnable ? 0.9 : 0.85; // Slightly slower for users
