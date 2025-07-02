@@ -144,82 +144,91 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
  
 
   // Initialize speech synthesis
-  useEffect(() => {
-    const initSpeech = () => {
-      if (!('speechSynthesis' in window)) {
-        setIsAudioSupported(false);
-        console.warn('🔇 Speech synthesis not supported');
-        return;
-      }
+  // Initialize speech synthesis
+useEffect(() => {
+  const initSpeech = () => {
+    if (!('speechSynthesis' in window)) {
+      setIsAudioSupported(false);
+      console.warn('🔇 Speech synthesis not supported');
+      return;
+    }
 
-      setIsAudioSupported(true);
-
-      // Set up voice loading
-
+    setIsAudioSupported(true);
 
     // Set up voice loading
-      const loadVoicesInternal = () => {
-        const voices = window.speechSynthesis.getVoices();
-        console.log('🎤 Available voices:', voices.map(v => v.name));
-        
-        // Find female US voice (for numbers, prizes)
-        const femalePreferences = [
-          'Google US English Female',
-          'Google US English Female (en-US)',
-          'Google US English'
-        ];
-        
-        for (const prefName of femalePreferences) {
-          const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
-          if (voice) {
-            femaleVoice.current = voice;
-            console.log('👩 Selected female voice:', voice.name);
-            break;
-          }
+    const loadVoicesInternal = () => {
+      const voices = window.speechSynthesis.getVoices();
+      console.log('🎤 Available voices:', voices.map(v => v.name));
+      
+      // Find female US voice (for numbers, prizes)
+      const femalePreferences = [
+        'Google US English Female',
+        'Google US English Female (en-US)',
+        'Google US English'
+      ];
+      
+      for (const prefName of femalePreferences) {
+        const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+        if (voice) {
+          femaleVoice.current = voice;
+          console.log('👩 Selected female voice:', voice.name);
+          break;
         }
-        
-        // Find male US voice (for game over)
-        const malePreferences = [
-          'Google US English Male',
-          'Google US English Male (en-US)',
-          'Google US English (Male)'
-        ];
-        
-        for (const prefName of malePreferences) {
-          const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
-          if (voice) {
-            maleVoice.current = voice;
-            console.log('👨 Selected male voice:', voice.name);
-            break;
-          }
-        }
-        
-        // Fallback to any English voice
-        fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
-        if (fallbackVoice.current) {
-          console.log('📱 Fallback voice:', fallbackVoice.current.name);
-        }
-      };
-
-      if (window.speechSynthesis.onvoiceschanged !== undefined) {
-        window.speechSynthesis.onvoiceschanged = loadVoicesInternal;
       }
-      loadVoicesInternal();
-
-      // ✅ FIXED: Enable audio if forced (for hosts) or try auto-enable for users
-      if (forceEnable) {
-        setIsAudioEnabled(true);
-        console.log('🔊 Audio force-enabled (host mode)');
+      
+      // Find male US voice (for game over)
+      const malePreferences = [
+        'Google US English Male',
+        'Google US English Male (en-US)',
+        'Google US English (Male)'
+      ];
+      
+      for (const prefName of malePreferences) {
+        const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+        if (voice) {
+          maleVoice.current = voice;
+          console.log('👨 Selected male voice:', voice.name);
+          break;
+        }
+      }
+      
+      // Fallback to any English voice
+      fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
+      if (fallbackVoice.current) {
+        console.log('📱 Fallback voice:', fallbackVoice.current.name);
       }
     };
 
-    initSpeech();
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = loadVoicesInternal;
+    }
+    loadVoicesInternal();
 
-    return () => {
-      stopAllAudio();
-    };
-}, [forceEnable, stopAllAudio]);
+    // ✅ FIXED: Enable audio if forced (for hosts) or try auto-enable for users
+    if (forceEnable) {
+      setIsAudioEnabled(true);
+      console.log('🔊 Audio force-enabled (host mode)');
+    }
+  };
 
+  initSpeech();
+
+  return () => {
+    // ✅ Inline cleanup to avoid dependency
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    
+    if (fallbackTimer.current) {
+      clearTimeout(fallbackTimer.current);
+      fallbackTimer.current = null;
+    }
+    
+    currentUtterance.current = null;
+    isProcessingQueue.current = false;
+    setIsPlaying(false);
+  };
+}, [forceEnable]); // ✅ Remove stopAllAudio dependency
   // ✅ FIXED: Better user interaction detection for audio
   useEffect(() => {
     if (!isAudioSupported || isAudioEnabled || forceEnable) return;
@@ -509,26 +518,7 @@ useEffect(() => {
     }
   });
 }, [prizes, addToQueue, onPrizeAudioComplete]);
-  // ✅ NEW: Handle Game Over audio announcement
-useEffect(() => {
-  if (gameState?.triggerGameOverAudio && gameState?.pendingGameEnd) {
-    console.log(`🏁 Game Over audio triggered`);
-    
-    addToQueue({
-      id: 'game-over',
-      text: 'Congratulations to all winners! This tambola game has ended. Thank you for playing!',
-      priority: 'high',
-      callback: () => {
-        console.log(`🏁 Game Over audio completed - triggering final game end`);
-        if (onGameOverAudioComplete) {
-          onGameOverAudioComplete();
-        }
-      }
-    });
-  }
-}, [gameState?.triggerGameOverAudio, gameState?.pendingGameEnd, addToQueue, onGameOverAudioComplete]);
-
-  // Reset announced prizes when game resets
+// Reset announced prizes when game resets
   useEffect(() => {
     const wonPrizes = prizes.filter(p => p.won);
     
@@ -537,16 +527,41 @@ useEffect(() => {
       announcedPrizes.current.clear();
       lastCalledNumber.current = null;
       audioQueue.current = [];
-      stopAllAudio();
+      
+      // ✅ Inline cleanup to avoid dependency
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      
+      if (fallbackTimer.current) {
+        clearTimeout(fallbackTimer.current);
+        fallbackTimer.current = null;
+      }
+      
+      currentUtterance.current = null;
+      isProcessingQueue.current = false;
+      setIsPlaying(false);
     }
-  }, [prizes, stopAllAudio]);
-
+  }, [prizes]); // ✅ Remove stopAllAudio dependency
   // Cleanup on unmount
+// Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopAllAudio();
+      // ✅ Inline cleanup to avoid dependency
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      
+      if (fallbackTimer.current) {
+        clearTimeout(fallbackTimer.current);
+        fallbackTimer.current = null;
+      }
+      
+      currentUtterance.current = null;
+      isProcessingQueue.current = false;
+      setIsPlaying(false);
     };
-  }, [stopAllAudio]);
+  }, []); // ✅ Remove stopAllAudio dependency
 
   // ✅ FIXED: Show audio status for users (only in development or when there are issues)
   if (process.env.NODE_ENV === 'development' && !forceEnable) {
