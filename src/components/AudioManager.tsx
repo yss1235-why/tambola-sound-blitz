@@ -5,7 +5,7 @@ import { Prize } from '@/services/firebase';
 interface AudioManagerProps {
   currentNumber: number | null;
   prizes: Prize[];
-   gameState?: any;
+  gameState?: any; // ❌ MISSING: Add gameState prop
   onAudioComplete?: () => void;
   forceEnable?: boolean;
   onPrizeAudioComplete?: (prizeId: string) => void;
@@ -115,75 +115,30 @@ const numberCalls: { [key: number]: string } = {
 export const AudioManager: React.FC<AudioManagerProps> = ({ 
   currentNumber, 
   prizes, 
-  gameState, 
+  gameState, // ❌ MISSING
   onAudioComplete,
   forceEnable = false,
   onPrizeAudioComplete,
-  onGameOverAudioComplete 
+  onGameOverAudioComplete // ❌ MISSING
 }) => {
-  
+  // State
+ // State
 const [isAudioSupported, setIsAudioSupported] = useState(false);
 const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 const [isPlaying, setIsPlaying] = useState(false);
 const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false); // ✅ SOLUTION 3
   
-
-// Refs for voice management - FIXED: Proper scope
-  const femaleVoice = useRef<SpeechSynthesisVoice | null>(null);
-  const maleVoice = useRef<SpeechSynthesisVoice | null>(null);
-  const fallbackVoice = useRef<SpeechSynthesisVoice | null>(null);
-  
-  // Other refs
+  // Refs
   const lastCalledNumber = useRef<number | null>(null);
   const announcedPrizes = useRef<Set<string>>(new Set());
+ // ✅ NEW: Multiple voice references
+const loadVoices = () => {
+  
+  // Audio Queue System
   const audioQueue = useRef<AudioQueueItem[]>([]);
   const isProcessingQueue = useRef<boolean>(false);
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
   const fallbackTimer = useRef<NodeJS.Timeout | null>(null);
-
-  // FIXED: Clean voice loading function with proper scope
-  const loadVoices = useCallback(() => {
-    const voices = window.speechSynthesis.getVoices();
-    console.log('🎤 Available voices:', voices.map(v => v.name));
-    
-    // Find female US voice (for numbers, prizes)
-    const femalePreferences = [
-      'Google US English Female',
-      'Google US English Female (en-US)',
-      'Google US English'
-    ];
-    
-    for (const prefName of femalePreferences) {
-      const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
-      if (voice) {
-        femaleVoice.current = voice;
-        console.log('👩 Selected female voice:', voice.name);
-        break;
-      }
-    }
-    
-    // Find male US voice (for game over)
-    const malePreferences = [
-      'Google US English Male',
-      'Google US English Male (en-US)',
-      'Google US English (Male)'
-    ];
-    
-    for (const prefName of malePreferences) {
-      const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
-      if (voice) {
-        maleVoice.current = voice;
-        console.log('👨 Selected male voice:', voice.name);
-        break;
-      }
-    }
-    
-    // Fallback to any English voice
-    fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
-    if (fallbackVoice.current) {
-      console.log('📱 Fallback voice:', fallbackVoice.current.name);
-    }
-  }, []);
 
   // Initialize speech synthesis
   useEffect(() => {
@@ -196,8 +151,54 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
 
       setIsAudioSupported(true);
 
-      // Set up voice loading
+      // Load voices
+     // ✅ NEW: Store multiple voices instead of just one
+const femaleVoice = useRef<SpeechSynthesisVoice | null>(null);
+const maleVoice = useRef<SpeechSynthesisVoice | null>(null);
+const fallbackVoice = useRef<SpeechSynthesisVoice | null>(null);
 
+const loadVoices = () => {
+  const voices = window.speechSynthesis.getVoices();
+  console.log('🎤 Available voices:', voices.map(v => v.name));
+  
+  // Find female US voice (for numbers, prizes)
+  const femalePreferences = [
+    'Google US English Female',
+    'Google US English Female (en-US)',
+    'Google US English'
+  ];
+  
+  for (const prefName of femalePreferences) {
+    const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+    if (voice) {
+      femaleVoice.current = voice;
+      console.log('👩 Selected female voice:', voice.name);
+      break;
+    }
+  }
+  
+  // Find male US voice (for game over)
+  const malePreferences = [
+    'Google US English Male',
+    'Google US English Male (en-US)',
+    'Google US English (Male)'
+  ];
+  
+  for (const prefName of malePreferences) {
+    const voice = voices.find(v => v.name.includes(prefName) || v.name === prefName);
+    if (voice) {
+      maleVoice.current = voice;
+      console.log('👨 Selected male voice:', voice.name);
+      break;
+    }
+  }
+  
+  // Fallback to any English voice
+  fallbackVoice.current = voices.find(v => v.lang.startsWith('en')) || voices[0] || null;
+  if (fallbackVoice.current) {
+    console.log('📱 Fallback voice:', fallbackVoice.current.name);
+  }
+};
 
       if (window.speechSynthesis.onvoiceschanged !== undefined) {
         window.speechSynthesis.onvoiceschanged = loadVoices;
@@ -216,7 +217,7 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
     return () => {
       stopAllAudio();
     };
-}, [forceEnable, loadVoices]);
+  }, [forceEnable]);
 
   // ✅ FIXED: Better user interaction detection for audio
   useEffect(() => {
@@ -287,7 +288,7 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
     setIsPlaying(false);
   }, []);
 
-
+  // Add to queue
   // Add to queue
 const addToQueue = useCallback((item: AudioQueueItem) => {
   if (!isAudioSupported || !isAudioEnabled) {
@@ -324,7 +325,7 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
   if (!isProcessingQueue.current) {
     processQueue();
   }
-}, [isAudioSupported, isAudioEnabled, processQueue]);
+}, [isAudioSupported, isAudioEnabled]);
 
   // Process audio queue
   const processQueue = useCallback(() => {
@@ -490,7 +491,7 @@ useEffect(() => {
     if (prize.won && !announcedPrizes.current.has(prize.id)) {
       announcedPrizes.current.add(prize.id);
       
-      let announcement = `Congratulations! ${prize.name} has been won`;
+      let announcement = ` Congratulations! ${prize.name} has been won`;
       
       if (prize.winners && prize.winners.length > 0) {
         if (prize.winners.length === 1) {
