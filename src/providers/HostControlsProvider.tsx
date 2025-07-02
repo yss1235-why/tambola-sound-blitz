@@ -23,7 +23,6 @@ interface HostControlsContextValue {
   // Audio completion handlers
   handleAudioComplete: () => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
-  handleGameOverAudioComplete: () => void; // ✅ ADD this line
   
   // Firebase status
   firebasePaused: boolean;
@@ -64,14 +63,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [countdownTime, setCountdownTime] = React.useState(0);
  const [callInterval, setCallInterval] = React.useState(5);
+const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 
-// ✅ ADD: Reset pause state when game changes
-React.useEffect(() => {
-  if (gameData?.gameId) {
-    setFirebasePaused(false); // Reset pause state for new/different games
-  }
-}, [gameData?.gameId]);
 // ✅ ADD these new state variables:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
 const [preparationStatus, setPreparationStatus] = React.useState<string>('');
@@ -130,40 +124,54 @@ const scheduleNextCall = useCallback(() => {
    * Simple timer control
    */
   const stopTimer = useCallback(() => {
+    console.log(`🛑 Stopping number calling timer`);
     isTimerActiveRef.current = false;
+    
     if (gameTimerRef.current) {
       clearTimeout(gameTimerRef.current);
       gameTimerRef.current = null;
     }
   }, []);
+
 const startTimer = useCallback(() => {
-  if (!gameData?.gameId) return;
+  if (!gameData) return;
+  console.log('▶️ Starting timer with initial delay');
   
-  isTimerActiveRef.current = false;
-  if (gameTimerRef.current) {
-    clearTimeout(gameTimerRef.current);
-    gameTimerRef.current = null;
-  }
-  
+  stopTimer(); // Ensure no existing timer is running
   isTimerActiveRef.current = true;
   lastCallTimeRef.current = Date.now();
   
-  const delay = callInterval * 1000;
+  // ✅ FIX: Add initial delay before first call
+  const initialDelay = callInterval * 1000;
+  
+  console.log(`⏰ Initial call scheduled in ${initialDelay / 1000}s`);
   
   gameTimerRef.current = setTimeout(async () => {
-    if (!isTimerActiveRef.current) return;
+    if (!isTimerActiveRef.current || !gameData) {
+      console.log('⏰ Initial timer fired but game inactive');
+      return;
+    }
+    
+    console.log('📞 Initial timer fired - calling first number...');
+    lastCallTimeRef.current = Date.now();
     
     try {
       const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
-      if (!shouldContinue) {
+      
+      if (shouldContinue && isTimerActiveRef.current) {
+        console.log('✅ First number called successfully, waiting for audio...');
+        // Audio completion will schedule the next call
+      } else {
+        console.log('⏸️ Game should stop after first call');
         isTimerActiveRef.current = false;
       }
     } catch (error) {
-      console.error('Timer error:', error);
+      console.error('❌ Error in initial call:', error);
       isTimerActiveRef.current = false;
     }
-  }, delay);
-}, [gameData?.gameId, callInterval]);
+  }, initialDelay);
+  
+}, [gameData, callInterval, stopTimer]);
   /**
    * Clear all timers - for cleanup
    */
@@ -187,11 +195,12 @@ const handleAudioComplete = useCallback(() => {
   console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
   console.log(`🔊 IMPORTANT: This is the ONLY system that should call numbers`);
   
-  // ✅ FIX: Check Firebase state instead of local state
-  if (gameData?.gameState?.pendingGameEnd) {
-    console.log(`🏁 Audio complete, game ending detected from Firebase`);
+  // Check if game should end after audio completes
+  if (pendingGameEnd) {
+    console.log(`🏁 Audio complete, ending game now`);
+    setPendingGameEnd(false);
     
-    firebaseService.finalizeGameEnd(gameData.gameId)
+    firebaseService.endGame(gameData!.gameId)
       .then(() => console.log('✅ Game ended after audio completion'))
       .catch(err => console.error('❌ Failed to end game:', err));
     
@@ -237,7 +246,7 @@ const handleAudioComplete = useCallback(() => {
     console.log(`🔊 Audio completed but game inactive or ended`);
     isTimerActiveRef.current = false;
   }
-}, [stopTimer, gameData, callInterval]);
+}, [pendingGameEnd, stopTimer, gameData, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
@@ -379,7 +388,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
           console.log('🎮 Starting timer after game activation');
           startTimer();
         }, 1000);
-      } 
+        } // ✅ ADD this missing closing brace
     }, 1000);
     
     console.log(`✅ Game start initiated: ${gameData.gameId}`);
@@ -396,45 +405,49 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
   /**
    * Pause game - simple timer stop + database update
    */
- const pauseGame = useCallback(async () => {
+  const pauseGame = useCallback(async () => {
   if (!gameData || isProcessing) return;
   setIsProcessing(true);
   try {
-    console.log(`⏸️ Pausing number calling: ${gameData.gameId}`);
+    console.log(`⏸️ Pausing game: ${gameData.gameId}`);
     stopTimer();
     setFirebasePaused(true);
-    // ✅ DON'T call firebaseService.pauseGame() - just stop timer locally
-    console.log(`✅ Number calling paused: ${gameData.gameId}`);
+    await firebaseService.pauseGame(gameData.gameId);
+    console.log(`✅ Game paused: ${gameData.gameId}`);
   } catch (error: any) {
-    console.error('❌ Pause error:', error);
-    throw new Error(error.message || 'Failed to pause number calling');
+    console.error('❌ Pause game error:', error);
+    throw new Error(error.message || 'Failed to pause game');
   } finally {
     setIsProcessing(false);
   }
 }, [gameData, isProcessing, stopTimer]);
+
   /**
    * Resume game - simple timer start + database update
    */
- const resumeGame = useCallback(async () => {
+  const resumeGame = useCallback(async () => {
   if (!gameData || isProcessing) return;
   setIsProcessing(true);
   
   try {
-    console.log(`▶️ Resuming number calling: ${gameData.gameId}`);
+    console.log(`▶️ Resuming game: ${gameData.gameId}`);
     
+    // ✅ FIX: Ensure timer state is set BEFORE Firebase update
     isTimerActiveRef.current = true;
     
-    // ✅ DON'T call firebaseService.resumeGame() - just restart timer locally
+    await firebaseService.resumeGame(gameData.gameId);
     
+    // ✅ FIX: Reset timing reference and start fresh
     lastCallTimeRef.current = Date.now();
     setFirebasePaused(false);
     startTimer();
     
-    console.log(`✅ Number calling resumed: ${gameData.gameId}`);
+    console.log(`✅ Game resumed: ${gameData.gameId}`);
  } catch (error: any) {
-    console.error('❌ Resume error:', error);
+    console.error('❌ Resume game error:', error);
+    // Don't reset timer state on error - let it retry naturally
     console.log('🔄 Resume failed, but timer will continue trying...');
-    throw new Error(error.message || 'Failed to resume number calling');
+    throw new Error(error.message || 'Failed to resume game');
   } finally {
     setIsProcessing(false);
   }
@@ -490,35 +503,33 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
   // Handle screen lock/unlock and browser tab visibility
   useEffect(() => {
     const handleVisibilityChange = () => {
-  if (document.visibilityState === 'visible' && 
-      gameData?.gameState?.isActive && 
-      !gameData?.gameState?.gameOver &&
-      !gameData?.gameState?.isCountdown &&
-      !firebasePaused) { // ✅ ADD: Don't auto-resume if manually paused
-    
-    console.log('🔄 Screen became visible - checking timer state');
-    
-    // If timer should be running but isn't, restart it
-    if (!isTimerActiveRef.current) {
-      console.log('🔄 Restarting timer after screen unlock');
-      lastCallTimeRef.current = Date.now();
-      startTimer();
-    }
-  }
-};
+      if (document.visibilityState === 'visible' && 
+          gameData?.gameState?.isActive && 
+          !gameData?.gameState?.gameOver &&
+          !gameData?.gameState?.isCountdown) {
+        
+        console.log('🔄 Screen became visible - checking timer state');
+        
+        // If timer should be running but isn't, restart it
+        if (!isTimerActiveRef.current) {
+          console.log('🔄 Restarting timer after screen unlock');
+          lastCallTimeRef.current = Date.now();
+          startTimer();
+        }
+      }
+    };
 
     const handleOnlineStatus = () => {
-  if (navigator.onLine && 
-      gameData?.gameState?.isActive && 
-      !gameData?.gameState?.gameOver &&
-      !isTimerActiveRef.current &&
-      !firebasePaused) { // ✅ ADD: Don't auto-resume if manually paused
-    
-    console.log('🔄 Network reconnected - checking timer state');
-    lastCallTimeRef.current = Date.now();
-    startTimer();
-  }
-};
+      if (navigator.onLine && 
+          gameData?.gameState?.isActive && 
+          !gameData?.gameState?.gameOver &&
+          !isTimerActiveRef.current) {
+        
+        console.log('🔄 Network reconnected - checking timer state');
+        lastCallTimeRef.current = Date.now();
+        startTimer();
+      }
+    };
     
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnlineStatus);
@@ -527,46 +538,32 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnlineStatus);
     };
-  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer, firebasePaused]);
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer]);
 
   // Auto-stop timer when game ends (from real-time updates)
-  // Combined game state management
   useEffect(() => {
-    const gameState = gameData?.gameState;
-    
-    // Auto-stop when game ends
-    if (gameState?.gameOver && isTimerActiveRef.current) {
-      isTimerActiveRef.current = false;
-      if (gameTimerRef.current) {
-        clearTimeout(gameTimerRef.current);
-        gameTimerRef.current = null;
-      }
+    if (gameData?.gameState.gameOver && isTimerActiveRef.current) {
+      console.log(`🏁 Game ended via real-time update - stopping timer`);
+      stopTimer();
     }
-    
-    // Auto-resume when appropriate
-    if (gameState?.isActive && 
-        !gameState?.gameOver && 
-        !gameState?.isCountdown &&
+  }, [gameData?.gameState.gameOver, stopTimer]);
+
+  // Auto-resume when host returns to active game - FIXED: Only resume if manually paused
+  useEffect(() => {
+    if (gameData?.gameState?.isActive && 
+        !gameData?.gameState?.gameOver && 
+        !gameData?.gameState?.isCountdown &&
         !isTimerActiveRef.current && 
         !isProcessing &&
-        !firebasePaused) {
+        firebasePaused) { // ✅ ADDED: Only resume if explicitly paused
       
+      console.log(`🔄 Host returned to active game - auto-resuming timer (was paused)`);
       lastCallTimeRef.current = Date.now();
-      isTimerActiveRef.current = true;
-      
-      const delay = callInterval * 1000;
-      gameTimerRef.current = setTimeout(async () => {
-        if (!isTimerActiveRef.current) return;
-        try {
-          const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData?.gameId);
-          if (!shouldContinue) isTimerActiveRef.current = false;
-        } catch (error) {
-          isTimerActiveRef.current = false;
-        }
-      }, delay);
+      startTimer();
     }
-  }, [gameData?.gameState, isProcessing, firebasePaused, callInterval, gameData?.gameId]);
-useEffect(() => {
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer, firebasePaused]);
+// Monitor Firebase recovery - FIXED: Manual recovery only
+  useEffect(() => {
     if (!gameData?.gameId) return;
     
     const recoveryRef = ref(database, `games/${gameData.gameId}/firebaseRecovered`);
@@ -591,6 +588,7 @@ useEffect(() => {
     
     return () => off(recoveryRef, 'value', unsubscribe);
   }, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.gameOver]);
+
   // Auto-resume countdown on page refresh/reconnect
   useEffect(() => {
     if (gameData?.gameState.isCountdown && !countdownTimerRef.current && !isProcessing) {
@@ -612,29 +610,35 @@ useEffect(() => {
  */
 const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   console.log(`🏆 Prize audio completed: ${prizeId}`);
-  // Prize audio completion handled - Game Over audio will be triggered by firebase-game.ts
-}, []);
-
-// ✅ FIXED: Handle Game Over audio completion with proper TDZ handling
-const handleGameOverAudioComplete = useCallback(() => {
-  console.log(`🏁 Game Over audio completed`);
   
-  if (!gameData?.gameId || !gameData?.gameState?.pendingGameEnd) {
-    return;
+  if (pendingGameEnd && gameData) {
+    // Mark this prize as audio completed
+    const updatedPrizes = { ...gameData.prizes };
+    if (updatedPrizes[prizeId]) {
+      updatedPrizes[prizeId].audioCompleted = true;
+    }
+    
+    // Check if all prize audio is complete
+    const hasPendingPrizes = Object.values(updatedPrizes).some((prize: any) => 
+      prize.won && !prize.audioCompleted
+    );
+    
+    if (!hasPendingPrizes) {
+      console.log(`🏁 All prize announcements complete, ending game now`);
+      setPendingGameEnd(false);
+      
+      // Actually end the game
+      firebaseService.endGame(gameData.gameId)
+        .then(() => console.log('✅ Game ended after all audio completion'))
+        .catch(err => console.error('❌ Failed to end game:', err));
+      
+      stopTimer();
+    }
   }
-  
-  // Direct timer cleanup
-  isTimerActiveRef.current = false;
-  if (gameTimerRef.current) {
-    clearTimeout(gameTimerRef.current);
-    gameTimerRef.current = null;
-  }
-  
-  firebaseService.finalizeGameEnd(gameData.gameId).catch(console.error);
-}, [gameData?.gameId, gameData?.gameState?.pendingGameEnd]);
+}, [pendingGameEnd, gameData, stopTimer]);
   // ================== CONTEXT VALUE ==================
 
-const value = React.useMemo(() => ({
+ const value: HostControlsContextValue = {
   startGame,
   pauseGame,
   resumeGame,
@@ -645,17 +649,12 @@ const value = React.useMemo(() => ({
   callInterval,
   handleAudioComplete,
   handlePrizeAudioComplete,
-  handleGameOverAudioComplete,
   firebasePaused,
+  // ✅ ADD new properties:
   isPreparingGame,
   preparationStatus,
   preparationProgress
-}), [
-  startGame, pauseGame, resumeGame, endGame, updateCallInterval,
-  isProcessing, countdownTime, callInterval,
-  handleAudioComplete, handlePrizeAudioComplete, handleGameOverAudioComplete,
-  firebasePaused, isPreparingGame, preparationStatus, preparationProgress
-]);
+};
 
   return (
     <HostControlsContext.Provider value={value}>
