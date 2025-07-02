@@ -34,6 +34,10 @@ interface HostControlsContextValue {
   isPreparingGame: boolean;
   preparationStatus: string;
   preparationProgress: number;
+  
+  // ✅ NEW: Visual state management
+  visualCalledNumbers: number[];
+  setVisualCalledNumbers: React.Dispatch<React.SetStateAction<number[]>>;
 }
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
 
@@ -69,12 +73,20 @@ const [speechRate, setSpeechRate] = React.useState(1.0); // NEW: Speech rate con
 const [speechRateScale, setSpeechRateScale] = React.useState(0); // NEW: Scale value for UI (-3 to +6)
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
-const callInterval = 2.5;
+const callInterval = 1;
+const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
 
-// ✅ ADD: Reset pause state when game changes
+  // ✅ ADD: Reset pause state when game changes
 React.useEffect(() => {
   if (gameData?.gameId) {
     setFirebasePaused(false); // Reset pause state for new/different games
+  }
+}, [gameData?.gameId]);
+
+// ✅ NEW: Reset visual state when game changes
+React.useEffect(() => {
+  if (gameData?.gameId) {
+    setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
   }
 }, [gameData?.gameId]);
 // ✅ ADD these new state variables:
@@ -200,11 +212,21 @@ const startTimer = useCallback(() => {
   }, []);
 
 /**
- * ✅ SOLUTION 1: Handle audio completion and check for pending game end
+ * ✅ SOLUTION 1: Handle audio completion and update visual state
  */
 const handleAudioComplete = useCallback(() => {
   console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
-  console.log(`🔊 IMPORTANT: This is the ONLY system that should call numbers`);
+  
+  // ✅ NEW: Update visual called numbers ONLY after audio completes
+  if (gameData?.gameState?.currentNumber) {
+    setVisualCalledNumbers(prev => {
+      const newNumbers = [...prev];
+      if (!newNumbers.includes(gameData.gameState.currentNumber)) {
+        newNumbers.push(gameData.gameState.currentNumber);
+      }
+      return newNumbers;
+    });
+  }
   
   // Check if game should end after audio completes
   if (pendingGameEnd) {
@@ -219,14 +241,11 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
-  // ✅ FIX: Only schedule next call if game is active AND timer is active
+  // Schedule next call if game is active
   if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerActiveRef.current) {
-    console.log(`🔊 Audio completed - scheduling next call with HOST'S configured interval: ${callInterval}s`);
+    console.log(`🔊 Audio completed - scheduling next call with interval: ${callInterval}s`);
     
-    // ✅ FIX: Always use HOST'S configured delay (not hardcoded)
-    const delay = callInterval * 1000; // Host's configured timing
-    
-    console.log(`⏰ Next call scheduled in ${delay / 1000}s (HOST'S SETTING) after audio completion`);
+    const delay = callInterval * 1000;
     
     gameTimerRef.current = setTimeout(async () => {
       if (!isTimerActiveRef.current || !gameData) {
@@ -242,7 +261,6 @@ const handleAudioComplete = useCallback(() => {
         
         if (shouldContinue && isTimerActiveRef.current) {
           console.log('✅ Number called successfully, waiting for audio...');
-          // Audio completion will schedule the next call
         } else {
           console.log('⏸️ Game should stop');
           isTimerActiveRef.current = false;
@@ -657,7 +675,9 @@ const value: HostControlsContextValue = {
   firebasePaused,
   isPreparingGame,
   preparationStatus,
-  preparationProgress
+  preparationProgress,
+  visualCalledNumbers,
+  setVisualCalledNumbers
 };
   return (
     <HostControlsContext.Provider value={value}>
