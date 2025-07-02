@@ -23,6 +23,7 @@ interface HostControlsContextValue {
   // Audio completion handlers
   handleAudioComplete: () => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
+  handleGameOverAudioComplete: () => void; // ✅ ADD this line
   
   // Firebase status
   firebasePaused: boolean;
@@ -612,35 +613,28 @@ useEffect(() => {
  */
 const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   console.log(`🏆 Prize audio completed: ${prizeId}`);
+  // Prize audio completion handled - Game Over audio will be triggered by firebase-game.ts
+}, []);
+
+// ✅ NEW: Handle Game Over audio completion
+const handleGameOverAudioComplete = useCallback(() => {
+  console.log(`🏁 Game Over audio completed - finalizing game end`);
   
-  if (pendingGameEnd && gameData) {
-    // Mark this prize as audio completed
-    const updatedPrizes = { ...gameData.prizes };
-    if (updatedPrizes[prizeId]) {
-      updatedPrizes[prizeId].audioCompleted = true;
-    }
+  if (gameData?.gameState?.pendingGameEnd) { // ✅ FIX: Check Firebase state directly
+    // Actually end the game and redirect to winners
+    firebaseService.finalizeGameEnd(gameData.gameId)
+      .then(() => {
+        console.log('✅ Game ended successfully - should redirect to winners');
+        // The game state change will automatically trigger winner display
+      })
+      .catch(err => console.error('❌ Failed to finalize game end:', err));
     
-    // Check if all prize audio is complete
-    const hasPendingPrizes = Object.values(updatedPrizes).some((prize: any) => 
-      prize.won && !prize.audioCompleted
-    );
-    
-    if (!hasPendingPrizes) {
-      console.log(`🏁 All prize announcements complete, ending game now`);
-      setPendingGameEnd(false);
-      
-      // Actually end the game
-      firebaseService.endGame(gameData.gameId)
-        .then(() => console.log('✅ Game ended after all audio completion'))
-        .catch(err => console.error('❌ Failed to end game:', err));
-      
-      stopTimer();
-    }
+    stopTimer();
   }
-}, [pendingGameEnd, gameData, stopTimer]);
+}, [gameData, stopTimer]); // ✅ Remove pendingGameEnd from dependencies
   // ================== CONTEXT VALUE ==================
 
- const value: HostControlsContextValue = {
+const value: HostControlsContextValue = {
   startGame,
   pauseGame,
   resumeGame,
@@ -651,6 +645,7 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   callInterval,
   handleAudioComplete,
   handlePrizeAudioComplete,
+  handleGameOverAudioComplete, // ✅ NEW: Add game over audio handler
   firebasePaused,
   // ✅ ADD new properties:
   isPreparingGame,
