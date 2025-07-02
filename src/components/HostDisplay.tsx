@@ -1,6 +1,5 @@
 // ================================================================================
 // FILE 1: src/components/HostDisplay.tsx - SIMPLIFIED WINNER DISPLAY
-// REPLACE the entire HostDisplay component with this version
 // ================================================================================
 
 import React, { useState } from 'react';
@@ -46,16 +45,9 @@ const {
   preparationStatus,
   preparationProgress
 } = hostControls || {};
-  const [callInterval, setCallInterval] = React.useState(5);
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
 
-  // Handle interval change
-  const handleIntervalChange = (newInterval: number) => {
-    setCallInterval(newInterval);
-    if (hostControls) {
-      hostControls.updateCallInterval(newInterval);
-    }
-  };
+ 
   // Toggle prize expansion
   const togglePrize = (prizeId: string) => {
     setExpandedPrizes(prev => {
@@ -68,6 +60,14 @@ const {
       return newSet;
     });
   };
+
+  // Handle speech rate change
+  const handleSpeechRateChange = (newScale: number) => {
+    if (hostControls) {
+      hostControls.updateSpeechRate(newScale);
+    }
+  };
+
 
   // ✅ SIMPLIFIED: Only automatic game control handlers
   const handleStartGame = React.useCallback(async () => {
@@ -291,38 +291,33 @@ const {
             )}
           </div>
 
-{/* Call Interval Control */}
+{/* Speech Rate Control */}
           {(currentPhase === 'booking' || (currentPhase === 'playing' && !gameData.gameState.gameOver)) && (
             <div className="space-y-2">
-              <Label htmlFor="call-interval">Automatic Call Interval: {callInterval} seconds</Label>
+              <Label htmlFor="speech-rate">
+                Speech Speed: {hostControls?.speechRateScale || 0} 
+                {hostControls?.speechRateScale === 0 ? ' (Normal)' : 
+                 hostControls?.speechRateScale < 0 ? ' (Slower)' : ' (Faster)'}
+              </Label>
               <div className="flex items-center space-x-4">
+                <span className="text-xs text-gray-500 w-12">Slow</span>
                 <Input
-                  id="call-interval"
+                  id="speech-rate"
                   type="range"
-                  min="1"
-                  max="10"
-                  value={callInterval}
-                  onChange={(e) => handleIntervalChange(parseInt(e.target.value))}
+                  min="-3"
+                  max="6"
+                  value={hostControls?.speechRateScale || 0}
+                  onChange={(e) => handleSpeechRateChange(parseInt(e.target.value))}
                   className="flex-1"
                 />
-                <span className="text-sm text-gray-600 w-16 text-center">
-                  {callInterval}s
+                <span className="text-xs text-gray-500 w-12">Fast</span>
+                <span className="text-sm text-gray-600 w-8 text-center">
+                  {hostControls?.speechRateScale > 0 ? '+' : ''}{hostControls?.speechRateScale || 0}
                 </span>
               </div>
-             
             </div>
           )}
-
          
-
-          {currentPhase === 'playing' && gameData.gameState.isActive && (
-            <Alert>
-              <Timer className="h-4 w-4" />
-              <AlertDescription>
-                Game is running automatically. Numbers are called every {callInterval} seconds.
-              </AlertDescription>
-            </Alert>
-          )}
         </CardContent>
       </Card>
 
