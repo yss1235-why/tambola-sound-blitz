@@ -1129,16 +1129,19 @@ if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.
     const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
     
    if (shouldEndGame && !updatedGame.gameState.gameOver && !updatedGame.gameState.pendingGameEnd) {
-      console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
-      
-      // Set pending end in Firebase for all clients to see
-      await update(gameRef, {
-        'gameState/pendingGameEnd': true,
-        'updatedAt': new Date().toISOString()
-      });
-      
-      console.log(`✅ Pending game end set in Firebase`);
-    }
+  console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+  
+  // Set pending end in Firebase for all clients to see
+  await update(gameRef, {
+    'gameState/pendingGameEnd': true,
+    'gameState/triggerGameOverAudio': true, // ✅ NEW: Trigger "Game Over" audio
+    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game Over!' : 'All numbers called! Game Over!',
+    'lastWinnerAt': new Date().toISOString(),
+    'updatedAt': new Date().toISOString()
+  });
+  
+  console.log(`✅ Pending game end set in Firebase with Game Over audio trigger`);
+}
     
     return {
       success: true,
@@ -1257,19 +1260,49 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
   /**
    * Check if all prizes are won
    */
-  private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
-    const allPrizes = { ...currentPrizes };
-    
-    // Apply updates
-    for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
-      if (updatePath.startsWith('prizes/')) {
-        const prizeId = updatePath.replace('prizes/', '');
-        allPrizes[prizeId] = updateData;
-      }
+  /**
+ * Check if all ACTIVE/CONFIGURED prizes are won
+ */
+private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
+  const allPrizes = { ...currentPrizes };
+  
+  // Apply updates
+  for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
+    if (updatePath.startsWith('prizes/')) {
+      const prizeId = updatePath.replace('prizes/', '');
+      allPrizes[prizeId] = updateData;
     }
-    
-    return Object.values(allPrizes).every((prize: any) => prize.won);
   }
+  
+  // ✅ FIX: Get only the prizes that are actually configured/active for this game
+  const activePrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
+    // A prize is considered active if it has essential properties and is not disabled
+    return prize && 
+           prize.name && 
+           prize.id && 
+           (prize.order !== undefined || prize.order !== null) &&
+           (prize.active !== false) &&
+           (prize.enabled !== false);
+  });
+  
+  console.log(`🔍 Active prizes check: ${activePrizes.length} active prizes found`);
+  
+  // If no active prizes configured, don't end game based on prize logic
+  if (activePrizes.length === 0) {
+    console.log(`⚠️ No active prizes found - game will not end based on prize completion`);
+    return false;
+  }
+  
+  // Check if all active prizes are won
+  const allActivePrizesWon = activePrizes.every(([prizeId, prize]) => {
+    const isWon = prize.won === true;
+    console.log(`🎯 Prize ${prizeId} (${prize.name}): ${isWon ? 'WON' : 'NOT WON'}`);
+    return isWon;
+  });
+  
+  console.log(`🏁 All active prizes won: ${allActivePrizesWon}`);
+  return allActivePrizesWon;
+}
 
  /**
    * Start game with countdown setup
