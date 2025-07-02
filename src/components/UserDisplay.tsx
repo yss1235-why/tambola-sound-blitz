@@ -21,8 +21,8 @@ import { useGameData } from '@/providers/GameDataProvider';
 import { NumberGrid } from './NumberGrid';
 import { AudioManager } from './AudioManager';
 import { AudioStatusComponent } from './AudioStatusComponent';
+import { useHostControls } from '@/providers/HostControlsProvider';
 import { TambolaTicket } from '@/services/firebase';
-// ✅ NEW: Import shared ticket renderer
 import { renderTicket } from '@/utils/ticketRenderer';
 
 interface SearchedTicket {
@@ -33,18 +33,17 @@ interface SearchedTicket {
 
 export const UserDisplay: React.FC = () => {
   const { gameData, currentPhase, timeUntilAction, isLoading } = useGameData();
-  
+  const { visualCalledNumbers } = useHostControls();
   // Local state for user interactions (search, etc.)
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedTickets, setSearchedTickets] = useState<SearchedTicket[]>([]);
-
   // ✅ ENHANCED: Extract data safely with null checks and format validation
   const tickets = gameData?.tickets || {};
-  const calledNumbers = gameData?.gameState.calledNumbers || [];
+  // ✅ CHANGED: Use visual called numbers instead of database
+  const calledNumbers = visualCalledNumbers || [];
   const currentNumber = gameData?.gameState.currentNumber;
   const prizes = gameData ? Object.values(gameData.prizes).sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
-
   // ✅ NEW: Validate ticket ID format consistency
   const validateTicketFormat = React.useCallback(() => {
     const ticketIds = Object.keys(tickets);
