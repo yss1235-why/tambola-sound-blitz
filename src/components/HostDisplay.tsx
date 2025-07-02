@@ -256,7 +256,7 @@ const {
 
             {currentPhase === 'playing' && (
               <>
-                {gameData.gameState.isActive ? (
+                {!hostControls?.firebasePaused ? (
                   <Button 
                     onClick={handlePauseGame} 
                     variant="secondary" 
@@ -278,7 +278,6 @@ const {
                     {hostControls?.isProcessing ? 'Resuming...' : 'Resume Automatic Game'}
                   </Button>
                 )}
-
                 <Button 
                   onClick={handleEndGame} 
                   variant="destructive" 
