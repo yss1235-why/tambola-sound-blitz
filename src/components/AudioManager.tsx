@@ -390,13 +390,22 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
         };
 
         // Fixed 3-second timer - enough time for any number announcement
-        const audioPlayTime = 4500; // 3 seconds fixed
-        console.log(`⏰ Setting fixed ${audioPlayTime/1000}s timer for: ${item.text}`);
-        
-        fallbackTimer.current = setTimeout(() => {
-          console.log(`⏰ Fixed timer completed after ${audioPlayTime/1000}s: ${item.text}`);
-          handleComplete();
-        }, audioPlayTime);
+       // ✅ FIX: Dynamic timer based on content type
+let audioPlayTime;
+if (item.id === 'game-over') {
+  audioPlayTime = 5500; // 12 seconds for Game Over message
+} else if (item.id.startsWith('prize-')) {
+  audioPlayTime = 4500;  // 8 seconds for prize announcements
+} else {
+  audioPlayTime = 3000;  // 4.5 seconds for number announcements
+}
+
+console.log(`⏰ Setting ${audioPlayTime/1000}s timer for: ${item.text}`);
+
+fallbackTimer.current = setTimeout(() => {
+  console.log(`⏰ Timer completed after ${audioPlayTime/1000}s: ${item.text}`);
+  handleComplete();
+}, audioPlayTime);
         
         window.speechSynthesis.speak(utterance);
         
