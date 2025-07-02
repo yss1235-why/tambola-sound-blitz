@@ -4,12 +4,13 @@ import { Prize } from '@/services/firebase';
 
 interface AudioManagerProps {
   currentNumber: number | null;
-  prizes: Prize[];
-   gameState?: any;
+  prizes: PrizeWinner[];
+  gameState: any;
   onAudioComplete?: () => void;
   forceEnable?: boolean;
-  onPrizeAudioComplete?: (prizeId: string) => void;
+  onPrizeAudioComplete?: () => void;
   onGameOverAudioComplete?: () => void;
+  speechRate?: number; // NEW: Dynamic speech rate control
 }
 interface AudioQueueItem {
   id: string;
@@ -119,7 +120,8 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   onAudioComplete,
   forceEnable = false,
   onPrizeAudioComplete,
-  onGameOverAudioComplete 
+  onGameOverAudioComplete,
+  speechRate // NEW: Extract speechRate prop
 }) => {
   
 const [isAudioSupported, setIsAudioSupported] = useState(false);
@@ -325,7 +327,7 @@ useEffect(() => {
           utterance.voice = chosenVoice;
         }
         
-        utterance.rate = forceEnable ? 0.9 : 0.85;
+     utterance.rate = speechRate !== undefined ? speechRate : (forceEnable ? 1 : 1);
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
@@ -370,7 +372,7 @@ useEffect(() => {
         if (item.id === 'game-over') {
           audioPlayTime = 4000;
         } else if (item.id.startsWith('prize-')) {
-          audioPlayTime = 4000
+          audioPlayTime = 4000;
         } else {
           audioPlayTime = 2500;
         }
@@ -400,7 +402,7 @@ useEffect(() => {
     };
 
     processNext();
-  }, [forceEnable]);
+ }, [forceEnable, speechRate]);
   // Stop all audio
   const stopAllAudio = useCallback(() => {
     if (window.speechSynthesis) {
