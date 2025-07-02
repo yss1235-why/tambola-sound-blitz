@@ -670,23 +670,19 @@ if (cachedWinnerData) {
   }, [user.uid]);
 
   // Handle game completion and winner display
- useEffect(() => {
-    // Safe access to prevent temporal dead zone errors
-    const safeUIState = uiState || 'calculated';
-    const safeGameData = gameData || null;
-    const safeCachedWinnerData = cachedWinnerData || null;
-    
-    if (safeGameData?.gameState.gameOver && safeUIState === 'calculated') {
+  useEffect(() => {
+    if (gameData?.gameState.gameOver && uiState === 'calculated') {
       console.log('🏆 Game completed, caching winner data for display');
-      setCachedWinnerData(safeGameData);
+      setCachedWinnerData(gameData);
       setUIState('winners');
     }
     
-    if (!safeGameData && safeUIState === 'winners' && safeCachedWinnerData) {
+    if (!gameData && uiState === 'winners' && cachedWinnerData) {
       console.log('🎮 Game deleted, transitioning to setup mode');
       setUIState('setup');
     }
   }, [gameData?.gameState.gameOver, gameData, uiState, cachedWinnerData]);
+
   // Clear operation state when real-time data updates
   useEffect(() => {
     if (operation.inProgress) {
@@ -709,41 +705,37 @@ if (cachedWinnerData) {
 
   // ================== VIEW CALCULATION ==================
 
- const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
-  // Safe access to prevent temporal dead zone errors
-  const safeUIState = uiState || 'calculated';
-  const safeGameData = gameData || null;
-  
+  const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
   console.log('🎯 GameHost: Calculating current view:', {
-    uiState: safeUIState,
-    hasGameData: !!safeGameData,
-    gameOver: safeGameData?.gameState.gameOver,
-    isActive: safeGameData?.gameState.isActive,
-    isCountdown: safeGameData?.gameState.isCountdown,
-    calledNumbers: safeGameData?.gameState.calledNumbers?.length || 0
+    uiState,
+    hasGameData: !!gameData,
+    gameOver: gameData?.gameState.gameOver,
+    isActive: gameData?.gameState.isActive,
+    isCountdown: gameData?.gameState.isCountdown,
+    calledNumbers: gameData?.gameState.calledNumbers?.length || 0
   });
   
-  if (safeUIState === 'winners') {
+  if (uiState === 'winners') {
     console.log('🏆 GameHost: Returning winners view');
     return 'winners';
   }
-  if (safeUIState === 'setup') {
+  if (uiState === 'setup') {
     console.log('🎮 GameHost: Returning setup view');
     return 'setup';
   }
-  if (!safeGameData) {
+  if (!gameData) {
     console.log('❌ GameHost: No game data, returning setup');
     return 'setup';
   }
-  if (safeGameData.gameState.gameOver) {
+  if (gameData.gameState.gameOver) {
     console.log('🏁 GameHost: Game over, returning winners');
     return 'winners';
   }
-  if (safeGameData.gameState.isActive || safeGameData.gameState.isCountdown) {
+  if (gameData.gameState.isActive || gameData.gameState.isCountdown) {
     console.log('🎮 GameHost: Game started - returning LIVE view');
     return 'live';
   }
- console.log('🎫 GameHost: Default - returning booking view');
+  console.log('🎫 GameHost: Default - returning booking view');
   return 'booking';
 };
 
