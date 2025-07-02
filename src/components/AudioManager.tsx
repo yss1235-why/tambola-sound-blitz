@@ -387,7 +387,7 @@ const addToQueue = useCallback((item: AudioQueueItem) => {
         };
 
         // Fixed 3-second timer - enough time for any number announcement
-        const audioPlayTime = 3000; // 3 seconds fixed
+        const audioPlayTime = 4500; // 3 seconds fixed
         console.log(`⏰ Setting fixed ${audioPlayTime/1000}s timer for: ${item.text}`);
         
         fallbackTimer.current = setTimeout(() => {
@@ -442,7 +442,7 @@ useEffect(() => {
   }
 }, [currentNumber, addToQueue, onAudioComplete, isBlockedForAnnouncement]);
 
-  // Handle prize announcements
+// Handle prize announcements
 useEffect(() => {
   prizes.forEach(prize => {
     if (prize.won && !announcedPrizes.current.has(prize.id)) {
@@ -452,9 +452,17 @@ useEffect(() => {
       
       if (prize.winners && prize.winners.length > 0) {
         if (prize.winners.length === 1) {
-          announcement += ` by ${prize.winners[0].name}`;
+          const winner = prize.winners[0];
+          announcement += ` by ${winner.name} with ticket ${winner.ticketId}`;
+        } else if (prize.winners.length === 2) {
+          // For 2 winners, mention both
+          const winner1 = prize.winners[0];
+          const winner2 = prize.winners[1];
+          announcement += ` by ${winner1.name} with ticket ${winner1.ticketId} and ${winner2.name} with ticket ${winner2.ticketId}`;
         } else {
-          announcement += ` by ${prize.winners.length} players`;
+          // For 3+ winners, mention count and first winner as example
+          const firstWinner = prize.winners[0];
+          announcement += ` by ${prize.winners.length} players including ${firstWinner.name} with ticket ${firstWinner.ticketId}`;
         }
       }
       
