@@ -13,12 +13,14 @@ interface HostControlsContextValue {
   endGame: () => Promise<void>;
   
   // Configuration
-  updateCallInterval: (seconds: number) => void;
+  updateSpeechRate: (scaleValue: number) => void; // NEW
   
   // Status
   isProcessing: boolean;
   countdownTime: number;
-  callInterval: number;
+  
+  speechRate: number; // NEW
+  speechRateScale: number; // NEW
   
   // Audio completion handlers
   handleAudioComplete: () => void;
@@ -61,11 +63,13 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const { gameData } = useGameData();
   
   // Simple state - only for UI feedback
-  const [isProcessing, setIsProcessing] = React.useState(false);
-  const [countdownTime, setCountdownTime] = React.useState(0);
- const [callInterval, setCallInterval] = React.useState(5);
+const [isProcessing, setIsProcessing] = React.useState(false);
+const [countdownTime, setCountdownTime] = React.useState(0);
+const [speechRate, setSpeechRate] = React.useState(1.0); // NEW: Speech rate control (1.0 = normal)
+const [speechRateScale, setSpeechRateScale] = React.useState(0); // NEW: Scale value for UI (-3 to +6)
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
+const callInterval = 2.5;
 
 // ✅ ADD: Reset pause state when game changes
 React.useEffect(() => {
@@ -482,17 +486,20 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
     }
   }, [gameData, isProcessing, stopTimer]);
 
-  /**
-   * Update call interval - simple state update
-   */
- const updateCallInterval = useCallback((seconds: number) => {
-  setCallInterval(seconds);
-  console.log(`⏰ Call interval updated to ${seconds} seconds`);
+
+/**
+ * Update speech rate - convert scale to actual rate
+ */
+const updateSpeechRate = useCallback((scaleValue: number) => {
+  // Convert scale (-3 to +6) to actual speech rate
+  const actualRate = scaleValue <= 0 
+    ? 1.0 + (scaleValue * 0.1)  // -3 = 0.7, -1 = 0.9, 0 = 1.0
+    : 1.0 + (scaleValue * 0.1); // +1 = 1.1, +6 = 1.6
   
-  // Don't restart timer here - it will restart naturally after current audio completes
-  // This prevents race conditions
+  setSpeechRateScale(scaleValue); // Store scale for UI
+  setSpeechRate(actualRate);     // Store actual rate for audio
+  console.log(`🎤 Speech rate updated to ${actualRate} (scale: ${scaleValue})`);
 }, []);
-  // ================== CLEANUP ==================
 
  // ================== CLEANUP ==================
 
@@ -639,20 +646,19 @@ const value: HostControlsContextValue = {
   pauseGame,
   resumeGame,
   endGame,
-  updateCallInterval,
+  updateSpeechRate, 
   isProcessing,
   countdownTime,
-  callInterval,
+  speechRate, 
+  speechRateScale, 
   handleAudioComplete,
   handlePrizeAudioComplete,
-  handleGameOverAudioComplete, // ✅ NEW: Add game over audio handler
+  handleGameOverAudioComplete,
   firebasePaused,
-  // ✅ ADD new properties:
   isPreparingGame,
   preparationStatus,
   preparationProgress
 };
-
   return (
     <HostControlsContext.Provider value={value}>
       {children}
