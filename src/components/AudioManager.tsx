@@ -5,10 +5,11 @@ import { Prize } from '@/services/firebase';
 interface AudioManagerProps {
   currentNumber: number | null;
   prizes: Prize[];
-  onAudioComplete?: () => void; // ✅ FIX: This should ONLY report completion
+  gameState?: any; // ❌ MISSING: Add gameState prop
+  onAudioComplete?: () => void;
   forceEnable?: boolean;
   onPrizeAudioComplete?: (prizeId: string) => void;
-  // ✅ REMOVED: callInterval - AudioManager doesn't need to know about timing
+  onGameOverAudioComplete?: () => void;
 }
 interface AudioQueueItem {
   id: string;
@@ -114,9 +115,11 @@ const numberCalls: { [key: number]: string } = {
 export const AudioManager: React.FC<AudioManagerProps> = ({ 
   currentNumber, 
   prizes, 
+  gameState, // ❌ MISSING
   onAudioComplete,
   forceEnable = false,
-  onPrizeAudioComplete
+  onPrizeAudioComplete,
+  onGameOverAudioComplete // ❌ MISSING
 }) => {
   // State
  // State
@@ -484,6 +487,24 @@ useEffect(() => {
     }
   });
 }, [prizes, addToQueue, onPrizeAudioComplete]);
+  // ✅ NEW: Handle Game Over audio announcement
+useEffect(() => {
+  if (gameState?.triggerGameOverAudio && gameState?.pendingGameEnd) {
+    console.log(`🏁 Game Over audio triggered`);
+    
+    addToQueue({
+      id: 'game-over',
+      text: 'Congratulations to all winners! This tambola game has ended. Thank you for playing!',
+      priority: 'high',
+      callback: () => {
+        console.log(`🏁 Game Over audio completed - triggering final game end`);
+        if (onGameOverAudioComplete) {
+          onGameOverAudioComplete();
+        }
+      }
+    });
+  }
+}, [gameState?.triggerGameOverAudio, gameState?.pendingGameEnd, addToQueue, onGameOverAudioComplete]);
 
   // Reset announced prizes when game resets
   useEffect(() => {
