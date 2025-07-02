@@ -670,19 +670,23 @@ if (cachedWinnerData) {
   }, [user.uid]);
 
   // Handle game completion and winner display
-  useEffect(() => {
-    if (gameData?.gameState.gameOver && uiState === 'calculated') {
+ useEffect(() => {
+    // Safe access to prevent temporal dead zone errors
+    const safeUIState = uiState || 'calculated';
+    const safeGameData = gameData || null;
+    const safeCachedWinnerData = cachedWinnerData || null;
+    
+    if (safeGameData?.gameState.gameOver && safeUIState === 'calculated') {
       console.log('🏆 Game completed, caching winner data for display');
-      setCachedWinnerData(gameData);
+      setCachedWinnerData(safeGameData);
       setUIState('winners');
     }
     
-    if (!gameData && uiState === 'winners' && cachedWinnerData) {
+    if (!safeGameData && safeUIState === 'winners' && safeCachedWinnerData) {
       console.log('🎮 Game deleted, transitioning to setup mode');
       setUIState('setup');
     }
   }, [gameData?.gameState.gameOver, gameData, uiState, cachedWinnerData]);
-
   // Clear operation state when real-time data updates
   useEffect(() => {
     if (operation.inProgress) {
