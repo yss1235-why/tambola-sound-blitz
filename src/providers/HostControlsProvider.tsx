@@ -66,6 +66,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 
+// ✅ ADD: Reset pause state when game changes
+React.useEffect(() => {
+  if (gameData?.gameId) {
+    setFirebasePaused(false); // Reset pause state for new/different games
+  }
+}, [gameData?.gameId]);
 // ✅ ADD these new state variables:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
 const [preparationStatus, setPreparationStatus] = React.useState<string>('');
@@ -536,7 +542,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnlineStatus);
     };
-  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer]);
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer, firebasePaused]);
 
   // Auto-stop timer when game ends (from real-time updates)
   useEffect(() => {
@@ -546,22 +552,21 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
 
-  // Auto-resume when host returns to active game - FIXED: Only resume if manually paused
+ // Auto-resume when host returns to active game - FIXED: Only if NOT manually paused
   useEffect(() => {
     if (gameData?.gameState?.isActive && 
         !gameData?.gameState?.gameOver && 
         !gameData?.gameState?.isCountdown &&
         !isTimerActiveRef.current && 
         !isProcessing &&
-        firebasePaused) { // ✅ ADDED: Only resume if explicitly paused
+        !firebasePaused) { // ✅ FIXED: Only auto-resume if NOT manually paused
       
-      console.log(`🔄 Host returned to active game - auto-resuming timer (was paused)`);
+      console.log(`🔄 Host returned to active game - auto-resuming timer (NOT manually paused)`);
       lastCallTimeRef.current = Date.now();
       startTimer();
     }
   }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer, firebasePaused]);
-// Monitor Firebase recovery - FIXED: Manual recovery only
-  useEffect(() => {
+useEffect(() => {
     if (!gameData?.gameId) return;
     
     const recoveryRef = ref(database, `games/${gameData.gameId}/firebaseRecovered`);
@@ -586,7 +591,6 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
     
     return () => off(recoveryRef, 'value', unsubscribe);
   }, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.gameOver]);
-
   // Auto-resume countdown on page refresh/reconnect
   useEffect(() => {
     if (gameData?.gameState.isCountdown && !countdownTimerRef.current && !isProcessing) {
