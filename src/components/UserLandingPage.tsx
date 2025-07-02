@@ -150,19 +150,14 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
   }, [onGameSelection, gameDataSource.games]);
   // 🔥 AUTO-NAVIGATION: Automatically switch views when game state changes in real-time
 useEffect(() => {
-  // Safe access to prevent temporal dead zone errors
-  const safeCurrentView = currentView || 'list';
-  const safeSelectedGameId = selectedGameId || null;
-  const safeGameDataSource = gameDataSource || { games: [] };
-  
   // STEP 1: Only run when a specific game is selected (not on the games list page)
-  if (!safeSelectedGameId || safeCurrentView === 'list') {
+  if (!selectedGameId || currentView === 'list') {
     // If no game selected or we're on the games list, don't do anything
     return;
   }
   
   // STEP 2: Find the currently selected game from the real-time Firebase data
-  const selectedGame = safeGameDataSource.games?.find(g => g.gameId === safeSelectedGameId);
+  const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
   
   // STEP 3: If the game doesn't exist anymore, go back to the games list
   if (!selectedGame) {
@@ -198,9 +193,9 @@ useEffect(() => {
   }
   
   // STEP 5: Only switch views if the target view is different from current view
-  if (safeCurrentView !== shouldShowView) {
-    console.log(`🔄 AUTO-SWITCHING VIEW: ${safeCurrentView} → ${shouldShowView}`, {
-      gameId: safeSelectedGameId,
+  if (currentView !== shouldShowView) {
+    console.log(`🔄 AUTO-SWITCHING VIEW: ${currentView} → ${shouldShowView}`, {
+      gameId: selectedGameId,
       gameOver: selectedGame.gameState.gameOver,
       isActive: selectedGame.gameState.isActive,
       isCountdown: selectedGame.gameState.isCountdown,
@@ -212,6 +207,7 @@ useEffect(() => {
   }
   
 }, [selectedGameId, currentView, gameDataSource.games, onGameSelection]);
+
   // ✅ UNCHANGED: All existing handler functions
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
     const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
