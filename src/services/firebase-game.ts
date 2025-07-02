@@ -1053,33 +1053,13 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       let selectedNumber: number;
       
      // Check for pre-generated sequence (REQUIRED)
-// ✅ FIX: Safe access to session cache
-const sessionCache = currentGame?.sessionCache;
-const calledNumbersLength = calledNumbers?.length || 0;
-
-// Check for pre-generated sequence (REQUIRED)
-if (sessionCache && Array.isArray(sessionCache) && sessionCache.length > calledNumbersLength) {
-  selectedNumber = sessionCache[calledNumbersLength];
-  
-  // ✅ FIX: Validate the selected number
-  if (typeof selectedNumber !== 'number' || selectedNumber < 1 || selectedNumber > 90) {
-    throw new Error(`Invalid number from pre-generated sequence: ${selectedNumber}`);
-  }
-  
-  console.log(`🎯 Transaction: Using pre-generated number ${selectedNumber} (position ${calledNumbersLength + 1})`);
+if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
+  selectedNumber = currentGame.sessionCache[calledNumbers.length];
+  console.log(`🎯 Transaction: Using pre-generated number ${selectedNumber} (position ${calledNumbers.length + 1})`);
 } else {
-  // ✅ FIX: Fallback with proper error handling
+  // No pre-generated sequence available - this should not happen
   console.error('❌ No pre-generated sequence available - game cannot continue');
-  
-  // Set pending game end instead of throwing error
-  return {
-    ...currentGame,
-    gameState: {
-      ...currentGame.gameState,
-      pendingGameEnd: true,
-      updatedAt: new Date().toISOString()
-    }
-  };
+  throw new Error('Pre-generated sequence is required but not available');
 }
       // Update game state atomically
       const updatedCalledNumbers = [...calledNumbers, selectedNumber];
@@ -1110,38 +1090,17 @@ if (sessionCache && Array.isArray(sessionCache) && sessionCache.length > calledN
     const updatedGame = transactionResult.snapshot.val();
     
     // Handle case where no numbers were available
-   // ✅ FIX: Safe access to game state and transaction meta
-// ✅ FIX: Safe access to game state and transaction meta
-const gameState = updatedGame?.gameState || {};
-const transactionMeta = updatedGame?._transactionMeta;
-
-// Handle case where no numbers were available
-if (gameState.pendingGameEnd && !transactionMeta) {
-  console.log(`🏁 No more numbers available - game should end after current state`);
-  return {
-    success: true,
-    gameEnded: true,
-    hasMoreNumbers: false
-  };
-}
-
-// ✅ FIX: Validate transaction metadata (no redeclaration)
-if (!transactionMeta) {
-  console.error('❌ Transaction metadata missing');
-  throw new Error('Transaction failed - missing metadata');
-}
-
-const selectedNumber = transactionMeta.selectedNumber;
-const updatedCalledNumbers = transactionMeta.updatedCalledNumbers;
-
-// ✅ FIX: Validate required data
-if (typeof selectedNumber !== 'number') {
-  throw new Error('Invalid selected number from transaction');
-}
-
-if (!Array.isArray(updatedCalledNumbers)) {
-  throw new Error('Invalid called numbers array from transaction');
-}
+    if (updatedGame.gameState.pendingGameEnd && !updatedGame._transactionMeta) {
+      console.log(`🏁 No more numbers available - game should end after current state`);
+      return {
+        success: true,
+        gameEnded: true,
+        hasMoreNumbers: false
+      };
+    }
+    
+    const selectedNumber = updatedGame._transactionMeta.selectedNumber;
+    const updatedCalledNumbers = updatedGame._transactionMeta.updatedCalledNumbers;
     
     console.log(`✅ Transaction committed: Number ${selectedNumber} called successfully`);
     
@@ -1170,19 +1129,16 @@ if (!Array.isArray(updatedCalledNumbers)) {
     const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
     
    if (shouldEndGame && !updatedGame.gameState.gameOver && !updatedGame.gameState.pendingGameEnd) {
-  console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
-  
-  // Set pending end in Firebase for all clients to see
-  await update(gameRef, {
-    'gameState/pendingGameEnd': true,
-    'gameState/triggerGameOverAudio': true, // ✅ NEW: Trigger "Game Over" audio
-    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game Over!' : 'All numbers called! Game Over!',
-    'lastWinnerAt': new Date().toISOString(),
-    'updatedAt': new Date().toISOString()
-  });
-  
-  console.log(`✅ Pending game end set in Firebase with Game Over audio trigger`);
-}
+      console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+      
+      // Set pending end in Firebase for all clients to see
+      await update(gameRef, {
+        'gameState/pendingGameEnd': true,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Pending game end set in Firebase`);
+    }
     
     return {
       success: true,
@@ -1301,49 +1257,19 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
   /**
    * Check if all prizes are won
    */
-  /**
- * Check if all ACTIVE/CONFIGURED prizes are won
- */
-private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
-  const allPrizes = { ...currentPrizes };
-  
-  // Apply updates
-  for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
-    if (updatePath.startsWith('prizes/')) {
-      const prizeId = updatePath.replace('prizes/', '');
-      allPrizes[prizeId] = updateData;
+  private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
+    const allPrizes = { ...currentPrizes };
+    
+    // Apply updates
+    for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
+      if (updatePath.startsWith('prizes/')) {
+        const prizeId = updatePath.replace('prizes/', '');
+        allPrizes[prizeId] = updateData;
+      }
     }
+    
+    return Object.values(allPrizes).every((prize: any) => prize.won);
   }
-  
-  // ✅ FIX: Get only the prizes that are actually configured/active for this game
-  const activePrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
-    // A prize is considered active if it has essential properties and is not disabled
-    return prize && 
-           prize.name && 
-           prize.id && 
-           (prize.order !== undefined || prize.order !== null) &&
-           (prize.active !== false) &&
-           (prize.enabled !== false);
-  });
-  
-  console.log(`🔍 Active prizes check: ${activePrizes.length} active prizes found`);
-  
-  // If no active prizes configured, don't end game based on prize logic
-  if (activePrizes.length === 0) {
-    console.log(`⚠️ No active prizes found - game will not end based on prize completion`);
-    return false;
-  }
-  
-  // Check if all active prizes are won
-  const allActivePrizesWon = activePrizes.every(([prizeId, prize]) => {
-    const isWon = prize.won === true;
-    console.log(`🎯 Prize ${prizeId} (${prize.name}): ${isWon ? 'WON' : 'NOT WON'}`);
-    return isWon;
-  });
-  
-  console.log(`🏁 All active prizes won: ${allActivePrizesWon}`);
-  return allActivePrizesWon;
-}
 
  /**
    * Start game with countdown setup
@@ -1419,58 +1345,36 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
    * Actually end the game after audio completion
    */
   async finalizeGameEnd(gameId: string): Promise<void> {
-  try {
-    console.log(`🏁 Finalizing game end for ${gameId}`);
-    
-    // ✅ FIX: Validate gameId first
-    if (!gameId || typeof gameId !== 'string') {
-      throw new Error('Invalid gameId provided to finalizeGameEnd');
+    try {
+      console.log(`🏁 Finalizing game end for ${gameId}`);
+      
+      const gameRef = ref(database, `games/${gameId}`);
+      
+      await runTransaction(gameRef, (currentGame) => {
+        if (!currentGame) {
+          throw new Error('Game not found');
+        }
+        
+        return {
+          ...currentGame,
+          gameState: {
+            ...currentGame.gameState,
+            isActive: false,
+            gameOver: true,
+            pendingGameEnd: false,
+            gameEndedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          }
+        };
+      });
+      
+      console.log(`✅ Game ${gameId} ended successfully after audio completion`);
+      
+    } catch (error: any) {
+      console.error('❌ Failed to finalize game end:', error);
+      throw new Error(error.message || 'Failed to finalize game end');
     }
-    
-    const gameRef = ref(database, `games/${gameId}`);
-    
-    await runTransaction(gameRef, (currentGame) => {
-      // ✅ FIX: Handle null/undefined game
-      if (!currentGame) {
-        console.error(`❌ Game not found during finalization: ${gameId}`);
-        throw new Error('Game not found');
-      }
-      
-      // ✅ FIX: Ensure gameState exists and is properly initialized
-      const currentGameState = currentGame.gameState || {};
-      
-      // ✅ FIX: Create new game state with safe property access
-      const newGameState = {
-        isActive: false,
-        isCountdown: false,
-        countdownTime: 0,
-        gameOver: false,
-        calledNumbers: [],
-        pendingGameEnd: false,
-        updatedAt: new Date().toISOString(),
-        // ✅ FIX: Preserve existing state but override critical fields
-        ...currentGameState,
-        // ✅ FIX: Force these values regardless of existing state
-        isActive: false,
-        gameOver: true,
-        pendingGameEnd: false,
-        gameEndedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      
-      return {
-        ...currentGame,
-        gameState: newGameState
-      };
-    });
-    
-    console.log(`✅ Game ${gameId} ended successfully after audio completion`);
-    
-  } catch (error: any) {
-    console.error('❌ Failed to finalize game end:', error);
-    throw new Error(error.message || 'Failed to finalize game end');
   }
-}
 
   /**
    * End game when no more numbers available
@@ -1571,5 +1475,4 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
   // ================== SINGLETON EXPORT ==================
 
 export const firebaseGame = new FirebaseGameService();
-
 
