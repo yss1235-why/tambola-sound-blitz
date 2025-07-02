@@ -168,9 +168,18 @@ class FirebaseService {
 
 
   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
+  // ✅ ADD: Detect who's calling this method
+  const stack = new Error().stack;
   console.log(`🎯 FirebaseService: callNextNumberAndContinue called for ${gameId}`);
+  console.log(`📞 Called from: ${stack?.split('\n')[2]?.trim()}`);
   
-  // ✅ REMOVED: Security check no longer needed since auto-resume conflict is fixed
+  // Only allow calls from HostControlsProvider
+  if (stack && !stack.includes('HostControlsProvider')) {
+    console.error('🚫 BLOCKED: Number calling from non-HostControlsProvider source');
+    console.error('📍 Call stack:', stack);
+    throw new Error('Only HostControlsProvider can call numbers');
+  }
+  
   return this.game.callNextNumberAndContinue(gameId);
 }
   /**
