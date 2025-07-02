@@ -368,11 +368,11 @@ useEffect(() => {
         // Dynamic timer based on content type
         let audioPlayTime;
         if (item.id === 'game-over') {
-          audioPlayTime = 5500;
+          audioPlayTime = 4000;
         } else if (item.id.startsWith('prize-')) {
-          audioPlayTime = 4500;
+          audioPlayTime = 4000
         } else {
-          audioPlayTime = 3000;
+          audioPlayTime = 2500;
         }
 
         console.log(`⏰ Setting ${audioPlayTime/1000}s timer for: ${item.text}`);
