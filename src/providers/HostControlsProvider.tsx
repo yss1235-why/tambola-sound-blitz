@@ -64,7 +64,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [countdownTime, setCountdownTime] = React.useState(0);
  const [callInterval, setCallInterval] = React.useState(5);
-const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 
 // ✅ ADD: Reset pause state when game changes
@@ -202,12 +201,11 @@ const handleAudioComplete = useCallback(() => {
   console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
   console.log(`🔊 IMPORTANT: This is the ONLY system that should call numbers`);
   
-  // Check if game should end after audio completes
-  if (pendingGameEnd) {
-    console.log(`🏁 Audio complete, ending game now`);
-    setPendingGameEnd(false);
+  // ✅ FIX: Check Firebase state instead of local state
+  if (gameData?.gameState?.pendingGameEnd) {
+    console.log(`🏁 Audio complete, game ending detected from Firebase`);
     
-    firebaseService.endGame(gameData!.gameId)
+    firebaseService.finalizeGameEnd(gameData.gameId)
       .then(() => console.log('✅ Game ended after audio completion'))
       .catch(err => console.error('❌ Failed to end game:', err));
     
@@ -253,7 +251,7 @@ const handleAudioComplete = useCallback(() => {
     console.log(`🔊 Audio completed but game inactive or ended`);
     isTimerActiveRef.current = false;
   }
-}, [pendingGameEnd, stopTimer, gameData, callInterval]);
+}, [stopTimer, gameData, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
@@ -395,7 +393,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
           console.log('🎮 Starting timer after game activation');
           startTimer();
         }, 1000);
-        } // ✅ ADD this missing closing brace
+      } 
     }, 1000);
     
     console.log(`✅ Game start initiated: ${gameData.gameId}`);
@@ -616,22 +614,46 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   // Prize audio completion handled - Game Over audio will be triggered by firebase-game.ts
 }, []);
 
-// ✅ NEW: Handle Game Over audio completion
+// ✅ FIXED: Handle Game Over audio completion with proper TDZ handling
 const handleGameOverAudioComplete = useCallback(() => {
   console.log(`🏁 Game Over audio completed - finalizing game end`);
   
-  if (gameData?.gameState?.pendingGameEnd) { // ✅ FIX: Check Firebase state directly
-    // Actually end the game and redirect to winners
+  // ✅ FIX: Check if gameData exists and is properly initialized
+  if (!gameData?.gameId) {
+    console.error('❌ Cannot finalize game end - gameData not initialized');
+    return;
+  }
+  
+  // ✅ FIX: Get current state safely to avoid TDZ
+  const currentGameState = gameData.gameState;
+  if (!currentGameState) {
+    console.error('❌ Cannot finalize game end - gameState not initialized');
+    return;
+  }
+  
+  // ✅ FIX: Use safe property access
+  const isPendingGameEnd = currentGameState.pendingGameEnd === true;
+  
+  if (isPendingGameEnd) {
+    console.log('🏁 Finalizing game end - pendingGameEnd is true');
+    
+    // Stop timer first
+    stopTimer();
+    
+    // Then finalize the game end
     firebaseService.finalizeGameEnd(gameData.gameId)
       .then(() => {
         console.log('✅ Game ended successfully - should redirect to winners');
         // The game state change will automatically trigger winner display
       })
-      .catch(err => console.error('❌ Failed to finalize game end:', err));
-    
-    stopTimer();
+      .catch(err => {
+        console.error('❌ Failed to finalize game end:', err);
+        // Don't crash the app - just log the error
+      });
+  } else {
+    console.log('🔄 Game Over audio completed but pendingGameEnd is not true:', currentGameState.pendingGameEnd);
   }
-}, [gameData, stopTimer]); // ✅ Remove pendingGameEnd from dependencies
+}, [gameData, stopTimer]);
   // ================== CONTEXT VALUE ==================
 
 const value: HostControlsContextValue = {
