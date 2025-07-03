@@ -87,17 +87,10 @@ const [isAudioReady, setIsAudioReady] = React.useState(false);
 const [wasAutopaused, setWasAutopaused] = React.useState(false); 
 const hasInitializedRef = React.useRef(false); // Use ref instead of state
 
-// ✅ FIXED: Reset pause state and cleanup when game changes (but not on page refresh)
+ // ✅ FIXED: Reset pause state and cleanup when game changes
 React.useEffect(() => {
   if (gameData?.gameId) {
-    // Only reset pause state if this is NOT a page refresh
-    const isPageRefresh = !sessionStorage.getItem(`gameInitialized_${gameData.gameId}`);
-    
-    if (!isPageRefresh) {
-      // Normal game change (not page refresh) - reset pause state
-      setFirebasePaused(false);
-      setWasAutopaused(false);
-    }
+    setFirebasePaused(false); // Reset pause state for new/different games
     
     // Cleanup function to clear session storage when game changes
     return () => {
