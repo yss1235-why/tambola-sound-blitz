@@ -137,7 +137,8 @@ const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
   
   // Other refs
   const lastCalledNumber = useRef<number | null>(null);
-  const announcedPrizes = useRef<Set<string>>(new Set());
+ const announcedPrizes = useRef<Set<string>>(new Set());
+  const announcedGameOver = useRef<boolean>(false);
   const audioQueue = useRef<AudioQueueItem[]>([]);
   const isProcessingQueue = useRef<boolean>(false);
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
@@ -546,13 +547,40 @@ useEffect(() => {
     }
   });
 }, [prizes, addToQueue, onPrizeAudioComplete]);
+
+// Handle Game Over announcement - THE MISSING PIECE
+useEffect(() => {
+  if (gameState?.triggerGameOverAudio && !announcedGameOver.current) {
+    announcedGameOver.current = true;
+    
+    // Use the announcement from Firebase or fallback
+    const announcement = gameState.lastWinnerAnnouncement || "Game Over! All prizes have been won!";
+    
+    console.log(`🏁 Triggering Game Over audio: "${announcement}"`);
+    
+    addToQueue({
+      id: 'game-over',
+      text: announcement,
+      priority: 'high',
+      callback: () => {
+        console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
+        if (onGameOverAudioComplete) {
+          onGameOverAudioComplete();
+        }
+      }
+    });
+  }
+}, [gameState?.triggerGameOverAudio, gameState?.lastWinnerAnnouncement, addToQueue, onGameOverAudioComplete]);
+
+// Reset announced prizes when game resets
 // Reset announced prizes when game resets
   useEffect(() => {
     const wonPrizes = prizes.filter(p => p.won);
     
-    if (wonPrizes.length === 0 && announcedPrizes.current.size > 0) {
+   if (wonPrizes.length === 0 && announcedPrizes.current.size > 0) {
       console.log('🔄 Resetting audio state for new game');
       announcedPrizes.current.clear();
+      announcedGameOver.current = false;
       lastCalledNumber.current = null;
       audioQueue.current = [];
       
