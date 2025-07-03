@@ -86,33 +86,37 @@ React.useEffect(() => {
   }
 }, [gameData?.gameId]);
 
-// ✅ FIXED: Smart initialization with auto-resume after refresh
+// ✅ FIXED: Smart initialization that prevents number flooding on refresh
 React.useEffect(() => {
   if (gameData?.gameId) {
     // Check if this is an active game that we're refreshing into
     const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
     
-    if (isActiveGame) {
-      console.log('🔄 Page refreshed during active game - preparing auto-resume');
-      
-      // Don't show all numbers immediately - prevent flooding
-      const currentNum = gameData.gameState.currentNumber;
-      setVisualCalledNumbers(currentNum ? [currentNum] : []);
-      
-      // Mark that audio system needs to initialize
-      setIsAudioReady(false);
-      setFirebasePaused(false); // Don't pause - we'll auto-resume
-      setWasAutopaused(true); // Track that we're recovering from refresh
-      
-      console.log('✅ Refresh recovery prepared - will auto-resume when audio ready');
-      
-    } else {
-      // For non-active games, normal initialization is safe
-      setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
-      setIsAudioReady(false);
-      setFirebasePaused(false);
-      setWasAutopaused(false);
-    }
+   if (isActiveGame) {
+  console.log('🔄 Page refreshed during active game - implementing safety measures');
+  
+  // Auto-pause on refresh to prevent chaos
+  setFirebasePaused(true);
+  setWasAutopaused(true); // ✅ NEW: Track that this was an auto-pause
+  
+  // Show all numbers that were actually called (safe when paused)
+  setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
+  
+  // Mark that we need manual resume
+  setIsAudioReady(false);
+  
+  // Auto-pause in Firebase to sync state
+  firebaseService.pauseGame(gameData.gameId)
+    .then(() => console.log('✅ Game auto-paused on refresh for safety'))
+    .catch(err => console.error('❌ Failed to auto-pause on refresh:', err));
+    
+} else {
+  // For non-active games, normal initialization is safe
+  setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
+  setIsAudioReady(false);
+  setFirebasePaused(false);
+  setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag for non-active games
+}
   }
 }, [gameData?.gameId]);
 // ✅ ADD these new state variables:
@@ -247,25 +251,6 @@ const handleAudioComplete = useCallback(async () => {
   if (!isAudioReady) {
     setIsAudioReady(true);
     console.log('✅ Audio system now ready after page refresh');
-    
-    // ✅ NEW: Auto-resume game after refresh once audio is ready
-    if (wasAutopaused && gameData?.gameState?.isActive && !gameData?.gameState?.gameOver) {
-      console.log('🔄 Auto-resuming game after page refresh - audio system ready');
-      setWasAutopaused(false);
-      
-      // Gradually sync visual state with actual called numbers
-      if (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
-        setVisualCalledNumbers(gameData.gameState.calledNumbers);
-      }
-      
-      // Auto-start timer if not already running
-      if (!isTimerActiveRef.current) {
-        setTimeout(() => {
-          console.log('🎮 Auto-starting timer after refresh recovery');
-          startTimer();
-        }, 500);
-      }
-    }
   }
   
   // ✅ NEW: Update visual called numbers ONLY after audio completes
@@ -315,7 +300,7 @@ if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerAc
   console.log(`🔊 Audio completed but game inactive or ended`);
   isTimerActiveRef.current = false;
 }
-}, [pendingGameEnd, stopTimer, gameData, isAudioReady, wasAutopaused, startTimer]);
+}, [pendingGameEnd, stopTimer, gameData]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
@@ -501,22 +486,23 @@ const resumeGame = useCallback(async () => {
   try {
     await firebaseService.resumeGame(gameData.gameId);
     setFirebasePaused(false);
-    setIsAudioReady(true);
-    setWasAutopaused(false);
+    setIsAudioReady(true); // ✅ NEW: Mark audio ready for fresh start
+    setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag
     
-    // Restart timer for manually paused games
+    // ✅ NEW: Restart timer for resumed games
     if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
       console.log('🔄 Restarting timer after manual resume');
       startTimer();
     }
     
-    console.log('✅ Game resumed successfully');
+    console.log('✅ Game resumed successfully - audio system ready');
   } catch (error) {
     console.error('❌ Failed to resume game:', error);
   } finally {
     setIsProcessing(false);
   }
 }, [gameData, startTimer]);
+
   /**
    * End game - simple timer stop + database update
    */
