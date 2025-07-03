@@ -282,6 +282,7 @@ if (wasAutopaused && !gameData?.gameState?.gameOver) {
     }
   }
 }
+  }
   
   // ✅ NEW: Update visual called numbers ONLY after audio completes
   if (gameData?.gameState?.currentNumber) {
