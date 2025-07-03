@@ -13,34 +13,35 @@ interface HostControlsContextValue {
   endGame: () => Promise<void>;
   
   // Configuration
-  updateSpeechRate: (scaleValue: number) => void; // NEW
+  updateSpeechRate: (scaleValue: number) => void;
   
   // Status
   isProcessing: boolean;
   countdownTime: number;
   
-  speechRate: number; // NEW
-  speechRateScale: number; // NEW
+  speechRate: number;
+  speechRateScale: number;
   
   // Audio completion handlers
   handleAudioComplete: () => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
-  handleGameOverAudioComplete: () => void; // ✅ ADD this line
+  handleGameOverAudioComplete: () => void;
   
   // Firebase status
   firebasePaused: boolean;
   
-  // ✅ ADD these new properties:
+  // Preparation status
   isPreparingGame: boolean;
   preparationStatus: string;
   preparationProgress: number;
   
-  // ✅ NEW: Visual state management
+  // Visual state management
   visualCalledNumbers: number[];
   setVisualCalledNumbers: React.Dispatch<React.SetStateAction<number[]>>;
   
-  // ✅ NEW: Audio system status
+  // Audio system status
   isAudioReady: boolean;
+  wasAutopaused: boolean; // ✅ NEW: Track auto-pause state
 }
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
 
@@ -85,11 +86,37 @@ React.useEffect(() => {
   }
 }, [gameData?.gameId]);
 
-// ✅ NEW: Reset visual state when game changes
+// ✅ FIXED: Smart initialization that prevents number flooding on refresh
 React.useEffect(() => {
   if (gameData?.gameId) {
-    setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
-    setIsAudioReady(false); // Reset audio ready state for new game
+    // Check if this is an active game that we're refreshing into
+    const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
+    
+   if (isActiveGame) {
+  console.log('🔄 Page refreshed during active game - implementing safety measures');
+  
+  // Auto-pause on refresh to prevent chaos
+  setFirebasePaused(true);
+  setWasAutopaused(true); // ✅ NEW: Track that this was an auto-pause
+  
+  // Show all numbers that were actually called (safe when paused)
+  setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
+  
+  // Mark that we need manual resume
+  setIsAudioReady(false);
+  
+  // Auto-pause in Firebase to sync state
+  firebaseService.pauseGame(gameData.gameId)
+    .then(() => console.log('✅ Game auto-paused on refresh for safety'))
+    .catch(err => console.error('❌ Failed to auto-pause on refresh:', err));
+    
+} else {
+  // For non-active games, normal initialization is safe
+  setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
+  setIsAudioReady(false);
+  setFirebasePaused(false);
+  setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag for non-active games
+}
   }
 }, [gameData?.gameId]);
 // ✅ ADD these new state variables:
@@ -97,6 +124,7 @@ const [isPreparingGame, setIsPreparingGame] = React.useState(false);
 const [preparationStatus, setPreparationStatus] = React.useState<string>('');
 const [preparationProgress, setPreparationProgress] = React.useState(0);
 const [isAudioReady, setIsAudioReady] = React.useState(false);
+const [wasAutopaused, setWasAutopaused] = React.useState(false); // NEW: Track if we auto-paused on refresh
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -450,30 +478,30 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
   /**
    * Resume game - simple timer start + database update
    */
- const resumeGame = useCallback(async () => {
-  if (!gameData || isProcessing) return;
+const resumeGame = useCallback(async () => {
+  if (!gameData) return;
+  
   setIsProcessing(true);
   
   try {
-    console.log(`▶️ Resuming number calling: ${gameData.gameId}`);
-    
-    isTimerActiveRef.current = true;
-    
-    // ✅ DON'T call firebaseService.resumeGame() - just restart timer locally
-    
-    lastCallTimeRef.current = Date.now();
+    await firebaseService.resumeGame(gameData.gameId);
     setFirebasePaused(false);
-    startTimer();
+    setIsAudioReady(true); // ✅ NEW: Mark audio ready for fresh start
+    setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag
     
-    console.log(`✅ Number calling resumed: ${gameData.gameId}`);
- } catch (error: any) {
-    console.error('❌ Resume error:', error);
-    console.log('🔄 Resume failed, but timer will continue trying...');
-    throw new Error(error.message || 'Failed to resume number calling');
+    // ✅ NEW: Restart timer for resumed games
+    if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
+      console.log('🔄 Restarting timer after manual resume');
+      startTimer();
+    }
+    
+    console.log('✅ Game resumed successfully - audio system ready');
+  } catch (error) {
+    console.error('❌ Failed to resume game:', error);
   } finally {
     setIsProcessing(false);
   }
-}, [gameData, isProcessing, startTimer]);
+}, [gameData, startTimer]);
 
   /**
    * End game - simple timer stop + database update
@@ -677,7 +705,8 @@ const value: HostControlsContextValue = {
   preparationProgress,
   visualCalledNumbers,
   setVisualCalledNumbers,
-  isAudioReady
+  isAudioReady,
+  wasAutopaused
 };
   return (
     <HostControlsContext.Provider value={value}>
