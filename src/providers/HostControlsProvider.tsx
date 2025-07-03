@@ -250,42 +250,39 @@ const handleAudioComplete = useCallback(async () => {
     setIsAudioReady(true);
     console.log('✅ Audio system now ready after page refresh');
     
-    // ✅ FIXED: Auto-resume game after refresh once audio is ready
-    if (wasAutopaused && !gameData?.gameState?.gameOver) {
-      console.log('🔄 Auto-resuming game after page refresh - audio system ready');
-      setWasAutopaused(false);
-      
-      // Gradually sync visual state with actual called numbers
-      if (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
-        setVisualCalledNumbers(gameData.gameState.calledNumbers);
-      }
-      
-      // If game was paused, resume it in Firebase first, then start timer
-      if (!gameData.gameState.isActive && gameData.gameState.calledNumbers?.length > 0) {
-        console.log('🔄 Resuming paused game in Firebase after refresh');
-        firebaseService.resumeGame(gameData.gameId)
-          .then(() => {
-            setFirebasePaused(false);
-            setTimeout(() => {
-              console.log('🎮 Auto-starting timer after Firebase resume');
-              startTimer();
-            }, 500);
-          })
-          .catch(err => console.error('❌ Failed to resume game in Firebase:', err));
-      } else if (gameData.gameState.isActive) {
-        // Game is already active, just start timer
-        if (!isTimerActiveRef.current) {
-          setTimeout(() => {
-            console.log('🎮 Auto-starting timer after refresh recovery');
-            startTimer();
-          }, 500);
-        }
-      }
-      
-      // ✅ CRITICAL: Return early to prevent normal number calling logic
-      return;
+   // ✅ NEW: Auto-resume game after refresh once audio is ready (handle both active and paused games)
+if (wasAutopaused && !gameData?.gameState?.gameOver) {
+  console.log('🔄 Auto-resuming game after page refresh - audio system ready');
+  setWasAutopaused(false);
+  
+  // Gradually sync visual state with actual called numbers
+  if (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
+    setVisualCalledNumbers(gameData.gameState.calledNumbers);
+  }
+  
+  // If game was paused, resume it in Firebase first, then start timer
+  if (!gameData.gameState.isActive && gameData.gameState.calledNumbers?.length > 0) {
+    console.log('🔄 Resuming paused game in Firebase after refresh');
+    firebaseService.resumeGame(gameData.gameId)
+      .then(() => {
+        setFirebasePaused(false);
+        setTimeout(() => {
+          console.log('🎮 Auto-starting timer after Firebase resume');
+          startTimer();
+        }, 500);
+      })
+      .catch(err => console.error('❌ Failed to resume game in Firebase:', err));
+  } else if (gameData.gameState.isActive) {
+    // Game is already active, just start timer
+    if (!isTimerActiveRef.current) {
+      setTimeout(() => {
+        console.log('🎮 Auto-starting timer after refresh recovery');
+        startTimer();
+      }, 500);
     }
   }
+}
+  
   // ✅ NEW: Update visual called numbers ONLY after audio completes
   if (gameData?.gameState?.currentNumber) {
     setVisualCalledNumbers(prev => {
