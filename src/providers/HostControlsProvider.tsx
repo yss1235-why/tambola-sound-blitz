@@ -85,9 +85,7 @@ const [preparationStatus, setPreparationStatus] = React.useState<string>('');
 const [preparationProgress, setPreparationProgress] = React.useState(0);
 const [isAudioReady, setIsAudioReady] = React.useState(false);
 const [wasAutopaused, setWasAutopaused] = React.useState(false); 
-const [hasInitialized, setHasInitialized] = React.useState(false); 
-
-  // ✅ ADD: Reset pause state when game changes
+const hasInitializedRef = React.useRef(false); // Use ref instead of state
 
   // ✅ ADD: Reset pause state when game changes
 React.useEffect(() => {
@@ -96,11 +94,10 @@ React.useEffect(() => {
   }
 }, [gameData?.gameId]);
 
-// ✅ FIXED: Handle both active AND paused games during refresh (only on initial mount)
+// ✅ FIXED: Handle both active AND paused games during refresh (only on true component mount)
 React.useEffect(() => {
-  if (gameData?.gameId && !hasInitialized) {
-    setHasInitialized(true); // Mark as initialized
-    
+  if (gameData?.gameId && !hasInitializedRef.current) {
+    hasInitializedRef.current = true; // Mark as initialized (persists across renders)
     // Check if this is a game that should show refresh warning (active OR paused with called numbers)
     const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
     const isPausedGame = !gameData.gameState.isActive && !gameData.gameState.gameOver && 
@@ -136,7 +133,7 @@ React.useEffect(() => {
       setWasAutopaused(false);
     }
   }
-}, [gameData?.gameId, hasInitialized]);
+}, [gameData?.gameId]);
 
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
