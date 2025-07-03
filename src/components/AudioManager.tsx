@@ -537,17 +537,35 @@ useEffect(() => {
         id: `prize-${prize.id}`,
         text: announcement,
         priority: 'normal',
-        // ✅ SOLUTION 2: Add callback to signal completion
         callback: () => {
           if (onPrizeAudioComplete) {
             onPrizeAudioComplete(prize.id);
+          }
+          
+        // ✅ NEW: Check if this was the last prize and trigger Game Over
+          const allPrizesWon = prizes.every(p => p.won);
+          if (allPrizesWon && !announcedGameOver.current) {
+            console.log('🏁 All prizes won - triggering Game Over audio after prize announcement');
+            announcedGameOver.current = true;
+            
+            // Add Game Over to queue immediately after prize announcement
+            addToQueue({
+              id: 'game-over',
+              text: "Game Over! All prizes have been won! Thank you for playing!",
+              priority: 'high',
+              callback: () => {
+                console.log('🏁 Game Over audio completed - calling onGameOverAudioComplete');
+                if (onGameOverAudioComplete) {
+                  onGameOverAudioComplete();
+                }
+              }
+            });
           }
         }
       });
     }
   });
-}, [prizes, addToQueue, onPrizeAudioComplete]);
-
+}, [prizes, addToQueue, onPrizeAudioComplete, onGameOverAudioComplete]);
 // Handle Game Over announcement - THE MISSING PIECE
 useEffect(() => {
   if (gameState?.triggerGameOverAudio && !announcedGameOver.current) {
