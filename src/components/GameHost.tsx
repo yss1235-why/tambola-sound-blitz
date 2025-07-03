@@ -174,7 +174,8 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 
 // ✅ ADD THIS ENTIRE COMPONENT BEFORE GameHost
 // Helper component to connect AudioManager with HostControls
-const AudioManagerWithHostControls: React.FC<{
+// ✅ SECURE: Host-only component with full controls
+const AudioManagerForHost: React.FC<{
   currentNumber: number | null;
   prizes: any[];
   forceEnable: boolean;
@@ -188,11 +189,25 @@ const AudioManagerWithHostControls: React.FC<{
       forceEnable={forceEnable}
       onAudioComplete={handleAudioComplete}
       onPrizeAudioComplete={handlePrizeAudioComplete}
-      speechRate={speechRate} // ✅ ADD THIS LINE
+      speechRate={speechRate}
     />
   );
 };
 
+// ✅ SECURE: Player-only component with NO host controls
+const AudioManagerForPlayer: React.FC<{
+  currentNumber: number | null;
+  prizes: any[];
+}> = ({ currentNumber, prizes }) => {
+  return (
+    <AudioManager
+      currentNumber={currentNumber}
+      prizes={prizes}
+      forceEnable={false}
+      // NO host callbacks - players cannot control game timing
+    />
+  );
+};
 export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
@@ -897,20 +912,13 @@ if (cachedWinnerData) {
    
     <HostControlsProvider userId={user.uid}>
       <HostDisplay onCreateNewGame={createNewGame} />
-      <AudioManagerWithHostControls
+      <AudioManagerForHost
         currentNumber={gameData.gameState.currentNumber}
         prizes={Object.values(gameData.prizes)}
         forceEnable={true}
       />
     </HostControlsProvider>
   </div>
-)}
-{gameData && currentView !== 'live' && (
-  <AudioManager
-    currentNumber={gameData.gameState.currentNumber}
-    prizes={Object.values(gameData.prizes)}
-    forceEnable={true}
-  />
 )}
 
         {/* Development Debug Info */}
