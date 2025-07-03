@@ -87,18 +87,27 @@ const [isAudioReady, setIsAudioReady] = React.useState(false);
 const [wasAutopaused, setWasAutopaused] = React.useState(false); 
 const hasInitializedRef = React.useRef(false); // Use ref instead of state
 
-  // ✅ ADD: Reset pause state when game changes
+ // ✅ FIXED: Reset pause state and cleanup when game changes
 React.useEffect(() => {
   if (gameData?.gameId) {
     setFirebasePaused(false); // Reset pause state for new/different games
+    
+    // Cleanup function to clear session storage when game changes
+    return () => {
+      sessionStorage.removeItem(`gameInitialized_${gameData.gameId}`);
+    };
   }
 }, [gameData?.gameId]);
-
-// ✅ FIXED: Handle both active AND paused games during refresh (only on true component mount)
+// ✅ FIXED: Reliable page refresh detection using sessionStorage
 React.useEffect(() => {
-  if (gameData?.gameId && !hasInitializedRef.current) {
-    hasInitializedRef.current = true; // Mark as initialized (persists across renders)
-    // Check if this is a game that should show refresh warning (active OR paused with called numbers)
+  if (!gameData?.gameId) return;
+  
+  // Only run on actual page load/refresh - not on Firebase updates
+  const isPageRefresh = !sessionStorage.getItem(`gameInitialized_${gameData.gameId}`);
+  
+  if (isPageRefresh) {
+    sessionStorage.setItem(`gameInitialized_${gameData.gameId}`, 'true');
+    
     const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
     const isPausedGame = !gameData.gameState.isActive && !gameData.gameState.gameOver && 
                         gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0;
@@ -494,10 +503,15 @@ const resumeGame = useCallback(async () => {
   setIsProcessing(true);
   
   try {
-    await firebaseService.resumeGame(gameData.gameId);
+    // Clear the refresh flags FIRST to prevent re-triggering
+    setWasAutopaused(false);
     setFirebasePaused(false);
-    setIsAudioReady(true); // ✅ NEW: Mark audio ready for fresh start
-    setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag
+    setIsAudioReady(true);
+    
+    // Small delay to ensure state updates don't conflict
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    await firebaseService.resumeGame(gameData.gameId);
     
     // ✅ NEW: Restart timer for resumed games
     if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
@@ -507,7 +521,11 @@ const resumeGame = useCallback(async () => {
     
     console.log('✅ Game resumed successfully - audio system ready');
   } catch (error) {
-    console.error('❌ Failed to resume game:', error);
+    console.error('❌ Resume error:', error);
+    // Restore pause state on error
+    setFirebasePaused(true);
+    setWasAutopaused(true);
+    throw new Error(error.message || 'Failed to resume game');
   } finally {
     setIsProcessing(false);
   }
