@@ -79,6 +79,16 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
 
+// ✅ ADD these new state variables BEFORE they're used:
+const [isPreparingGame, setIsPreparingGame] = React.useState(false);
+const [preparationStatus, setPreparationStatus] = React.useState<string>('');
+const [preparationProgress, setPreparationProgress] = React.useState(0);
+const [isAudioReady, setIsAudioReady] = React.useState(false);
+const [wasAutopaused, setWasAutopaused] = React.useState(false); 
+const [hasInitialized, setHasInitialized] = React.useState(false); 
+
+  // ✅ ADD: Reset pause state when game changes
+
   // ✅ ADD: Reset pause state when game changes
 React.useEffect(() => {
   if (gameData?.gameId) {
@@ -86,9 +96,11 @@ React.useEffect(() => {
   }
 }, [gameData?.gameId]);
 
-// ✅ FIXED: Handle both active AND paused games during refresh
+// ✅ FIXED: Handle both active AND paused games during refresh (only on initial mount)
 React.useEffect(() => {
-  if (gameData?.gameId) {
+  if (gameData?.gameId && !hasInitialized) {
+    setHasInitialized(true); // Mark as initialized
+    
     // Check if this is a game that should show refresh warning (active OR paused with called numbers)
     const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
     const isPausedGame = !gameData.gameState.isActive && !gameData.gameState.gameOver && 
@@ -124,13 +136,8 @@ React.useEffect(() => {
       setWasAutopaused(false);
     }
   }
-}, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.calledNumbers?.length]);
-// ✅ ADD these new state variables:
-const [isPreparingGame, setIsPreparingGame] = React.useState(false);
-const [preparationStatus, setPreparationStatus] = React.useState<string>('');
-const [preparationProgress, setPreparationProgress] = React.useState(0);
-const [isAudioReady, setIsAudioReady] = React.useState(false);
-const [wasAutopaused, setWasAutopaused] = React.useState(false); // NEW: Track if we auto-paused on refresh
+}, [gameData?.gameId, hasInitialized]);
+
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
