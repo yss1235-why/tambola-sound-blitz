@@ -527,12 +527,13 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
 
   // Handle screen lock/unlock and browser tab visibility
   useEffect(() => {
-    const handleVisibilityChange = () => {
+  const handleVisibilityChange = () => {
   if (document.visibilityState === 'visible' && 
       gameData?.gameState?.isActive && 
       !gameData?.gameState?.gameOver &&
       !gameData?.gameState?.isCountdown &&
-      !firebasePaused) { // ✅ ADD: Don't auto-resume if manually paused
+      !firebasePaused &&
+      isAudioReady) { // ✅ ADD: Audio ready check
     
     console.log('🔄 Screen became visible - checking timer state');
     
@@ -544,13 +545,13 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
     }
   }
 };
-
-    const handleOnlineStatus = () => {
+   const handleOnlineStatus = () => {
   if (navigator.onLine && 
       gameData?.gameState?.isActive && 
       !gameData?.gameState?.gameOver &&
       !isTimerActiveRef.current &&
-      !firebasePaused) { // ✅ ADD: Don't auto-resume if manually paused
+      !firebasePaused &&
+      isAudioReady) { // ✅ ADD: Audio ready check
     
     console.log('🔄 Network reconnected - checking timer state');
     lastCallTimeRef.current = Date.now();
@@ -565,7 +566,7 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnlineStatus);
     };
-  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer, firebasePaused]);
+}, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer, firebasePaused, isAudioReady]);
 
   // Auto-stop timer when game ends (from real-time updates)
   useEffect(() => {
