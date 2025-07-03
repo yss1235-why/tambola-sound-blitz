@@ -267,17 +267,26 @@ const {
                     <Pause className="w-4 h-4 mr-2" />
                     {hostControls?.isProcessing ? 'Pausing...' : 'Pause Automatic Game'}
                   </Button>
-                ) : (
-                  <Button 
-                    onClick={handleResumeGame} 
-                    className="flex-1 bg-green-600 hover:bg-green-700" 
-                    size="lg"
-                    disabled={hostControls?.isProcessing}
-                  >
-                    <Play className="w-4 h-4 mr-2" />
-                    {hostControls?.isProcessing ? 'Resuming...' : 'Resume Automatic Game'}
-                  </Button>
-                )}
+               ) : (
+      <div className="space-y-2 flex-1">
+        <Button 
+          onClick={handleResumeGame} 
+          className="w-full bg-green-600 hover:bg-green-700" 
+          size="lg"
+          disabled={hostControls?.isProcessing}
+        >
+          <Play className="w-4 h-4 mr-2" />
+          {hostControls?.isProcessing ? 'Resuming...' : 'Resume Automatic Game'}
+        </Button>
+        
+        {/* ✅ NEW: Show auto-pause warning */}
+        {hostControls?.wasAutopaused && (
+          <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 text-center">
+            ⚠️ Game was auto-paused due to page refresh. Click Resume to continue safely.
+          </div>
+        )}
+      </div>
+    )}
                 <Button 
                   onClick={handleEndGame} 
                   variant="destructive" 
