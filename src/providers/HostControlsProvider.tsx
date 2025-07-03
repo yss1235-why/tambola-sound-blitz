@@ -73,7 +73,6 @@ const [speechRate, setSpeechRate] = React.useState(1.0); // NEW: Speech rate con
 const [speechRateScale, setSpeechRateScale] = React.useState(0); // NEW: Scale value for UI (-3 to +6)
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
-const callInterval = 1;
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
 
   // ✅ ADD: Reset pause state when game changes
@@ -112,12 +111,11 @@ const scheduleNextCall = useCallback(() => {
     gameTimerRef.current = null;
   }
   
-  // ✅ FIX: Always use full interval - no complex calculations
-  const delay = callInterval * 1000;
-  
-  console.log(`⏰ Scheduling next call in ${delay / 1000}s`);
-  
-  gameTimerRef.current = setTimeout(async () => {
+  // ✅ IMMEDIATE: No delay - call next number right away
+console.log(`📞 Calling next number immediately after audio completion`);
+
+// No setTimeout needed - call immediately
+(async () => {
     if (!isTimerActiveRef.current || !gameData) {
       console.log('⏰ Timer fired but game inactive');
       return;
@@ -141,8 +139,8 @@ const scheduleNextCall = useCallback(() => {
       console.error('❌ Error in timer scheduling:', error);
       isTimerActiveRef.current = false;
     }
-  }, delay);
-}, [gameData, callInterval]);
+ })();
+}, [gameData]);
   /**
    * Simple timer control
    */
@@ -164,18 +162,17 @@ const startTimer = useCallback(() => {
   isTimerActiveRef.current = true;
   lastCallTimeRef.current = Date.now();
   
-  // ✅ FIX: Add initial delay before first call
-  const initialDelay = callInterval * 1000;
-  
-  console.log(`⏰ Initial call scheduled in ${initialDelay / 1000}s`);
-  
-  gameTimerRef.current = setTimeout(async () => {
+// ✅ FIX: Start immediately (no delay)
+console.log(`📞 Starting first number call immediately`);
+
+// Call immediately without setTimeout
+(async () => {
     if (!isTimerActiveRef.current || !gameData) {
-      console.log('⏰ Initial timer fired but game inactive');
+      console.log('⏰ Initial call but game inactive');
       return;
     }
     
-    console.log('📞 Initial timer fired - calling first number...');
+    console.log('📞 Initial call - calling first number...');
     lastCallTimeRef.current = Date.now();
     
     try {
@@ -192,9 +189,9 @@ const startTimer = useCallback(() => {
       console.error('❌ Error in initial call:', error);
       isTimerActiveRef.current = false;
     }
-  }, initialDelay);
+})();
   
-}, [gameData, callInterval, stopTimer]);
+}, [gameData, stopTimer]);
   /**
    * Clear all timers - for cleanup
    */
@@ -214,7 +211,7 @@ const startTimer = useCallback(() => {
 /**
  * ✅ SOLUTION 1: Handle audio completion and update visual state
  */
-const handleAudioComplete = useCallback(() => {
+const handleAudioComplete = useCallback(async () => {
   console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
   
   // ✅ NEW: Update visual called numbers ONLY after audio completes
@@ -241,41 +238,30 @@ const handleAudioComplete = useCallback(() => {
     return;
   }
   
-  // Schedule next call if game is active
-  if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerActiveRef.current) {
-    console.log(`🔊 Audio completed - scheduling next call with interval: ${callInterval}s`);
+// ✅ IMMEDIATE: Call next number right after audio completes (no delay)
+if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerActiveRef.current) {
+  console.log(`🔊 Audio completed - calling next number immediately`);
+  
+  lastCallTimeRef.current = Date.now();
+  
+  try {
+    const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
     
-    const delay = callInterval * 1000;
-    
-    gameTimerRef.current = setTimeout(async () => {
-      if (!isTimerActiveRef.current || !gameData) {
-        console.log('⏰ Post-audio timer fired but game inactive');
-        return;
-      }
-      
-      console.log('📞 Post-audio timer fired - calling next number...');
-      lastCallTimeRef.current = Date.now();
-      
-      try {
-        const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
-        
-        if (shouldContinue && isTimerActiveRef.current) {
-          console.log('✅ Number called successfully, waiting for audio...');
-        } else {
-          console.log('⏸️ Game should stop');
-          isTimerActiveRef.current = false;
-        }
-      } catch (error) {
-        console.error('❌ Error in post-audio call:', error);
-        isTimerActiveRef.current = false;
-      }
-    }, delay);
-    
-  } else {
-    console.log(`🔊 Audio completed but game inactive or ended`);
+    if (shouldContinue && isTimerActiveRef.current) {
+      console.log('✅ Number called successfully, waiting for audio...');
+    } else {
+      console.log('⏸️ Game should stop');
+      isTimerActiveRef.current = false;
+    }
+  } catch (error) {
+    console.error('❌ Error in immediate call:', error);
     isTimerActiveRef.current = false;
   }
-}, [pendingGameEnd, stopTimer, gameData, callInterval]);
+} else {
+  console.log(`🔊 Audio completed but game inactive or ended`);
+  isTimerActiveRef.current = false;
+}
+}, [pendingGameEnd, stopTimer, gameData]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
