@@ -635,7 +635,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
 
-  async callNextNumber(gameId: string): Promise<number | null> {
+ async callNextNumber(gameId: string): Promise<number | null> {
   try {
     const gameData = await this.getGameData(gameId);
     if (!gameData) throw new Error('Game not found');
@@ -643,12 +643,11 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     const calledNumbers = gameData.gameState.calledNumbers || [];
     let newNumber: number;
 
-    // Check for pre-generated sequence (REQUIRED)
+    // Use only pre-generated sequence
     if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
       newNumber = gameData.sessionCache[calledNumbers.length];
       console.log(`🎯 Using pre-generated number ${newNumber} (position ${calledNumbers.length + 1})`);
     } else {
-      // No pre-generated sequence available - end game
       console.error('❌ No pre-generated sequence available - ending game');
       await this.endGame(gameId);
       return null;
@@ -907,14 +906,14 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
 
-  /**
-   * Generate new host sequence
+ /**
+   * Generate new host sequence (only during game creation)
    */
   private async generateHostSequence(gameId: string): Promise<NumberGenerationResult> {
     try {
       console.log(`🎲 Generating new host sequence for game: ${gameId}`);
       
-      // Generate random sequence of numbers 1-90
+      // Generate shuffled sequence of numbers 1-90 (only during initial setup)
       const numbers = this.shuffleArray(Array.from({ length: 90 }, (_, i) => i + 1));
       
       // Create simple metadata
@@ -1053,13 +1052,13 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       let selectedNumber: number;
       
      // Check for pre-generated sequence (REQUIRED)
+// Use only pre-generated sequence
 if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
   selectedNumber = currentGame.sessionCache[calledNumbers.length];
   console.log(`🎯 Transaction: Using pre-generated number ${selectedNumber} (position ${calledNumbers.length + 1})`);
 } else {
-  // No pre-generated sequence available - this should not happen
-  console.error('❌ No pre-generated sequence available - game cannot continue');
-  throw new Error('Pre-generated sequence is required but not available');
+  console.error('❌ No pre-generated sequence available - ending game');
+  throw new Error('Game requires pre-generated sequence but none available');
 }
       // Update game state atomically
       const updatedCalledNumbers = [...calledNumbers, selectedNumber];
