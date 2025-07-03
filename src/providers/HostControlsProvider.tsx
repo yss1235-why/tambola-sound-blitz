@@ -38,6 +38,9 @@ interface HostControlsContextValue {
   // ✅ NEW: Visual state management
   visualCalledNumbers: number[];
   setVisualCalledNumbers: React.Dispatch<React.SetStateAction<number[]>>;
+  
+  // ✅ NEW: Audio system status
+  isAudioReady: boolean;
 }
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
 
@@ -86,12 +89,14 @@ React.useEffect(() => {
 React.useEffect(() => {
   if (gameData?.gameId) {
     setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
+    setIsAudioReady(false); // Reset audio ready state for new game
   }
 }, [gameData?.gameId]);
 // ✅ ADD these new state variables:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
 const [preparationStatus, setPreparationStatus] = React.useState<string>('');
 const [preparationProgress, setPreparationProgress] = React.useState(0);
+const [isAudioReady, setIsAudioReady] = React.useState(false);
   // Simple refs - only for timer management
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -213,6 +218,12 @@ console.log(`📞 Starting first number call immediately`);
  */
 const handleAudioComplete = useCallback(async () => {
   console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
+  
+  // Mark audio system as ready on first callback
+  if (!isAudioReady) {
+    setIsAudioReady(true);
+    console.log('✅ Audio system now ready after page refresh');
+  }
   
   // ✅ NEW: Update visual called numbers ONLY after audio completes
   if (gameData?.gameState?.currentNumber) {
@@ -564,20 +575,21 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
 
- // Auto-resume when host returns to active game - FIXED: Only if NOT manually paused
+// Auto-resume when host returns to active game - FIXED: Only if NOT manually paused AND audio ready
   useEffect(() => {
     if (gameData?.gameState?.isActive && 
         !gameData?.gameState?.gameOver && 
         !gameData?.gameState?.isCountdown &&
         !isTimerActiveRef.current && 
         !isProcessing &&
-        !firebasePaused) { // ✅ FIXED: Only auto-resume if NOT manually paused
+        !firebasePaused &&
+        isAudioReady) { // ✅ NEW: Wait for audio system to be ready
       
-      console.log(`🔄 Host returned to active game - auto-resuming timer (NOT manually paused)`);
+      console.log(`🔄 Host returned to active game - auto-resuming timer (audio ready)`);
       lastCallTimeRef.current = Date.now();
       startTimer();
     }
-  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer, firebasePaused]);
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer, firebasePaused, isAudioReady]);
 useEffect(() => {
     if (!gameData?.gameId) return;
     
@@ -663,7 +675,8 @@ const value: HostControlsContextValue = {
   preparationStatus,
   preparationProgress,
   visualCalledNumbers,
-  setVisualCalledNumbers
+  setVisualCalledNumbers,
+  isAudioReady
 };
   return (
     <HostControlsContext.Provider value={value}>
