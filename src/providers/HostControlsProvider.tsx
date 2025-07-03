@@ -86,39 +86,45 @@ React.useEffect(() => {
   }
 }, [gameData?.gameId]);
 
-// ✅ FIXED: Smart initialization that prevents number flooding on refresh
+// ✅ FIXED: Handle both active AND paused games during refresh
 React.useEffect(() => {
   if (gameData?.gameId) {
-    // Check if this is an active game that we're refreshing into
+    // Check if this is a game that should show refresh warning (active OR paused with called numbers)
     const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
+    const isPausedGame = !gameData.gameState.isActive && !gameData.gameState.gameOver && 
+                        gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0;
     
-   if (isActiveGame) {
-  console.log('🔄 Page refreshed during active game - implementing safety measures');
-  
-  // Auto-pause on refresh to prevent chaos
-  setFirebasePaused(true);
-  setWasAutopaused(true); // ✅ NEW: Track that this was an auto-pause
-  
-  // Show all numbers that were actually called (safe when paused)
-  setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
-  
-  // Mark that we need manual resume
-  setIsAudioReady(false);
-  
-  // Auto-pause in Firebase to sync state
-  firebaseService.pauseGame(gameData.gameId)
-    .then(() => console.log('✅ Game auto-paused on refresh for safety'))
-    .catch(err => console.error('❌ Failed to auto-pause on refresh:', err));
-    
-} else {
-  // For non-active games, normal initialization is safe
-  setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
-  setIsAudioReady(false);
-  setFirebasePaused(false);
-  setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag for non-active games
-}
+    if (isActiveGame || isPausedGame) {
+      console.log(`🔄 Page refreshed during ${isActiveGame ? 'active' : 'paused'} game - implementing safety measures`);
+      
+      // Auto-pause on refresh to prevent chaos (or maintain pause state)
+      setFirebasePaused(true);
+      setWasAutopaused(true); // ✅ Track that this was an auto-pause/refresh
+      
+      // Show all numbers that were actually called (safe when paused)
+      setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
+      
+      // Mark that we need manual resume
+      setIsAudioReady(false);
+      
+      // Auto-pause in Firebase to sync state (only if was active)
+      if (isActiveGame) {
+        firebaseService.pauseGame(gameData.gameId)
+          .then(() => console.log('✅ Game auto-paused on refresh for safety'))
+          .catch(err => console.error('❌ Failed to auto-pause on refresh:', err));
+      } else {
+        console.log('✅ Game was already paused - maintaining pause state after refresh');
+      }
+      
+    } else {
+      // For non-active games, normal initialization is safe
+      setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
+      setIsAudioReady(false);
+      setFirebasePaused(false);
+      setWasAutopaused(false);
+    }
   }
-}, [gameData?.gameId]);
+}, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.calledNumbers?.length]);
 // ✅ ADD these new state variables:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
 const [preparationStatus, setPreparationStatus] = React.useState<string>('');
