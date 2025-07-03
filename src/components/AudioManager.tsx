@@ -367,22 +367,19 @@ useEffect(() => {
           console.warn('Speech error (ignored):', event.error);
         };
 
-        // Dynamic timer based on content type
-        let audioPlayTime;
-        if (item.id === 'game-over') {
-          audioPlayTime = 2000;
-        } else if (item.id.startsWith('prize-')) {
-          audioPlayTime = 2500;
-        } else {
-          audioPlayTime = 1500;
-        }
+       // ✅ REMOVED: No more audioPlayTime needed - polling will detect actual completion
+console.log(`🎤 Starting audio for: ${item.text} - polling will detect completion`);
 
-        console.log(`⏰ Setting ${audioPlayTime/1000}s timer for: ${item.text}`);
-
-        fallbackTimer.current = setTimeout(() => {
-          console.log(`⏰ Timer completed after ${audioPlayTime/1000}s: ${item.text}`);
-          handleComplete();
-        }, audioPlayTime);
+       // ✅ Pure polling - check if audio actually finished
+const checkAudioStatus = () => {
+  if (!window.speechSynthesis.speaking) {
+    console.log(`✅ Audio actually completed: ${item.text}`);
+    handleComplete();
+  } else {
+    setTimeout(checkAudioStatus, 1000); // Check again in 1 second
+  }
+};
+checkAudioStatus();
         
         window.speechSynthesis.speak(utterance);
         
