@@ -747,14 +747,15 @@ if (cachedWinnerData) {
     console.log('🏁 GameHost: Game over, returning winners');
     return 'winners';
   }
-  if (gameData.gameState.isActive || gameData.gameState.isCountdown) {
-    console.log('🎮 GameHost: Game started - returning LIVE view');
+  // ✅ FIXED: Include paused games with called numbers as 'live'
+  if (gameData.gameState.isActive || gameData.gameState.isCountdown || 
+      (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0)) {
+    console.log('🎮 GameHost: Game started/paused - returning LIVE view');
     return 'live';
   }
   console.log('🎫 GameHost: Default - returning booking view');
   return 'booking';
 };
-
   const currentView = getCurrentView();
   const subscriptionStatus = getSubscriptionStatus();
 
