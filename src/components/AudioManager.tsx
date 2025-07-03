@@ -333,8 +333,18 @@ useEffect(() => {
 
         currentUtterance.current = utterance;
 
-        const handleComplete = () => {
-          console.log(`✅ Completed: ${item.text}`);
+
+       // ✅ REMOVED: No more audioPlayTime needed - polling will detect actual completion
+// ✅ NEW: Improved completion detection
+        let audioCompleted = false;
+        let pollCount = 0;
+        const maxPolls = 40; // 20 seconds maximum (40 * 500ms)
+        
+        const markComplete = () => {
+          if (audioCompleted) return; // Prevent double execution
+          audioCompleted = true;
+          
+          console.log(`✅ Audio confirmed complete: ${item.text}`);
           
           if (fallbackTimer.current) {
             clearTimeout(fallbackTimer.current);
@@ -349,39 +359,58 @@ useEffect(() => {
           
           if (item.callback) {
             try {
-              console.log(`🔊 Audio completed for: ${item.text} - notifying completion only`);
+              console.log(`🔊 Audio completed for: ${item.text} - notifying completion`);
               item.callback();
             } catch (error) {
               console.error('Audio callback error:', error);
             }
           }
           
-          setTimeout(processNext, 500);
+          setTimeout(processNext, 100);
         };
 
+        // Method 1: Browser events (when they work)
         utterance.onend = () => {
-          console.log(`🔊 Browser reported audio end (ignored)`);
+          console.log('🔊 Browser onend event detected');
+          setTimeout(markComplete, 100);
         };
         
         utterance.onerror = (event) => {
-          console.warn('Speech error (ignored):', event.error);
+          console.warn('🔊 Browser audio error:', event.error);
+          markComplete();
         };
 
-       // ✅ REMOVED: No more audioPlayTime needed - polling will detect actual completion
-console.log(`🎤 Starting audio for: ${item.text} - polling will detect completion`);
+        // Method 2: Improved polling (faster + more reliable)
+        const pollAudioStatus = () => {
+          if (audioCompleted) return;
+          
+          pollCount++;
+          
+          if (!window.speechSynthesis.speaking) {
+            console.log(`📊 Polling detected completion (poll #${pollCount})`);
+            markComplete();
+          } else if (pollCount >= maxPolls) {
+            console.warn(`⚠️ Audio polling timeout after ${pollCount} attempts - forcing completion`);
+            markComplete();
+          } else {
+            setTimeout(pollAudioStatus, 500); // Poll every 500ms
+          }
+        };
 
-       // ✅ Pure polling - check if audio actually finished
-const checkAudioStatus = () => {
-  if (!window.speechSynthesis.speaking) {
-    console.log(`✅ Audio actually completed: ${item.text}`);
-    handleComplete();
-  } else {
-    setTimeout(checkAudioStatus, 1000); // Check again in 1 second
-  }
-};
-checkAudioStatus();
+        // Method 3: Safety timeout based on estimated text length
+        const estimatedDuration = Math.max(item.text.length * 100, 2000);
+        fallbackTimer.current = setTimeout(() => {
+          if (!audioCompleted) {
+            console.warn(`⚠️ Audio safety timeout after ${estimatedDuration + 3000}ms - forcing completion`);
+            markComplete();
+          }
+        }, estimatedDuration + 3000);
+
+        console.log(`🎤 Starting audio: "${item.text}" (estimated: ${estimatedDuration}ms)`);
         
+        // Start audio and polling
         window.speechSynthesis.speak(utterance);
+        setTimeout(pollAudioStatus, 1000);
         
       } catch (error) {
         console.error('Speech synthesis error:', error);
