@@ -561,7 +561,7 @@ useEffect(() => {
     addToQueue({
       id: 'game-over',
       text: announcement,
-      priority: 'high',
+      priority: 'normal',
       callback: () => {
         console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
         if (onGameOverAudioComplete) {
