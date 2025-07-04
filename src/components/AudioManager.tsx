@@ -128,7 +128,16 @@ const [isAudioSupported, setIsAudioSupported] = useState(false);
 const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 const [isPlaying, setIsPlaying] = useState(false);
 const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false); // ✅ SOLUTION 3
-  
+
+// Debug logging for game state
+useEffect(() => {
+  console.log('🎮 AudioManager Game State:', {
+    triggerGameOverAudio: gameState?.triggerGameOverAudio,
+    pendingGameEnd: gameState?.pendingGameEnd,
+    announcedGameOver: announcedGameOver.current,
+    gameOver: gameState?.gameOver
+  });
+}, [gameState]);
 
 // Refs for voice management - FIXED: Proper scope
   const femaleVoice = useRef<SpeechSynthesisVoice | null>(null);
