@@ -108,6 +108,17 @@ class FirebaseService {
     return this.core.updateHostTemplate(hostId, templateSettings);
   }
 
+  // ========== DIRECT DATABASE ACCESS ==========
+  getGameRef(gameId: string) {
+    return ref(database, `games/${gameId}`);
+  }
+
+  async updateRef(refPath: any, updates: any) {
+    return update(refPath, updates);
+  }
+
+  // =======
+
   // ========== GAME OPERATIONS (delegate to game) ==========
   async createGame(config: any, hostId: string, ticketSetId: string, selectedPrizes: string[]) {
     return this.game.createGame(config, hostId, ticketSetId, selectedPrizes);
