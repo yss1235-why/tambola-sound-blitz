@@ -179,16 +179,19 @@ const AudioManagerForHost: React.FC<{
   currentNumber: number | null;
   prizes: any[];
   forceEnable: boolean;
-}> = ({ currentNumber, prizes, forceEnable }) => {
-  const { handleAudioComplete, handlePrizeAudioComplete, speechRate } = useHostControls();
+  gameState: any;
+}> = ({ currentNumber, prizes, forceEnable, gameState }) => {
+  const { handleAudioComplete, handlePrizeAudioComplete, handleGameOverAudioComplete, speechRate } = useHostControls();
   
   return (
     <AudioManager
       currentNumber={currentNumber}
       prizes={prizes}
-      forceEnable={forceEnable}
+      gameState={gameState}
       onAudioComplete={handleAudioComplete}
       onPrizeAudioComplete={handlePrizeAudioComplete}
+      onGameOverAudioComplete={handleGameOverAudioComplete}
+      forceEnable={forceEnable}
       speechRate={speechRate}
     />
   );
@@ -913,10 +916,11 @@ if (cachedWinnerData) {
    
     <HostControlsProvider userId={user.uid}>
       <HostDisplay onCreateNewGame={createNewGame} />
-      <AudioManagerForHost
+     <AudioManagerForHost
         currentNumber={gameData.gameState.currentNumber}
         prizes={Object.values(gameData.prizes)}
         forceEnable={true}
+        gameState={gameData.gameState}
       />
     </HostControlsProvider>
   </div>
