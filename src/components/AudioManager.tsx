@@ -548,20 +548,23 @@ useEffect(() => {
   });
 }, [prizes, addToQueue, onPrizeAudioComplete]);
 
-// Handle Game Over announcement - THE MISSING PIECE
+// Handle Game Over announcement
 useEffect(() => {
-  if (gameState?.triggerGameOverAudio && !announcedGameOver.current) {
-    announcedGameOver.current = true;
+  // Only process if game over should be triggered and we haven't announced it yet
+  if (gameState?.triggerGameOverAudio === true && !announcedGameOver.current) {
+    // Log the trigger attempt
+    console.log(`🏁 Game Over audio triggered - preparing announcement`);
     
     // Use the announcement from Firebase or fallback
     const announcement = gameState.lastWinnerAnnouncement || "Game Over! All prizes have been won!";
     
-    console.log(`🏁 Triggering Game Over audio: "${announcement}"`);
+    console.log(`🏁 Queueing Game Over audio: "${announcement}"`);
     
+    // Queue the audio FIRST
     addToQueue({
       id: 'game-over',
       text: announcement,
-      priority: 'normal',
+      priority: 'normal',  // Keep normal priority as per previous fix
       callback: () => {
         console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
         if (onGameOverAudioComplete) {
@@ -569,9 +572,11 @@ useEffect(() => {
         }
       }
     });
+    
+    // Only mark as announced AFTER queuing
+    announcedGameOver.current = true;
   }
 }, [gameState?.triggerGameOverAudio, gameState?.lastWinnerAnnouncement, addToQueue, onGameOverAudioComplete]);
-
 // Reset announced prizes when game resets
 // Reset announced prizes when game resets
   useEffect(() => {
