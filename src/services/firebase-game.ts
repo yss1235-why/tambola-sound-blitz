@@ -1274,15 +1274,15 @@ private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
   }
   
   // ✅ FIX: Get only the prizes that are actually configured/active for this game
-  const activePrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
-    // A prize is considered active if it has essential properties and is not disabled
-    return prize && 
-           prize.name && 
-           prize.id && 
-           (prize.order !== undefined || prize.order !== null) &&
-           (prize.active !== false) &&
-           (prize.enabled !== false);
-  });
+ const activePrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
+  // A prize is considered active if it has essential properties and is not disabled
+  return prize && 
+         prize.name && 
+         prize.id && 
+         (prize.order !== undefined && prize.order !== null) &&
+         (prize.active !== false) &&
+         (prize.enabled !== false);
+});
   
   console.log(`🔍 Active prizes check: ${activePrizes.length} active prizes found`);
   
