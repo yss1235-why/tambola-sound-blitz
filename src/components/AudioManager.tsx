@@ -559,42 +559,49 @@ useEffect(() => {
 
 // Handle Game Over announcement
 useEffect(() => {
+  console.log('🎮 Game Over Check:', {
+    triggerGameOverAudio: gameState?.triggerGameOverAudio,
+    announcedGameOver: announcedGameOver.current,
+    pendingGameEnd: gameState?.pendingGameEnd
+  });
+  
   // Only process if game over should be triggered and we haven't announced it yet
   if (gameState?.triggerGameOverAudio === true && !announcedGameOver.current) {
     // Log the trigger attempt
     console.log(`🏁 Game Over audio triggered - preparing announcement`);
     
     // Use the announcement from Firebase or fallback
-    const announcement = gameState.lastWinnerAnnouncement || "Game Over! All prizes have been won!";
+    const announcement = gameState?.lastWinnerAnnouncement || "Game Over! All prizes have been won!";
     
     console.log(`🏁 Queueing Game Over audio: "${announcement}"`);
     
-    // Queue the audio FIRST
-    addToQueue({
-      id: 'game-over',
-      text: announcement,
-      priority: 'normal',  // Keep normal priority as per previous fix
-      callback: () => {
-        console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
-        if (onGameOverAudioComplete) {
-          onGameOverAudioComplete();
-        }
-      }
-    });
-    
-    // Only mark as announced AFTER queuing
+    // Mark as announced FIRST to prevent double queueing
     announcedGameOver.current = true;
+    
+    // Small delay to ensure prize audio has finished
+    setTimeout(() => {
+      addToQueue({
+        id: 'game-over',
+        text: announcement,
+        priority: 'normal',
+        callback: () => {
+          console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
+          if (onGameOverAudioComplete) {
+            onGameOverAudioComplete();
+          }
+        }
+      });
+    }, 1000); // 1 second delay after prize audio
   }
-}, [gameState?.triggerGameOverAudio, gameState?.lastWinnerAnnouncement, addToQueue, onGameOverAudioComplete]);
-// Reset announced prizes when game resets
+}, [gameState?.triggerGameOverAudio, gameState?.lastWinnerAnnouncement, gameState?.pendingGameEnd, addToQueue, onGameOverAudioComplete]);
 // Reset announced prizes when game resets
   useEffect(() => {
     const wonPrizes = prizes.filter(p => p.won);
     
-   if (wonPrizes.length === 0 && announcedPrizes.current.size > 0) {
-      console.log('🔄 Resetting audio state for new game');
-      announcedPrizes.current.clear();
-      announcedGameOver.current = false;
+   if (wonPrizes.length === 0 && (announcedPrizes.current.size > 0 || announcedGameOver.current)) {
+  console.log('🔄 Resetting audio state for new game');
+  announcedPrizes.current.clear();
+  announcedGameOver.current = false;
       lastCalledNumber.current = null;
       audioQueue.current = [];
       
