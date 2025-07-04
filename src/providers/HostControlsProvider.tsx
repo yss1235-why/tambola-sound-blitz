@@ -677,15 +677,17 @@ const handlePrizeAudioComplete = useCallback(async (prizeId: string) => {
   console.log(`🏆 Prize audio completed: ${prizeId}`);
   
   // Check if game should end and trigger game over audio
-  if (gameData?.gameState?.pendingGameEnd && !gameData?.gameState?.triggerGameOverAudio) {
+  if (gameData?.gameState?.pendingGameEnd && gameData?.gameState?.triggerGameOverAudio !== true) {
     console.log(`🏁 Last prize announced, now triggering Game Over audio`);
     
     // Update Firebase to trigger game over audio
     try {
-      await firebaseService.updateGameState(gameData.gameId, {
-        ...gameData.gameState,
-        triggerGameOverAudio: true
+      const gameRef = firebaseService.getGameRef(gameData.gameId);
+      await firebaseService.updateRef(gameRef, {
+        'gameState/triggerGameOverAudio': true,
+        'updatedAt': new Date().toISOString()
       });
+      console.log(`✅ Game Over audio trigger set in Firebase`);
     } catch (error) {
       console.error('❌ Failed to trigger game over audio:', error);
     }
