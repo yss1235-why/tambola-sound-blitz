@@ -480,11 +480,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
       } catch (error) {
         console.error('Failed to update countdown in Firebase:', error);
       }
-     if (timeLeft <= 0) {
-        clearInterval(countdownTimerRef.current!);
-        countdownTimerRef.current = null;
-        
-     if (timeLeft <= 0) {
+   if (timeLeft <= 0) {
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
         
