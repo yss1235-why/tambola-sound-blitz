@@ -42,7 +42,6 @@ interface HostControlsContextValue {
   // Audio system status
   isAudioReady: boolean;
   wasAutopaused: boolean; // ✅ NEW: Track auto-pause state
-  waitingForManualStart: boolean; // NEW: Track waiting for manual start
 }
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
 
@@ -79,10 +78,6 @@ const [speechRateScale, setSpeechRateScale] = React.useState(0); // NEW: Scale v
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
-const [waitingForManualStart, setWaitingForManualStart] = React.useState(false); // NEW: Track manual start state
-
-// ✅ ADD these new state variables BEFORE they're used:
-const [isPreparingGame, setIsPrep
 
 // ✅ ADD these new state variables BEFORE they're used:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
@@ -485,8 +480,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
       } catch (error) {
         console.error('Failed to update countdown in Firebase:', error);
       }
-  if (timeLeft <= 0) {
-        setCountdownTime(0);
+   if (timeLeft <= 0) {
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
         
@@ -494,12 +488,9 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
         setIsAudioReady(true);
         console.log('✅ Audio system marked ready for game start');
         
-        // NEW: Set waiting for manual start flag
-        setWaitingForManualStart(true);
-        setFirebasePaused(true); // Keep paused until manual start
-        
         await firebaseService.activateGameAfterCountdown(gameData.gameId);
-        console.log('✅ Game activated, waiting for manual start');
+        // ✅ REMOVED: Don't start timer here either - let state change handle it
+        console.log('✅ Game activated, state change will trigger timer');
       }
     }, 1000);
 
@@ -533,7 +524,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
     setIsProcessing(false);
   }
 }, [gameData, isProcessing, stopTimer]);
- /**
+  /**
    * Resume game - simple timer start + database update
    */
 const resumeGame = useCallback(async () => {
@@ -547,12 +538,6 @@ const resumeGame = useCallback(async () => {
     setIsAudioReady(true); // ✅ NEW: Mark audio ready for fresh start
     setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag
     
-    // NEW: Clear waiting for manual start flag
-    if (waitingForManualStart) {
-      setWaitingForManualStart(false);
-      console.log('🚀 Starting game for the first time after countdown');
-    }
-    
     // ✅ NEW: Restart timer for resumed games
     if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
       console.log('🔄 Restarting timer after manual resume');
@@ -560,13 +545,38 @@ const resumeGame = useCallback(async () => {
     }
     
     console.log('✅ Game resumed successfully - audio system ready');
-  } catch (error: any) {
-    console.error('❌ Resume error:', error);
-    throw new Error(error.message || 'Failed to resume game');
+  } catch (error) {
+    console.error('❌ Failed to resume game:', error);
   } finally {
     setIsProcessing(false);
   }
-}, [gameData, isProcessing, startTimer, waitingForManualStart]);
+}, [gameData, startTimer]);
+
+  /**
+   * End game - simple timer stop + database update
+   */
+  const endGame = useCallback(async () => {
+    if (!gameData || isProcessing) return;
+    
+    setIsProcessing(true);
+    try {
+      console.log(`🏁 Ending game: ${gameData.gameId}`);
+      
+      // Stop timer immediately
+      stopTimer();
+      
+      // 🎯 DELEGATE: Let firebase-game handle end logic
+      await firebaseService.endGame(gameData.gameId);
+      
+      console.log(`✅ Game ended: ${gameData.gameId}`);
+      
+    } catch (error: any) {
+      console.error('❌ End game error:', error);
+      throw new Error(error.message || 'Failed to end game');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [gameData, isProcessing, stopTimer]);
 
 
 /**
@@ -643,21 +653,27 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
 
-// Auto-start timer when game becomes active (from real-time updates)
+// Auto-resume when host returns to active game - FIXED: Only if NOT manually paused AND audio ready
   useEffect(() => {
     if (gameData?.gameState?.isActive && 
         !gameData?.gameState?.gameOver && 
         !gameData?.gameState?.isCountdown &&
         !isTimerActiveRef.current && 
+        !isProcessing &&
         !firebasePaused &&
-        isAudioReady &&
-        !waitingForManualStart) { // NEW: Don't auto-start if waiting for manual start
+        isAudioReady) { // ✅ NEW: Wait for audio system to be ready
       
-      console.log(`🎮 Game became active - starting automatic number calling (audio ready)`);
-      lastCallTimeRef.current = Date.now();
-      startTimer();
+      console.log(`🔄 Host returned to active game - auto-resuming timer (audio ready)`);
+      
+      // ✅ NEW: Add delay to prevent race condition with countdown completion
+      setTimeout(() => {
+        if (!isTimerActiveRef.current && !isCallInProgressRef.current) {
+          lastCallTimeRef.current = Date.now();
+          startTimer();
+        }
+      }, 1500); // Give enough time for any pending operations
     }
-  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer, firebasePaused, isAudioReady, waitingForManualStart]);
+  }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer, firebasePaused, isAudioReady]);
 useEffect(() => {
     if (!gameData?.gameId) return;
     
@@ -745,28 +761,27 @@ const handleGameOverAudioComplete = useCallback(() => {
   // ================== CONTEXT VALUE ==================
 
 const value: HostControlsContextValue = {
-    startGame,
-    pauseGame,
-    resumeGame,
-    endGame,
-    updateSpeechRate,
-    isProcessing,
-    countdownTime,
-    speechRate,
-    speechRateScale,
-    handleAudioComplete,
-    handlePrizeAudioComplete,
-    handleGameOverAudioComplete,
-    firebasePaused,
-    isPreparingGame,
-    preparationStatus,
-    preparationProgress,
-    visualCalledNumbers,
-    setVisualCalledNumbers,
-    isAudioReady,
-    wasAutopaused,
-    waitingForManualStart // NEW: Export this state
-  };
+  startGame,
+  pauseGame,
+  resumeGame,
+  endGame,
+  updateSpeechRate, 
+  isProcessing,
+  countdownTime,
+  speechRate, 
+  speechRateScale, 
+  handleAudioComplete,
+  handlePrizeAudioComplete,
+  handleGameOverAudioComplete,
+  firebasePaused,
+  isPreparingGame,
+  preparationStatus,
+  preparationProgress,
+  visualCalledNumbers,
+  setVisualCalledNumbers,
+  isAudioReady,
+  wasAutopaused
+};
   return (
     <HostControlsContext.Provider value={value}>
       {children}
