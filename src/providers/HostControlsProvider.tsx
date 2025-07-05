@@ -100,26 +100,16 @@ React.useEffect(() => {
 }, [gameData?.gameId]);
 
 // ✅ FIXED: Handle both active AND paused games during refresh (only on true component mount)
-// Initialize with safe defaults on page load
-  useEffect(() => {
-    const isActiveGame = gameData?.gameState?.isActive && !gameData?.gameState?.gameOver;
-    const isPausedActiveGame = !gameData?.gameState?.isActive && 
-                               !gameData?.gameState?.gameOver && 
-                               (gameData?.gameState?.calledNumbers?.length || 0) > 0;
+React.useEffect(() => {
+  if (gameData?.gameId && !hasInitializedRef.current) {
+    hasInitializedRef.current = true; // Mark as initialized (persists across renders)
+    // Check if this is a game that should show refresh warning (active OR paused with called numbers)
+    const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
+    const isPausedGame = !gameData.gameState.isActive && !gameData.gameState.gameOver && 
+                        gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0;
     
-    // NEW: Check if game is in waiting state (active but no numbers called)
-    const isWaitingToStart = gameData?.gameState?.isActive && 
-                            !gameData?.gameState?.isCountdown &&
-                            (gameData?.gameState?.calledNumbers?.length || 0) === 0;
-    
-    if (isWaitingToStart) {
-      console.log('🎯 Game is waiting for manual start');
-      setWaitingForManualStart(true);
-      setFirebasePaused(true);
-      setIsAudioReady(true);
-      setVisualCalledNumbers([]);
-    } else if (isActiveGame || isPausedActiveGame) {
-      console.log(`🔧 Initializing for ${isActiveGame ? 'active' : 'paused'} game - implementing safety measures`);
+    if (isActiveGame || isPausedGame) {
+      console.log(`🔄 Page refreshed during ${isActiveGame ? 'active' : 'paused'} game - implementing safety measures`);
       
       // Auto-pause on refresh to prevent chaos (or maintain pause state)
       setFirebasePaused(true);
@@ -146,7 +136,6 @@ React.useEffect(() => {
       setIsAudioReady(false);
       setFirebasePaused(false);
       setWasAutopaused(false);
-      setWaitingForManualStart(false);
     }
   }
 }, [gameData?.gameId]);
