@@ -80,10 +80,6 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
 const [waitingForManualStart, setWaitingForManualStart] = React.useState(false); // NEW: Track manual start state
-
-// ✅ ADD these new state variables BEFORE they're used:
-const [isPreparingGame, setIsPrep
-
 // ✅ ADD these new state variables BEFORE they're used:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
 const [preparationStatus, setPreparationStatus] = React.useState<string>('');
