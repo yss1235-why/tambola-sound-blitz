@@ -80,6 +80,10 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
 const [waitingForManualStart, setWaitingForManualStart] = React.useState(false); // NEW: Track manual start state
+
+// ✅ ADD these new state variables BEFORE they're used:
+const [isPreparingGame, setIsPrep
+
 // ✅ ADD these new state variables BEFORE they're used:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
 const [preparationStatus, setPreparationStatus] = React.useState<string>('');
@@ -136,7 +140,7 @@ React.useEffect(() => {
         console.log('✅ Game was already paused - maintaining pause state after refresh');
       }
       
-     } else {
+    } else {
       // For non-active games, normal initialization is safe
       setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
       setIsAudioReady(false);
@@ -144,6 +148,7 @@ React.useEffect(() => {
       setWasAutopaused(false);
       setWaitingForManualStart(false);
     }
+  }
 }, [gameData?.gameId]);
 
   // Simple refs - only for timer management
