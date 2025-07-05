@@ -267,7 +267,7 @@ const {
                     <Pause className="w-4 h-4 mr-2" />
                     {hostControls?.isProcessing ? 'Pausing...' : 'Pause Automatic Game'}
                   </Button>
-               ) : (
+              ) : (
       <div className="space-y-2 flex-1">
         <Button 
           onClick={handleResumeGame} 
@@ -276,7 +276,8 @@ const {
           disabled={hostControls?.isProcessing}
         >
           <Play className="w-4 h-4 mr-2" />
-          {hostControls?.isProcessing ? 'Resuming...' : 'Resume Automatic Game'}
+          {hostControls?.isProcessing ? 'Starting...' : 
+           hostControls?.waitingForManualStart ? 'Click here to start number calling' : 'Resume Automatic Game'}
         </Button>
         
         {/* ✅ NEW: Show auto-pause warning */}
