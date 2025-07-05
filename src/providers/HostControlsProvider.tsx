@@ -495,8 +495,7 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
         await firebaseService.activateGameAfterCountdown(gameData.gameId);
         // ✅ REMOVED: Don't start timer here either - let state change handle it
      console.log('✅ Game activated, state change will trigger timer');
-}, 1000);
-    
+
     console.log(`✅ Game start initiated: ${gameData.gameId}`);
     
   } catch (error: any) {
