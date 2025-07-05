@@ -136,7 +136,7 @@ React.useEffect(() => {
         console.log('✅ Game was already paused - maintaining pause state after refresh');
       }
       
-    } else {
+     } else {
       // For non-active games, normal initialization is safe
       setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
       setIsAudioReady(false);
@@ -144,7 +144,6 @@ React.useEffect(() => {
       setWasAutopaused(false);
       setWaitingForManualStart(false);
     }
-  }
 }, [gameData?.gameId]);
 
   // Simple refs - only for timer management
