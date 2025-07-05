@@ -1359,22 +1359,20 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
  * Activate game after countdown
  */
   async activateGameAfterCountdown(gameId: string): Promise<void> {
-  try {
-    const gameRef = ref(database, `games/${gameId}`);
-    await update(gameRef, {
-      'gameState/isActive': false,  // Keep game paused
-      'gameState/isCountdown': false,
-      'gameState/countdownTime': 0,
-      'gameState/isPaused': true,    // Explicitly mark as paused
-      'gameState/waitingForStart': true,  // New flag to show waiting state
-      'updatedAt': new Date().toISOString()
-    });
-    
-    console.log(`✅ Game ready after countdown (paused): ${gameId}`);
-  } catch (error: any) {
-    throw new Error(`Failed to prepare game after countdown: ${error.message}`);
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/isActive': true,
+        'gameState/isCountdown': false,
+        'gameState/countdownTime': 0,
+        'updatedAt': new Date().toISOString()
+      });
+      
+      console.log(`✅ Game activated after countdown: ${gameId}`);
+    } catch (error: any) {
+      throw new Error(`Failed to activate game: ${error.message}`);
+    }
   }
-}
   /**
    * Actually end the game after audio completion
    */
@@ -1509,4 +1507,3 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
   // ================== SINGLETON EXPORT ==================
 
 export const firebaseGame = new FirebaseGameService();
-
