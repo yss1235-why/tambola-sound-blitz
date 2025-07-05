@@ -149,6 +149,12 @@ const scheduleNextCall = useCallback(() => {
     return;
   }
   
+  // ✅ NEW: Check if call already in progress
+  if (isCallInProgressRef.current) {
+    console.log('⚠️ Call already in progress, skipping schedule');
+    return;
+  }
+  
   // Clear any existing timer
   if (gameTimerRef.current) {
     clearTimeout(gameTimerRef.current);
@@ -380,11 +386,8 @@ if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerAc
        // Activate game after countdown
         try {
           await firebaseService.activateGameAfterCountdown(gameData!.gameId);
-          // ✅ FIXED: Add delay to ensure activation completes
-          setTimeout(() => {
-            console.log('🎮 Starting timer after countdown completion');
-            startTimer();
-          }, 500);
+          // ✅ REMOVED: Don't start timer here - let state change trigger it
+          console.log('✅ Game activated, waiting for state change to start timer');
         } catch (error) {
           console.error('❌ Failed to activate game after countdown:', error);
         }
@@ -481,17 +484,18 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
         
+      if (timeLeft <= 0) {
+        clearInterval(countdownTimerRef.current!);
+        countdownTimerRef.current = null;
+        
         // ✅ NEW: Set audio ready before starting game
         setIsAudioReady(true);
         console.log('✅ Audio system marked ready for game start');
         
         await firebaseService.activateGameAfterCountdown(gameData.gameId);
-        // ✅ FIXED: Add delay to ensure proper initialization
-        setTimeout(() => {
-          console.log('🎮 Starting timer after game activation');
-          startTimer();
-        }, 1000);
-        } 
+        // ✅ REMOVED: Don't start timer here either - let state change handle it
+        console.log('✅ Game activated, state change will trigger timer');
+        }
     }, 1000);
     
     console.log(`✅ Game start initiated: ${gameData.gameId}`);
@@ -664,8 +668,14 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
         isAudioReady) { // ✅ NEW: Wait for audio system to be ready
       
       console.log(`🔄 Host returned to active game - auto-resuming timer (audio ready)`);
-      lastCallTimeRef.current = Date.now();
-      startTimer();
+      
+      // ✅ NEW: Add delay to prevent race condition with countdown completion
+      setTimeout(() => {
+        if (!isTimerActiveRef.current && !isCallInProgressRef.current) {
+          lastCallTimeRef.current = Date.now();
+          startTimer();
+        }
+      }, 1500); // Give enough time for any pending operations
     }
   }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, isProcessing, startTimer, firebasePaused, isAudioReady]);
 useEffect(() => {
