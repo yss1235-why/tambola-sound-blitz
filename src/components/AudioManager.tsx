@@ -337,7 +337,7 @@ useEffect(() => {
           utterance.voice = chosenVoice;
         }
         
-     utterance.rate = speechRate !== undefined ? speechRate : (forceEnable ? 1 : 1);
+     utterance.rate = speechRate !== undefined ? speechRate : 1.0;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
