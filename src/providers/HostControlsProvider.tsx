@@ -383,13 +383,14 @@ if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerAc
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
         
-       // Activate game after countdown
+       // Prepare game after countdown (but keep paused)
         try {
           await firebaseService.activateGameAfterCountdown(gameData!.gameId);
-          // ✅ REMOVED: Don't start timer here - let state change trigger it
-          console.log('✅ Game activated, waiting for state change to start timer');
+          // Game is now ready but paused - host must press resume to start
+          console.log('✅ Game ready after countdown - waiting for manual start');
+          setFirebasePaused(true);  // Ensure UI shows paused state
         } catch (error) {
-          console.error('❌ Failed to activate game after countdown:', error);
+          console.error('❌ Failed to prepare game after countdown:', error);
         }
       }
     }, 1000);
@@ -533,10 +534,17 @@ const resumeGame = useCallback(async () => {
   setIsProcessing(true);
   
   try {
-    await firebaseService.resumeGame(gameData.gameId);
-    setFirebasePaused(false);
-    setIsAudioReady(true); // ✅ NEW: Mark audio ready for fresh start
-    setWasAutopaused(false); // ✅ NEW: Clear auto-pause flag
+    // Clear the waiting flag when resuming
+      await firebaseService.resumeGame(gameData.gameId);
+      await firebaseService.updateGameState(gameData.gameId, {
+        ...gameData.gameState,
+        waitingForStart: false,  // Clear waiting flag
+        isActive: true,
+        isPaused: false
+      });
+      setFirebasePaused(false);
+      setIsAudioReady(true);
+      setWasAutopaused(false);
     
     // ✅ NEW: Restart timer for resumed games
     if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
