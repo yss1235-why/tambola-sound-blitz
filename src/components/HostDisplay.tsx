@@ -195,18 +195,9 @@ const {
             Automatic Game Controls
           </CardTitle>
         </CardHeader>
-       <CardContent className="space-y-3">
-  {/* Game Ready Message */}
-  {gameData?.gameState?.waitingForStart && !gameData?.gameState?.isActive && (
-    <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-      <p className="text-yellow-800 font-medium">
-        Game is ready! Press "Resume" to start calling numbers.
-      </p>
-    </div>
-  )}
-  
-  {/* Control Buttons */}
-  <div className="flex flex-wrap gap-2">
+        <CardContent className="space-y-3">
+          {/* Control Buttons */}
+          <div className="flex flex-wrap gap-2">
             {currentPhase === 'booking' && (
   <>
     {/* ✅ NEW: Preparation Status Display */}
