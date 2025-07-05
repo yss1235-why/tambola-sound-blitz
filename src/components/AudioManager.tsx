@@ -152,11 +152,16 @@ useEffect(() => {
   const isProcessingQueue = useRef<boolean>(false);
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
   const fallbackTimer = useRef<NodeJS.Timeout | null>(null);
+  const speechRateRef = useRef<number>(speechRate || 1.0);
 
  
 
   // Initialize speech synthesis
-  // Initialize speech synthesis
+// Keep speech rate ref updated
+  useEffect(() => {
+    speechRateRef.current = speechRate || 1.0;
+    console.log(`🎚️ Speech rate ref updated to: ${speechRateRef.current}`);
+  }, [speechRate]);
 useEffect(() => {
   const initSpeech = () => {
     if (!('speechSynthesis' in window)) {
@@ -337,7 +342,7 @@ useEffect(() => {
           utterance.voice = chosenVoice;
         }
         
-     utterance.rate = speechRate !== undefined ? speechRate : 1.0;
+    utterance.rate = speechRateRef.current;
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
@@ -438,7 +443,7 @@ useEffect(() => {
     };
 
     processNext();
- }, [forceEnable, speechRate]);
+}, [forceEnable]);
   // Stop all audio
   const stopAllAudio = useCallback(() => {
     if (window.speechSynthesis) {
