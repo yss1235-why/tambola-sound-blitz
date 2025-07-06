@@ -299,18 +299,18 @@ console.log(`📞 Starting first number call immediately`);
   }, []);
 
 /**
- * ✅ SOLUTION 1: Handle audio completion and update visual state
+ * ✅ SIMPLIFIED: Handle audio completion - focus only on calling next number
  */
-const handleAudioComplete = useCallback(async () => {
-  console.log(`🔊 Audio completed - Timer active: ${isTimerActiveRef.current}`);
+const handleAudioComplete = useCallback(() => {
+  console.log(`🔊 Audio completed - calling next number`);
   
   // Mark audio system as ready on first callback
   if (!isAudioReady) {
     setIsAudioReady(true);
-    console.log('✅ Audio system now ready after page refresh');
+    console.log('✅ Audio system now ready');
   }
   
-  // ✅ NEW: Update visual called numbers ONLY after audio completes
+  // Update visual called numbers immediately
   if (gameData?.gameState?.currentNumber) {
     setVisualCalledNumbers(prev => {
       const newNumbers = [...prev];
@@ -321,91 +321,41 @@ const handleAudioComplete = useCallback(async () => {
     });
   }
   
-  // ✅ PRIORITY 1: Check for game ending conditions FIRST (before calling next number)
-  if (pendingGameEnd || gameData?.gameState?.pendingGameEnd) {
-    console.log(`🏁 PRIORITY: Game ending detected - blocking new numbers`);
-    
-    // Stop all number calling immediately
-    isTimerActiveRef.current = false;
-    isCallInProgressRef.current = false;
-    stopTimer();
-    
-    setPendingGameEnd(false);
-    
-    firebaseService.endGame(gameData!.gameId)
-      .then(() => console.log('✅ Game ended after audio completion'))
-      .catch(err => console.error('❌ Failed to end game:', err));
-    
-    return; // STOP HERE - no more numbers
-  }
-  
-  // ✅ PRIORITY 2: Check if game should end based on current state
-  const currentGameData = await firebaseService.getGameData(gameData!.gameId);
-  if (currentGameData?.gameState?.pendingGameEnd) {
-    console.log(`🏁 PRIORITY: Firebase shows game ending - blocking new numbers`);
-    
-    // Stop all number calling immediately
-    isTimerActiveRef.current = false;
-    isCallInProgressRef.current = false;
-    stopTimer();
-    
-    // Let game end naturally through Firebase state
-    return; // STOP HERE - no more numbers
-  }
-  
-// ✅ PRIORITY 3: Only call next number if game is NOT ending
-if (gameData?.gameState?.isActive && 
-    !gameData?.gameState?.gameOver && 
-    !gameData?.gameState?.pendingGameEnd &&
-    isTimerActiveRef.current) {
-  
-  console.log(`🔊 Audio completed - safe to call next number`);
-  
-  // ✅ NEW: Reset the flag to allow next call
+  // Reset the call-in-progress flag immediately
   isCallInProgressRef.current = false;
   
-  // ✅ NEW: Add small delay to ensure clean state
-  await new Promise(resolve => setTimeout(resolve, 100));
-  
-  // ✅ NEW: Double-check game is not ending after delay
-  const recheckGameData = await firebaseService.getGameData(gameData.gameId);
-  if (recheckGameData?.gameState?.pendingGameEnd) {
-    console.log('⚠️ Game ending detected during delay - aborting number call');
-    isTimerActiveRef.current = false;
-    isCallInProgressRef.current = false;
-    return;
-  }
-  
-  // ✅ NEW: Check again before calling
-  if (isCallInProgressRef.current) {
-    console.log('⚠️ Another call started during delay, skipping');
-    return;
-  }
-  
-  lastCallTimeRef.current = Date.now();
-  isCallInProgressRef.current = true; // ✅ Mark new call in progress
-  
-  try {
-    const shouldContinue = await firebaseService.callNextNumberAndContinue(gameData.gameId);
+  // Simple check - if game is active and timer should run, call next number
+  if (gameData?.gameState?.isActive && 
+      !gameData?.gameState?.gameOver && 
+      isTimerActiveRef.current) {
     
-    if (shouldContinue && isTimerActiveRef.current) {
-      console.log('✅ Number called successfully, waiting for audio...');
-    } else {
-      console.log('⏸️ Game should stop');
-      isTimerActiveRef.current = false;
-      isCallInProgressRef.current = false; // ✅ Reset flag
-    }
-  } catch (error) {
-    console.error('❌ Error in number call:', error);
-    isTimerActiveRef.current = false;
-    isCallInProgressRef.current = false; // ✅ Reset flag
+    console.log(`🔊 Audio completed - safe to call next number`);
+    
+    // Call next number with minimal delay
+    setTimeout(() => {
+      if (isTimerActiveRef.current && !isCallInProgressRef.current) {
+        lastCallTimeRef.current = Date.now();
+        isCallInProgressRef.current = true;
+        
+        firebaseService.callNextNumberAndContinue(gameData.gameId)
+          .then(shouldContinue => {
+            if (!shouldContinue) {
+              console.log('⏸️ Game should stop');
+              isTimerActiveRef.current = false;
+              isCallInProgressRef.current = false;
+            }
+          })
+          .catch(error => {
+            console.error('❌ Error in audio completion:', error);
+            isTimerActiveRef.current = false;
+            isCallInProgressRef.current = false;
+          });
+      }
+    }, 200); // Small delay to ensure clean state
+  } else {
+    console.log(`🔊 Audio completed but game inactive or stopped`);
   }
-} else {
-  console.log(`🔊 Audio completed but game inactive, ended, or ending`);
-  isTimerActiveRef.current = false;
-  isCallInProgressRef.current = false; // ✅ Reset flag when game stops
-}
-}, [pendingGameEnd, stopTimer, gameData]);
+}, [gameData, isAudioReady]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
@@ -706,12 +656,43 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
 }, [gameData?.gameState?.isActive, gameData?.gameState?.gameOver, gameData?.gameState?.isCountdown, startTimer, firebasePaused, isAudioReady]);
 
   // Auto-stop timer when game ends (from real-time updates)
+ // Auto-stop timer when game ends (from real-time updates)
   useEffect(() => {
     if (gameData?.gameState.gameOver && isTimerActiveRef.current) {
       console.log(`🏁 Game ended via real-time update - stopping timer`);
       stopTimer();
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
+
+  // ✅ NEW: Separate game over detection (doesn't interfere with audio timing)
+  useEffect(() => {
+    // Only check if game has pending end but hasn't triggered game over audio yet
+    if (gameData?.gameState?.pendingGameEnd && 
+        !gameData?.gameState?.triggerGameOverAudio &&
+        !gameData?.gameState?.gameOver) {
+      
+      console.log(`🏁 Game has pending end - checking if all prize audio completed`);
+      
+      // Check if there are any prizes that were just won but might still be announcing
+      const recentlyWonPrizes = Object.values(gameData.prizes || {}).filter(p => p.won);
+      
+      // Small delay to ensure any prize audio has completed
+      setTimeout(async () => {
+        try {
+          console.log(`🏁 Triggering Game Over audio after prize completion`);
+          
+          await firebaseService.updateGameState(gameData.gameId, {
+            ...gameData.gameState,
+            triggerGameOverAudio: true
+          });
+          
+          console.log(`✅ Game Over audio trigger set in Firebase`);
+        } catch (error) {
+          console.error('❌ Failed to trigger game over audio:', error);
+        }
+      }, 2000); // 2 second delay to ensure prize audio completes
+    }
+  }, [gameData?.gameState?.pendingGameEnd, gameData?.gameState?.triggerGameOverAudio, gameData?.gameState?.gameOver, gameData?.prizes]);
 
 // Auto-resume when host returns to active game - FIXED: Only if NOT manually paused AND audio ready
   useEffect(() => {
@@ -782,30 +763,11 @@ useEffect(() => {
 /**
  * Handle prize audio completion
  */
-const handlePrizeAudioComplete = useCallback(async (prizeId: string) => {
+const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   console.log(`🏆 Prize audio completed: ${prizeId}`);
-  
-  // Small delay to ensure state is settled
-  setTimeout(async () => {
-    // Re-fetch current game state to ensure we have latest data
-    const currentGameData = await firebaseService.getGameData(gameData!.gameId);
-    
-    if (currentGameData?.gameState?.pendingGameEnd && !currentGameData?.gameState?.triggerGameOverAudio) {
-      console.log(`🏁 Last prize announced, now triggering Game Over audio`);
-      
-      // Update Firebase to trigger game over audio
-      try {
-        await firebaseService.updateGameState(gameData!.gameId, {
-          ...currentGameData.gameState,
-          triggerGameOverAudio: true
-        });
-        console.log(`✅ Game Over audio trigger set in Firebase`);
-      } catch (error) {
-        console.error('❌ Failed to trigger game over audio:', error);
-      }
-    }
-  }, 500); // 500ms delay to ensure prize state is fully updated
-}, [gameData]);
+  // Prize audio completion is now handled by the separate useEffect above
+  // This keeps it simple and doesn't interfere with number calling
+}, []);
 // ✅ NEW: Handle Game Over audio completion with explicit redirect
 const handleGameOverAudioComplete = useCallback(() => {
   console.log(`🏁 Game Over audio completed - starting 2-second redirect timer`);
