@@ -157,8 +157,9 @@ const {
     );
   }
 
-  // ✅ NEW: SIMPLIFIED WINNER DISPLAY for finished games
-  if (currentPhase === 'finished') {
+// ✅ NEW: SIMPLIFIED WINNER DISPLAY for finished games OR explicit game over
+  if (currentPhase === 'finished' || gameData?.gameState?.gameOver) {
+    console.log(`🏆 Showing winner display - Phase: ${currentPhase}, GameOver: ${gameData?.gameState?.gameOver}`);
     return (
       <SimplifiedWinnerDisplay 
         gameData={gameData}
