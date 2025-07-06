@@ -208,6 +208,28 @@ useEffect(() => {
   
 }, [selectedGameId, currentView, gameDataSource.games, onGameSelection]);
 
+  // ✅ NEW: Listen for explicit game end events for players
+  useEffect(() => {
+    const handleGameEnd = (event: CustomEvent) => {
+      const { gameId: endedGameId } = event.detail;
+      console.log(`🎉 Player received game end event for game ${endedGameId} - current game: ${selectedGameId}`);
+      
+      if (endedGameId === selectedGameId && currentView !== 'winners') {
+        console.log('✅ Game end event matches current game - redirecting to winners');
+        setTimeout(() => {
+          setCurrentView('winners');
+          console.log('🏆 Player force-redirected to winners via custom event');
+        }, 500);
+      }
+    };
+
+    window.addEventListener('tambola-game-ended', handleGameEnd as EventListener);
+    
+    return () => {
+      window.removeEventListener('tambola-game-ended', handleGameEnd as EventListener);
+    };
+  }, [selectedGameId, currentView]);
+
   // ✅ UNCHANGED: All existing handler functions
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
     const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
