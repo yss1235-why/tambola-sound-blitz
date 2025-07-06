@@ -806,22 +806,47 @@ const handlePrizeAudioComplete = useCallback(async (prizeId: string) => {
     }
   }, 500); // 500ms delay to ensure prize state is fully updated
 }, [gameData]);
-// ✅ NEW: Handle Game Over audio completion
+// ✅ NEW: Handle Game Over audio completion with explicit redirect
 const handleGameOverAudioComplete = useCallback(() => {
-  console.log(`🏁 Game Over audio completed - finalizing game end`);
+  console.log(`🏁 Game Over audio completed - starting 2-second redirect timer`);
   
-  if (gameData?.gameState?.pendingGameEnd) { // ✅ FIX: Check Firebase state directly
-    // Actually end the game and redirect to winners
-    firebaseService.finalizeGameEnd(gameData.gameId)
-      .then(() => {
-        console.log('✅ Game ended successfully - should redirect to winners');
-        // The game state change will automatically trigger winner display
-      })
-      .catch(err => console.error('❌ Failed to finalize game end:', err));
-    
+  if (gameData?.gameState?.pendingGameEnd) {
     stopTimer();
+    
+    // ✅ NEW: 2-second delay before redirect
+    setTimeout(async () => {
+      try {
+        console.log(`🏁 2-second delay complete - finalizing game and triggering redirect`);
+        
+        // Step 1: End the game in Firebase
+        await firebaseService.finalizeGameEnd(gameData.gameId);
+        console.log('✅ Game ended successfully in Firebase');
+        
+        // Step 2: Small delay to ensure Firebase update propagates
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Step 3: Force UI refresh by triggering a state change that components watch
+        // This will make useGameData detect the game is over and trigger winner display
+        const updatedGameData = await firebaseService.getGameData(gameData.gameId);
+        console.log('✅ Game data refreshed - UI should now show winners');
+        
+        // Step 4: Dispatch a custom event for any components that need explicit notification
+        const gameEndEvent = new CustomEvent('tambola-game-ended', {
+          detail: { 
+            gameId: gameData.gameId,
+            showWinners: true,
+            gameData: updatedGameData
+          }
+        });
+        window.dispatchEvent(gameEndEvent);
+        console.log('✅ Game end event dispatched - components should redirect to winners');
+        
+      } catch (error) {
+        console.error('❌ Failed to finalize game and redirect:', error);
+      }
+    }, 2000); // 2-second delay
   }
-}, [gameData, stopTimer]); // ✅ Remove pendingGameEnd from dependencies
+}, [gameData, stopTimer]);
   // ================== CONTEXT VALUE ==================
 
 const value: HostControlsContextValue = {
