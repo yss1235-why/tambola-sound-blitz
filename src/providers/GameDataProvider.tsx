@@ -106,7 +106,31 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
         error
       });
     }
-  }, [isHostMode, userId, gameData, currentPhase, isLoading, subscriptionLoading, error]);
+ }, [isHostMode, userId, gameData, currentPhase, isLoading, subscriptionLoading, error]);
+
+  // ✅ NEW: Listen for explicit game end events
+  React.useEffect(() => {
+    const handleGameEnd = (event: CustomEvent) => {
+      const { gameId: endedGameId, showWinners, gameData: endedGameData } = event.detail;
+      console.log(`🎉 GameDataProvider received game end event for ${endedGameId} - current game: ${gameData?.gameId}`);
+      
+      if (gameData?.gameId === endedGameId && endedGameData) {
+        console.log('✅ Game end event matches current game - data should auto-update via subscription');
+        
+        // Since this provider uses subscriptions, the data should auto-update
+        // This event listener is mainly for debugging and potential manual refresh
+        if (endedGameData.gameState?.gameOver) {
+          console.log('🏆 Game Over confirmed - winner display should now show');
+        }
+      }
+    };
+
+    window.addEventListener('tambola-game-ended', handleGameEnd as EventListener);
+    
+    return () => {
+      window.removeEventListener('tambola-game-ended', handleGameEnd as EventListener);
+    };
+  }, [gameData?.gameId]);
 
   // Create stable context value
   const contextValue = useMemo((): GameDataContextValue => ({
