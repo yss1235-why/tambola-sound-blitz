@@ -377,17 +377,19 @@ if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerAc
       } catch (error) {
         console.warn('⚠️ Countdown update failed:', error);
       }
-      
-      if (timeLeft <= 0) {
+     if (timeLeft <= 0) {
         setCountdownTime(0);
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
         
-       // Activate game after countdown
         try {
           await firebaseService.activateGameAfterCountdown(gameData!.gameId);
-          // ✅ REMOVED: Don't start timer here - let state change trigger it
-          console.log('✅ Game activated, waiting for state change to start timer');
+          
+          // ✅ NEW: Automatically set to paused state after countdown
+          setFirebasePaused(true); 
+          setIsAudioReady(true);
+          console.log('✅ Game activated but paused - host must click Resume to start');
+          
         } catch (error) {
           console.error('❌ Failed to activate game after countdown:', error);
         }
@@ -480,17 +482,21 @@ const prepareGame = useCallback(async (): Promise<boolean> => {
       } catch (error) {
         console.error('Failed to update countdown in Firebase:', error);
       }
-   if (timeLeft <= 0) {
+  if (timeLeft <= 0) {
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
         
-        // ✅ NEW: Set audio ready before starting game
-        setIsAudioReady(true);
-        console.log('✅ Audio system marked ready for game start');
-        
-        await firebaseService.activateGameAfterCountdown(gameData.gameId);
-        // ✅ REMOVED: Don't start timer here either - let state change handle it
-        console.log('✅ Game activated, state change will trigger timer');
+        try {
+          await firebaseService.activateGameAfterCountdown(gameData.gameId);
+          
+          // ✅ NEW: Automatically set to paused state after countdown
+          setFirebasePaused(true); 
+          setIsAudioReady(true);
+          console.log('✅ Game activated but paused - host must click Resume to start');
+          
+        } catch (error) {
+          console.error('❌ Failed to activate game after countdown:', error);
+        }
       }
     }, 1000);
 
@@ -707,10 +713,14 @@ useEffect(() => {
       if (currentCountdown > 0) {
         console.log(`🚨 Detected lost countdown timer - auto-resuming from ${currentCountdown}s`);
         resumeCountdownTimer(currentCountdown);
-      } else if (currentCountdown === 0) {
-        console.log(`🚨 Countdown expired during disconnect - activating game`);
+    } else if (currentCountdown === 0) {
+        console.log(`🚨 Countdown expired during disconnect - activating game but paused`);
         firebaseService.activateGameAfterCountdown(gameData.gameId)
-          .then(() => startTimer())
+          .then(() => {
+            setFirebasePaused(true);
+            setIsAudioReady(true);
+            console.log('✅ Game activated but paused after recovery - host must click Resume');
+          })
           .catch(error => console.error('❌ Failed to activate game:', error));
       }
     }
