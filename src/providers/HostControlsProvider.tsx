@@ -171,12 +171,19 @@ console.log(`📞 Calling next number immediately after audio completion`);
       return;
     }
     
+    // ✅ NEW: Block if game is ending (same as startTimer)
+    if (gameData.gameState?.pendingGameEnd || pendingGameEnd) {
+      console.log('🚫 Schedule blocked - game is ending');
+      isTimerActiveRef.current = false;
+      isCallInProgressRef.current = false;
+      return;
+    }
+    
     // ✅ NEW: Safety check to prevent double-calls
     if (isCallInProgressRef.current) {
       console.log('⚠️ Call already in progress, skipping');
       return;
     }
-    
     console.log('📞 Timer fired - calling next number...');
     lastCallTimeRef.current = Date.now();
     isCallInProgressRef.current = true; // ✅ Mark call in progress
@@ -215,6 +222,13 @@ console.log(`📞 Calling next number immediately after audio completion`);
 
 const startTimer = useCallback(() => {
   if (!gameData) return;
+  
+  // ✅ NEW: Block timer if game is ending
+  if (gameData.gameState?.pendingGameEnd || pendingGameEnd) {
+    console.log('🚫 Timer blocked - game is ending');
+    return;
+  }
+  
   console.log('▶️ Starting timer with initial delay');
   
   stopTimer(); // Ensure no existing timer is running
@@ -228,6 +242,14 @@ console.log(`📞 Starting first number call immediately`);
 (async () => {
     if (!isTimerActiveRef.current || !gameData) {
       console.log('⏰ Initial call but game inactive');
+      return;
+    }
+    
+    // ✅ NEW: Block if game is ending
+    if (gameData.gameState?.pendingGameEnd || pendingGameEnd) {
+      console.log('🚫 Number calling blocked - game is ending');
+      isTimerActiveRef.current = false;
+      isCallInProgressRef.current = false;
       return;
     }
     
@@ -299,28 +321,60 @@ const handleAudioComplete = useCallback(async () => {
     });
   }
   
-  // Check if game should end after audio completes
-  if (pendingGameEnd) {
-    console.log(`🏁 Audio complete, ending game now`);
+  // ✅ PRIORITY 1: Check for game ending conditions FIRST (before calling next number)
+  if (pendingGameEnd || gameData?.gameState?.pendingGameEnd) {
+    console.log(`🏁 PRIORITY: Game ending detected - blocking new numbers`);
+    
+    // Stop all number calling immediately
+    isTimerActiveRef.current = false;
+    isCallInProgressRef.current = false;
+    stopTimer();
+    
     setPendingGameEnd(false);
     
     firebaseService.endGame(gameData!.gameId)
       .then(() => console.log('✅ Game ended after audio completion'))
       .catch(err => console.error('❌ Failed to end game:', err));
     
-    stopTimer();
-    return;
+    return; // STOP HERE - no more numbers
   }
   
-// ✅ IMMEDIATE: Call next number right after audio completes (no delay)
-if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerActiveRef.current) {
-  console.log(`🔊 Audio completed - calling next number immediately`);
+  // ✅ PRIORITY 2: Check if game should end based on current state
+  const currentGameData = await firebaseService.getGameData(gameData!.gameId);
+  if (currentGameData?.gameState?.pendingGameEnd) {
+    console.log(`🏁 PRIORITY: Firebase shows game ending - blocking new numbers`);
+    
+    // Stop all number calling immediately
+    isTimerActiveRef.current = false;
+    isCallInProgressRef.current = false;
+    stopTimer();
+    
+    // Let game end naturally through Firebase state
+    return; // STOP HERE - no more numbers
+  }
+  
+// ✅ PRIORITY 3: Only call next number if game is NOT ending
+if (gameData?.gameState?.isActive && 
+    !gameData?.gameState?.gameOver && 
+    !gameData?.gameState?.pendingGameEnd &&
+    isTimerActiveRef.current) {
+  
+  console.log(`🔊 Audio completed - safe to call next number`);
   
   // ✅ NEW: Reset the flag to allow next call
   isCallInProgressRef.current = false;
   
   // ✅ NEW: Add small delay to ensure clean state
   await new Promise(resolve => setTimeout(resolve, 100));
+  
+  // ✅ NEW: Double-check game is not ending after delay
+  const recheckGameData = await firebaseService.getGameData(gameData.gameId);
+  if (recheckGameData?.gameState?.pendingGameEnd) {
+    console.log('⚠️ Game ending detected during delay - aborting number call');
+    isTimerActiveRef.current = false;
+    isCallInProgressRef.current = false;
+    return;
+  }
   
   // ✅ NEW: Check again before calling
   if (isCallInProgressRef.current) {
@@ -342,12 +396,12 @@ if (gameData?.gameState?.isActive && !gameData?.gameState?.gameOver && isTimerAc
       isCallInProgressRef.current = false; // ✅ Reset flag
     }
   } catch (error) {
-    console.error('❌ Error in immediate call:', error);
+    console.error('❌ Error in number call:', error);
     isTimerActiveRef.current = false;
     isCallInProgressRef.current = false; // ✅ Reset flag
   }
 } else {
-  console.log(`🔊 Audio completed but game inactive or ended`);
+  console.log(`🔊 Audio completed but game inactive, ended, or ending`);
   isTimerActiveRef.current = false;
   isCallInProgressRef.current = false; // ✅ Reset flag when game stops
 }
