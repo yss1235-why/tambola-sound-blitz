@@ -818,8 +818,8 @@ const handleGameOverAudioComplete = useCallback(() => {
       try {
         console.log(`🏁 2-second delay complete - finalizing game and triggering redirect`);
         
-        // Step 1: End the game in Firebase
-        await firebaseService.finalizeGameEnd(gameData.gameId);
+      // Step 1: End the game in Firebase using existing method
+        await firebaseService.endGame(gameData.gameId);
         console.log('✅ Game ended successfully in Firebase');
         
         // Step 2: Small delay to ensure Firebase update propagates
@@ -829,7 +829,6 @@ const handleGameOverAudioComplete = useCallback(() => {
         // This will make useGameData detect the game is over and trigger winner display
         const updatedGameData = await firebaseService.getGameData(gameData.gameId);
         console.log('✅ Game data refreshed - UI should now show winners');
-        
         // Step 4: Dispatch a custom event for any components that need explicit notification
         const gameEndEvent = new CustomEvent('tambola-game-ended', {
           detail: { 
