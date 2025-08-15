@@ -141,6 +141,10 @@ React.useEffect(() => {
   const isTimerActiveRef = useRef(false);
   const lastCallTimeRef = useRef<number>(0);
   const isCallInProgressRef = useRef(false); // ✅ NEW: Prevent double-calls
+  // Audio completion verification system
+  const lastCompletedNumber = useRef<number | null>(null);
+  const audioCompletionId = useRef<string | null>(null);
+  const isProcessingCompletion = useRef(false);
 
   // ================== SIMPLE TIMER LOGIC ==================
 const scheduleNextCall = useCallback(() => {
@@ -210,16 +214,20 @@ console.log(`📞 Calling next number immediately after audio completion`);
   /**
    * Simple timer control
    */
-  const stopTimer = useCallback(() => {
+ const stopTimer = useCallback(() => {
     console.log(`🛑 Stopping number calling timer`);
     isTimerActiveRef.current = false;
+    isCallInProgressRef.current = false;
+    isProcessingCompletion.current = false;
+    
+    // Clear completion tracking
+    audioCompletionId.current = null;
     
     if (gameTimerRef.current) {
       clearTimeout(gameTimerRef.current);
       gameTimerRef.current = null;
     }
   }, []);
-
 const startTimer = useCallback(() => {
   if (!gameData) return;
   
@@ -229,10 +237,16 @@ const startTimer = useCallback(() => {
     return;
   }
   
-  console.log('▶️ Starting timer with initial delay');
+ console.log('▶️ Starting timer');
   
-  stopTimer(); // Ensure no existing timer is running
+  stopTimer(); // Ensure no existing timer is running and clear tracking
+  
+  // Reset all tracking refs
   isTimerActiveRef.current = true;
+  isCallInProgressRef.current = false;
+  isProcessingCompletion.current = false;
+  lastCompletedNumber.current = null;
+  audioCompletionId.current = null;
   lastCallTimeRef.current = Date.now();
   
 // ✅ FIX: Start immediately (no delay)
@@ -302,7 +316,17 @@ console.log(`📞 Starting first number call immediately`);
  * ✅ SIMPLIFIED: Handle audio completion - focus only on calling next number
  */
 const handleAudioComplete = useCallback(() => {
-  console.log(`🔊 Audio completed - calling next number`);
+  // Generate unique completion ID
+  const completionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  audioCompletionId.current = completionId;
+  
+  console.log(`🔊 Audio completion callback received (ID: ${completionId})`);
+  
+  // Prevent duplicate processing
+  if (isProcessingCompletion.current) {
+    console.log('⚠️ Already processing a completion, ignoring');
+    return;
+  }
   
   // Mark audio system as ready on first callback
   if (!isAudioReady) {
@@ -319,42 +343,65 @@ const handleAudioComplete = useCallback(() => {
       }
       return newNumbers;
     });
+    
+    // Track completed number
+    lastCompletedNumber.current = gameData.gameState.currentNumber;
+    console.log(`✅ Number ${gameData.gameState.currentNumber} audio confirmed complete`);
   }
   
-  // Reset the call-in-progress flag immediately
-  isCallInProgressRef.current = false;
+  isProcessingCompletion.current = true;
   
-  // Simple check - if game is active and timer should run, call next number
-  if (gameData?.gameState?.isActive && 
-      !gameData?.gameState?.gameOver && 
-      isTimerActiveRef.current) {
+  // Add verification delay to ensure audio is truly done
+  setTimeout(() => {
+    // Verify this completion is still valid
+    if (audioCompletionId.current !== completionId) {
+      console.log('🚫 Stale completion ID, ignoring');
+      isProcessingCompletion.current = false;
+      return;
+    }
     
-    console.log(`🔊 Audio completed - safe to call next number`);
+    // Reset flags
+    isCallInProgressRef.current = false;
+    isProcessingCompletion.current = false;
     
-    // Call next number with minimal delay
-    setTimeout(() => {
-      if (isTimerActiveRef.current && !isCallInProgressRef.current) {
-        lastCallTimeRef.current = Date.now();
-        isCallInProgressRef.current = true;
-        
-        firebaseService.callNextNumberAndContinue(gameData.gameId)
-          .then(shouldContinue => {
-            if (!shouldContinue) {
-              console.log('⏸️ Game should stop');
-              isTimerActiveRef.current = false;
-              isCallInProgressRef.current = false;
-            }
-          })
-          .catch(error => {
-            console.error('❌ Error in audio completion:', error);
+    // Verify game is still active
+    if (!gameData?.gameState?.isActive || 
+        gameData?.gameState?.gameOver || 
+        !isTimerActiveRef.current) {
+      console.log('🛑 Game not active, stopping after audio completion');
+      return;
+    }
+    
+    // Check for pending game end
+    if (gameData?.gameState?.pendingGameEnd) {
+      console.log('🚫 Game is ending, not calling next number');
+      isTimerActiveRef.current = false;
+      return;
+    }
+    
+    // Schedule next call immediately
+    console.log('📞 Audio verified complete, calling next number immediately');
+    
+    if (!isCallInProgressRef.current) {
+      lastCallTimeRef.current = Date.now();
+      isCallInProgressRef.current = true;
+      
+      firebaseService.callNextNumberAndContinue(gameData.gameId)
+        .then(shouldContinue => {
+          if (!shouldContinue) {
+            console.log('⏸️ Game should stop');
             isTimerActiveRef.current = false;
             isCallInProgressRef.current = false;
-          });
-      }
-    }, 200); // Small delay to ensure clean state
-  } else {
-    console.log(`🔊 Audio completed but game inactive or stopped`);
-  }
+          }
+          // If shouldContinue is true, the next audio completion will trigger the next call
+        })
+        .catch(error => {
+          console.error('❌ Error calling next number:', error);
+          isTimerActiveRef.current = false;
+          isCallInProgressRef.current = false;
+        });
+    }
+  }, 300); // 300ms verification delay
 }, [gameData, isAudioReady]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
