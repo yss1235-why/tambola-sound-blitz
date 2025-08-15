@@ -146,13 +146,25 @@ useEffect(() => {
   
   // Other refs
   const lastCalledNumber = useRef<number | null>(null);
- const announcedPrizes = useRef<Set<string>>(new Set());
+  const announcedPrizes = useRef<Set<string>>(new Set());
   const announcedGameOver = useRef<boolean>(false);
   const audioQueue = useRef<AudioQueueItem[]>([]);
   const isProcessingQueue = useRef<boolean>(false);
   const currentUtterance = useRef<SpeechSynthesisUtterance | null>(null);
   const fallbackTimer = useRef<NodeJS.Timeout | null>(null);
   const speechRateRef = useRef<number>(speechRate || 1.0);
+  // Audio tracking system for preventing duplicate callbacks
+  const currentAudioId = useRef<string | null>(null);
+  const audioStartTime = useRef<number | null>(null);
+  const isAudioCompleted = useRef<boolean>(false);
+  
+  // Browser detection for specific workarounds
+  const browserInfo = useRef({
+    isChrome: /chrome/i.test(navigator.userAgent) && /google inc/i.test(navigator.vendor) && !/edg/i.test(navigator.userAgent),
+    isSafari: /^((?!chrome|android).)*safari/i.test(navigator.userAgent),
+    isFirefox: navigator.userAgent.toLowerCase().includes('firefox'),
+    isEdge: /edg/i.test(navigator.userAgent)
+  });
 
  
 
@@ -317,118 +329,194 @@ useEffect(() => {
       }
 
       const item = audioQueue.current.shift()!;
-      console.log(`🎤 Speaking: ${item.text}`);
+      
+      // Generate unique ID for this audio
+      const audioId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      currentAudioId.current = audioId;
+      audioStartTime.current = performance.now();
+      isAudioCompleted.current = false;
+      
+      console.log(`🎤 Starting audio ${audioId}: "${item.text}" at ${speechRateRef.current}x speed`);
 
       try {
-        // Cancel any existing speech
-        if (window.speechSynthesis.speaking) {
+        // Chrome-specific: Force cancel any stuck audio
+        if (browserInfo.current.isChrome || browserInfo.current.isEdge) {
           window.speechSynthesis.cancel();
-        }
-
-        const utterance = new SpeechSynthesisUtterance(item.text);
-
-        // Choose voice based on content type
-        let chosenVoice = null;
-
-        if (item.id === 'game-over') {
-          chosenVoice = maleVoice.current || fallbackVoice.current;
-          console.log('👨 Using male voice for Game Over');
+          // Chrome/Edge need a delay after cancel
+          setTimeout(() => startSpeaking(), 50);
         } else {
-          chosenVoice = femaleVoice.current || fallbackVoice.current;
-          console.log('👩 Using female voice for:', item.id);
+          // Other browsers can start immediately
+          startSpeaking();
         }
 
-        if (chosenVoice) {
-          utterance.voice = chosenVoice;
-        }
-        
-    utterance.rate = speechRateRef.current;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
+        function startSpeaking() {
+          const utterance = new SpeechSynthesisUtterance(item.text);
 
-        currentUtterance.current = utterance;
-
-
-       // ✅ REMOVED: No more audioPlayTime needed - polling will detect actual completion
-// ✅ NEW: Improved completion detection
-        let audioCompleted = false;
-        let pollCount = 0;
-        const maxPolls = 40; // 20 seconds maximum (40 * 500ms)
-        
-        const markComplete = () => {
-          if (audioCompleted) return; // Prevent double execution
-          audioCompleted = true;
-          
-          console.log(`✅ Audio confirmed complete: ${item.text}`);
-          
-          if (fallbackTimer.current) {
-            clearTimeout(fallbackTimer.current);
-            fallbackTimer.current = null;
-          }
-          
-          if (window.speechSynthesis.speaking) {
-            window.speechSynthesis.cancel();
-          }
-          
-          currentUtterance.current = null;
-          
-          if (item.callback) {
-            try {
-              console.log(`🔊 Audio completed for: ${item.text} - notifying completion`);
-              item.callback();
-            } catch (error) {
-              console.error('Audio callback error:', error);
-            }
-          }
-          
-          setTimeout(processNext, 100);
-        };
-
-        // Method 1: Browser events (when they work)
-        utterance.onend = () => {
-          console.log('🔊 Browser onend event detected');
-          setTimeout(markComplete, 100);
-        };
-        
-        utterance.onerror = (event) => {
-          console.warn('🔊 Browser audio error:', event.error);
-          markComplete();
-        };
-
-        // Method 2: Improved polling (faster + more reliable)
-        const pollAudioStatus = () => {
-          if (audioCompleted) return;
-          
-          pollCount++;
-          
-          if (!window.speechSynthesis.speaking) {
-            console.log(`📊 Polling detected completion (poll #${pollCount})`);
-            markComplete();
-          } else if (pollCount >= maxPolls) {
-            console.warn(`⚠️ Audio polling timeout after ${pollCount} attempts - forcing completion`);
-            markComplete();
+          // Choose voice based on content type
+          let chosenVoice = null;
+          if (item.id === 'game-over') {
+            chosenVoice = maleVoice.current || fallbackVoice.current;
+            console.log('👨 Using male voice for Game Over');
           } else {
-            setTimeout(pollAudioStatus, 500); // Poll every 500ms
+            chosenVoice = femaleVoice.current || fallbackVoice.current;
+            console.log('👩 Using female voice for:', item.id);
           }
-        };
 
-        // Method 3: Safety timeout based on estimated text length
-        const estimatedDuration = Math.max(item.text.length * 100, 2000);
-        fallbackTimer.current = setTimeout(() => {
-          if (!audioCompleted) {
-            console.warn(`⚠️ Audio safety timeout after ${estimatedDuration + 3000}ms - forcing completion`);
+          if (chosenVoice) {
+            utterance.voice = chosenVoice;
+          }
+          
+          utterance.rate = speechRateRef.current;
+          utterance.pitch = 1.0;
+          utterance.volume = 1.0;
+          
+          // Firefox workaround: Set volume to 0.999
+          if (browserInfo.current.isFirefox) {
+            utterance.volume = 0.999;
+          }
+
+          currentUtterance.current = utterance;
+
+          // Calculate dynamic timeout based on text length and speech rate
+          const calculateTimeout = () => {
+            const baseMs = item.text.length * 80; // 80ms per character baseline
+            const adjustedMs = baseMs / speechRateRef.current;
+            
+            // Browser-specific buffer adjustments
+            let bufferMultiplier = 1.5;
+            if (browserInfo.current.isSafari) {
+              bufferMultiplier = 2.0; // Safari needs more buffer
+            } else if (browserInfo.current.isChrome) {
+              bufferMultiplier = 1.3; // Chrome is more reliable
+            } else if (browserInfo.current.isEdge) {
+              bufferMultiplier = 1.4; // Edge similar to Chrome
+            } else if (browserInfo.current.isFirefox) {
+              bufferMultiplier = 1.7; // Firefox needs moderate buffer
+            }
+            
+            const timeout = Math.max(1000, adjustedMs * bufferMultiplier);
+            console.log(`⏱️ Timeout calculated: ${timeout}ms (${bufferMultiplier}x buffer for ${browserInfo.current.isChrome ? 'Chrome' : browserInfo.current.isSafari ? 'Safari' : browserInfo.current.isFirefox ? 'Firefox' : browserInfo.current.isEdge ? 'Edge' : 'Unknown'})`);
+            return timeout;
+          };
+
+          let audioCompleted = false;
+          let pollCount = 0;
+          const maxPolls = Math.ceil(calculateTimeout() / 500); // Dynamic max polls based on timeout
+          
+          const markComplete = () => {
+            // Check if already completed
+            if (audioCompleted || isAudioCompleted.current) {
+              console.log(`🚫 Ignoring duplicate completion for ${audioId}`);
+              return;
+            }
+            
+            // Verify this is still the current audio
+            if (currentAudioId.current !== audioId) {
+              console.log(`🚫 Ignoring stale completion - expected ${currentAudioId.current}, got ${audioId}`);
+              return;
+            }
+            
+            // Check minimum time elapsed (prevent false early triggers)
+            const elapsed = performance.now() - (audioStartTime.current || 0);
+            const minTime = (item.text.length * 30) / speechRateRef.current; // Minimum possible time
+            
+            if (elapsed < minTime) {
+              console.warn(`⚠️ Completion too fast (${elapsed}ms < ${minTime}ms), delaying...`);
+              setTimeout(() => markComplete(), minTime - elapsed);
+              return;
+            }
+            
+            // Mark as completed
+            audioCompleted = true;
+            isAudioCompleted.current = true;
+            
+            console.log(`✅ Audio ${audioId} confirmed complete after ${elapsed}ms`);
+            
+            // Clear all timers
+            if (fallbackTimer.current) {
+              clearTimeout(fallbackTimer.current);
+              fallbackTimer.current = null;
+            }
+            
+            // Cancel speech if still running
+            if (window.speechSynthesis.speaking) {
+              window.speechSynthesis.cancel();
+            }
+            
+            currentUtterance.current = null;
+            currentAudioId.current = null;
+            audioStartTime.current = null;
+            
+            // Execute callback with verification
+            if (item.callback) {
+              try {
+                console.log(`🔊 Executing callback for: ${item.text}`);
+                // Small delay to ensure audio is truly done
+                setTimeout(() => {
+                  if (!isAudioCompleted.current || audioCompleted) {
+                    item.callback();
+                  }
+                }, 100);
+              } catch (error) {
+                console.error('Audio callback error:', error);
+              }
+            }
+            
+            // Process next item with small gap
+            setTimeout(processNext, 200);
+          };
+
+          // Method 1: Browser events (when they work)
+          utterance.onend = () => {
+            console.log(`🔊 onend event for ${audioId}`);
             markComplete();
-          }
-        }, estimatedDuration + 3000);
+          };
+          
+          utterance.onerror = (event) => {
+            console.warn(`🔊 Audio error for ${audioId}:`, event.error);
+            markComplete();
+          };
 
-        console.log(`🎤 Starting audio: "${item.text}" (estimated: ${estimatedDuration}ms)`);
-        
-        // Start audio and polling
-        window.speechSynthesis.speak(utterance);
-        setTimeout(pollAudioStatus, 1000);
+          // Method 2: Improved polling
+          const pollAudioStatus = () => {
+            if (audioCompleted || currentAudioId.current !== audioId) return;
+            
+            pollCount++;
+            
+            if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+              console.log(`📊 Polling detected completion for ${audioId} (poll #${pollCount})`);
+              markComplete();
+            } else if (pollCount >= maxPolls) {
+              console.warn(`⚠️ Audio polling timeout for ${audioId} after ${pollCount} attempts`);
+              markComplete();
+            } else {
+              setTimeout(pollAudioStatus, 500);
+            }
+          };
+
+          // Method 3: Dynamic safety timeout
+          const timeoutMs = calculateTimeout();
+          fallbackTimer.current = setTimeout(() => {
+            if (!audioCompleted && currentAudioId.current === audioId) {
+              console.warn(`⚠️ Safety timeout for ${audioId} after ${timeoutMs}ms`);
+              markComplete();
+            }
+          }, timeoutMs);
+
+          // Start speech synthesis
+          window.speechSynthesis.speak(utterance);
+          
+          // Start polling after a delay
+          setTimeout(pollAudioStatus, 1000);
+        }
         
       } catch (error) {
         console.error('Speech synthesis error:', error);
+        
+        // Reset tracking
+        currentAudioId.current = null;
+        audioStartTime.current = null;
+        isAudioCompleted.current = false;
         
         if (item.callback) {
           try {
@@ -441,7 +529,6 @@ useEffect(() => {
         setTimeout(processNext, 100);
       }
     };
-
     processNext();
 }, [forceEnable]);
   // Stop all audio
