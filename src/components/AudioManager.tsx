@@ -697,10 +697,13 @@ useEffect(() => {
       lastCalledNumber.current = null;
       audioQueue.current = [];
       
-      // ✅ Inline cleanup to avoid dependency
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
+     // Check if game over audio is playing before canceling
+const isGameOverPlaying = audioQueue.current.some(item => item.id === 'game-over');
+if (window.speechSynthesis && !isGameOverPlaying) {
+  window.speechSynthesis.cancel();
+} else if (isGameOverPlaying) {
+  console.log('🛡️ Protecting game over audio from cancellation');
+}
       
       if (fallbackTimer.current) {
         clearTimeout(fallbackTimer.current);
