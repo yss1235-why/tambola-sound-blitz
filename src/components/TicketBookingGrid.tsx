@@ -21,6 +21,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
   const [hostPhone, setHostPhone] = useState<string>('');
   const [isLoadingHost, setIsLoadingHost] = useState(true);
   const [realTimeGameData, setRealTimeGameData] = useState<GameData>(gameData);
+   const [viewMode, setViewMode] = useState<'all' | 'available'>('all');
 
   // ✅ FIXED: Add subscription ref for cleanup
   const subscriptionRef = useRef<(() => void) | null>(null);
@@ -112,14 +113,23 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
   const totalCount = Math.min(realTimeGameData.maxTickets, Object.keys(realTimeGameData.tickets || {}).length);
   const availableCount = totalCount - bookedCount;
 
-  // Get only the tickets up to maxTickets limit
-  const availableTickets = Object.entries(realTimeGameData.tickets || {})
+ // Get only the tickets up to maxTickets limit
+  const allTickets = Object.entries(realTimeGameData.tickets || {})
     .slice(0, realTimeGameData.maxTickets)
     .reduce((acc, [ticketId, ticket]) => {
       acc[ticketId] = ticket;
       return acc;
     }, {} as { [key: string]: TambolaTicket });
 
+  // Filter tickets based on view mode
+  const availableTickets = viewMode === 'available' 
+    ? Object.entries(allTickets)
+        .filter(([_, ticket]) => !ticket.isBooked)
+        .reduce((acc, [ticketId, ticket]) => {
+          acc[ticketId] = ticket;
+          return acc;
+        }, {} as { [key: string]: TambolaTicket })
+    : allTickets;
   // ✅ FIXED: Check real-time game state
   if (realTimeGameData.gameState.isActive || realTimeGameData.gameState.isCountdown) {
     // Game is starting/started - this view should switch automatically
@@ -167,10 +177,36 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       </Card>
 
       {/* Tickets Grid */}
+      {/* Tickets Grid */}
       <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
         <CardHeader>
-          <CardTitle className="text-2xl text-gray-800 text-center">Available Tickets</CardTitle>
-         
+          <CardTitle className="text-2xl text-gray-800 text-center">
+            {viewMode === 'all' ? 'All Tickets' : 'Available Tickets Only'}
+          </CardTitle>
+          
+          {/* View Mode Toggle */}
+          <div className="flex justify-center mt-4 gap-2">
+            <Button
+              onClick={() => setViewMode('all')}
+              variant={viewMode === 'all' ? 'default' : 'outline'}
+              size="sm"
+              className={viewMode === 'all' 
+                ? 'bg-orange-500 hover:bg-orange-600 text-white' 
+                : 'text-gray-600 hover:text-gray-800'}
+            >
+              🎫 All Tickets ({Object.keys(allTickets).length})
+            </Button>
+            <Button
+              onClick={() => setViewMode('available')}
+              variant={viewMode === 'available' ? 'default' : 'outline'}
+              size="sm"
+              className={viewMode === 'available' 
+                ? 'bg-green-500 hover:bg-green-600 text-white' 
+                : 'text-gray-600 hover:text-gray-800'}
+            >
+              ✅ Available Only ({Object.values(allTickets).filter(t => !t.isBooked).length})
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -257,8 +293,28 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 </div>
               </div>
             ))}
-          </div>
+         </div>
 
+          {/* Empty State for Available Only mode */}
+          {viewMode === 'available' && Object.keys(availableTickets).length === 0 && (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🎟️</div>
+              <h3 className="text-xl font-semibold text-gray-700 mb-2">
+                All Tickets Have Been Booked!
+              </h3>
+              <p className="text-gray-600 mb-4">
+                There are no available tickets at the moment.
+              </p>
+              <Button
+                onClick={() => setViewMode('all')}
+                variant="outline"
+                size="sm"
+                className="text-orange-600 border-orange-300 hover:bg-orange-50"
+              >
+                View All Tickets
+              </Button>
+            </div>
+          )}
          
         </CardContent>
       </Card>
