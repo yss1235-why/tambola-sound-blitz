@@ -718,19 +718,21 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
         !gameData?.gameState?.triggerGameOverAudio &&
         !gameData?.gameState?.gameOver) {
       
-      console.log(`🏁 Game has pending end - checking if all prize audio completed`);
+      console.log(`🏁 Game has pending end - preparing for game over audio`);
       
-      // Check if there are any prizes that were just won but might still be announcing
-      const recentlyWonPrizes = Object.values(gameData.prizes || {}).filter(p => p.won);
+      // Stop the timer immediately to prevent more numbers
+      stopTimer();
       
       // Small delay to ensure any prize audio has completed
       setTimeout(async () => {
         try {
-          console.log(`🏁 Triggering Game Over audio after prize completion`);
+          console.log(`🏁 Triggering Game Over audio (game will end after audio completes)`);
           
+          // IMPORTANT: Only trigger audio, DON'T end game yet
           await firebaseService.updateGameState(gameData.gameId, {
             ...gameData.gameState,
             triggerGameOverAudio: true
+            // DO NOT set gameOver: true here!
           });
           
           console.log(`✅ Game Over audio trigger set in Firebase`);
@@ -817,17 +819,18 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
 }, []);
 // ✅ NEW: Handle Game Over audio completion with explicit redirect
 const handleGameOverAudioComplete = useCallback(() => {
-  console.log(`🏁 Game Over audio completed - starting 2-second redirect timer`);
+  console.log(`🏁 Game Over audio completed - now safe to end game`);
   
-  if (gameData?.gameState?.pendingGameEnd) {
+  // Only proceed if game hasn't already ended
+  if (gameData?.gameState?.pendingGameEnd && !gameData?.gameState?.gameOver) {
     stopTimer();
     
-    // ✅ NEW: 2-second delay before redirect
+    // Add a pleasant pause after audio before redirect
     setTimeout(async () => {
       try {
-        console.log(`🏁 2-second delay complete - finalizing game and triggering redirect`);
+        console.log(`🏁 Ending game and showing winners`);
         
-      // Step 1: End the game in Firebase using existing method
+        // NOW it's safe to actually end the game
         await firebaseService.endGame(gameData.gameId);
         console.log('✅ Game ended successfully in Firebase');
         
