@@ -670,23 +670,31 @@ useEffect(() => {
     // Mark as announced FIRST to prevent double queueing
     announcedGameOver.current = true;
     
-    // FIX: Increase delay to ensure prize audio completes
+   // FIX: Increase delay to ensure prize audio completes
     setTimeout(() => {
-      addToQueue({
-        id: 'game-over',
-        text: announcement,
-        priority: 'high', // Changed to high priority to ensure it plays
-        callback: () => {
-          console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
-          if (onGameOverAudioComplete) {
-            // Add small delay before ending game to ensure audio fully completes
-            setTimeout(() => {
-              onGameOverAudioComplete();
-            }, 500);
+      // Force clear any stuck audio before game over
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+      
+      // Small delay after cancel
+      setTimeout(() => {
+        addToQueue({
+          id: 'game-over',
+          text: announcement,
+          priority: 'high', // High priority to ensure it plays
+          callback: () => {
+            console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
+            if (onGameOverAudioComplete) {
+              // Add delay before ending game to ensure audio fully completes
+              setTimeout(() => {
+                onGameOverAudioComplete();
+              }, 1000);
+            }
           }
-        }
-      });
-    }, 3000); // Increased to 3 seconds to ensure prize audio completes
+        });
+      }, 100);
+    }, 5000); // Increased to 5 seconds to ensure prize audio completes
   }
 }, [gameState?.triggerGameOverAudio, gameState?.lastWinnerAnnouncement, gameState?.pendingGameEnd, addToQueue, onGameOverAudioComplete]);
 // Reset announced prizes when game resets
