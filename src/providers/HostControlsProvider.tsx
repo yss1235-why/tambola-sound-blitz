@@ -730,37 +730,9 @@ const updateSpeechRate = useCallback((scaleValue: number) => {
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
 
-  // ✅ NEW: Separate game over detection (doesn't interfere with audio timing)
-  useEffect(() => {
-    // Only check if game has pending end but hasn't triggered game over audio yet
-    if (gameData?.gameState?.pendingGameEnd && 
-        !gameData?.gameState?.triggerGameOverAudio &&
-        !gameData?.gameState?.gameOver) {
+ 
       
-      console.log(`🏁 Game has pending end - preparing for game over audio`);
-      
-      // Stop the timer immediately to prevent more numbers
-      stopTimer();
-      
-      // Small delay to ensure any prize audio has completed
-      setTimeout(async () => {
-        try {
-          console.log(`🏁 Triggering Game Over audio (game will end after audio completes)`);
-          
-          // IMPORTANT: Only trigger audio, DON'T end game yet
-          await firebaseService.updateGameState(gameData.gameId, {
-            ...gameData.gameState,
-            triggerGameOverAudio: true
-            // DO NOT set gameOver: true here!
-          });
-          
-          console.log(`✅ Game Over audio trigger set in Firebase`);
-        } catch (error) {
-          console.error('❌ Failed to trigger game over audio:', error);
-        }
-      }, 2000); // 2 second delay to ensure prize audio completes
-    }
-  }, [gameData?.gameState?.pendingGameEnd, gameData?.gameState?.triggerGameOverAudio, gameData?.gameState?.gameOver, gameData?.prizes]);
+     
 
 // Auto-resume when host returns to active game - FIXED: Only if NOT manually paused AND audio ready
   useEffect(() => {
@@ -854,47 +826,11 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   // Prize audio completion is now handled properly
 }, [gameData]);
 // ✅ NEW: Handle Game Over audio completion with explicit redirect
+// Simplified: Just log completion, game is already ended
 const handleGameOverAudioComplete = useCallback(() => {
-  console.log(`🏁 Game Over audio completed - now safe to end game`);
-  
-  // Only proceed if game hasn't already ended
-  if (gameData?.gameState?.pendingGameEnd && !gameData?.gameState?.gameOver) {
-    stopTimer();
-    
-    // FIX: Increase delay to ensure audio system has fully stopped
-    // Add a pleasant pause after audio before redirect
-    setTimeout(async () => {
-      try {
-        console.log(`🏁 Ending game and showing winners`);
-        
-        // NOW it's safe to actually end the game
-        await firebaseService.endGame(gameData.gameId);
-        console.log('✅ Game ended successfully in Firebase');
-        
-        // Step 2: Small delay to ensure Firebase update propagates
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Step 3: Force UI refresh by triggering a state change that components watch
-        // This will make useGameData detect the game is over and trigger winner display
-        const updatedGameData = await firebaseService.getGameData(gameData.gameId);
-        console.log('✅ Game data refreshed - UI should now show winners');
-        // Step 4: Dispatch a custom event for any components that need explicit notification
-        const gameEndEvent = new CustomEvent('tambola-game-ended', {
-          detail: { 
-            gameId: gameData.gameId,
-            showWinners: true,
-            gameData: updatedGameData
-          }
-        });
-        window.dispatchEvent(gameEndEvent);
-        console.log('✅ Game end event dispatched - components should redirect to winners');
-        
-      } catch (error) {
-        console.error('❌ Failed to finalize game and redirect:', error);
-      }
-    }, 4000); // 4-second delay
-  }
-}, [gameData, stopTimer]);
+  console.log(`🏁 Game Over audio completed`);
+  // Game is already ended, nothing to do here
+}, []);
   // ================== CONTEXT VALUE ==================
 
 const value: HostControlsContextValue = {
