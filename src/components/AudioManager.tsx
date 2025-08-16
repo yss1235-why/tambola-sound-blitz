@@ -647,7 +647,7 @@ useEffect(() => {
   });
 }, [prizes, addToQueue, onPrizeAudioComplete]);
 
-// Handle Game Over announcement
+
 // Handle Game Over announcement - simplified to play when game actually ends
 useEffect(() => {
   // Play game over audio when game has actually ended
