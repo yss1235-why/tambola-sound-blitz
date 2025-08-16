@@ -9,8 +9,7 @@ interface AudioManagerProps {
   onAudioComplete?: () => void;
   forceEnable?: boolean;
   onPrizeAudioComplete?: () => void;
-  onGameOverAudioComplete?: () => void;
-  speechRate?: number; // NEW: Dynamic speech rate control
+  speechRate?: number;
 }
 interface AudioQueueItem {
   id: string;
@@ -120,8 +119,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   onAudioComplete,
   forceEnable = false,
   onPrizeAudioComplete,
-  onGameOverAudioComplete,
-  speechRate // NEW: Extract speechRate prop
+  speechRate
 }) => {
   
 const [isAudioSupported, setIsAudioSupported] = useState(false);
@@ -650,53 +648,28 @@ useEffect(() => {
 }, [prizes, addToQueue, onPrizeAudioComplete]);
 
 // Handle Game Over announcement
+// Handle Game Over announcement - simplified to play when game actually ends
 useEffect(() => {
-  console.log('🎮 Game Over Check:', {
-    triggerGameOverAudio: gameState?.triggerGameOverAudio,
-    announcedGameOver: announcedGameOver.current,
-    pendingGameEnd: gameState?.pendingGameEnd
-  });
-  
-  // Only process if game over should be triggered and we haven't announced it yet
-  if (gameState?.triggerGameOverAudio === true && !announcedGameOver.current) {
-    // Log the trigger attempt
-    console.log(`🏁 Game Over audio triggered - preparing announcement`);
-    
-    // Use the announcement from Firebase or fallback
-    const announcement = gameState?.lastWinnerAnnouncement || "Game Over! All prizes have been won!";
-    
-    console.log(`🏁 Queueing Game Over audio: "${announcement}"`);
-    
-    // Mark as announced FIRST to prevent double queueing
+  // Play game over audio when game has actually ended
+  if (gameState?.gameOver === true && !announcedGameOver.current) {
     announcedGameOver.current = true;
     
-   // FIX: Increase delay to ensure prize audio completes
+    // Get the announcement text
+    const announcement = gameState?.lastWinnerAnnouncement || "Game Over! All prizes have been won!";
+    
+    console.log(`🏁 Game has ended - playing game over announcement`);
+    
+    // Play the audio after a short delay (so UI has time to transition)
     setTimeout(() => {
-      // Force clear any stuck audio before game over
-      if (window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel();
-      }
-      
-      // Small delay after cancel
-      setTimeout(() => {
-        addToQueue({
-          id: 'game-over',
-          text: announcement,
-          priority: 'high', // High priority to ensure it plays
-          callback: () => {
-            console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
-            if (onGameOverAudioComplete) {
-              // Add delay before ending game to ensure audio fully completes
-              setTimeout(() => {
-                onGameOverAudioComplete();
-              }, 1000);
-            }
-          }
-        });
-      }, 100);
-    }, 5000); // Increased to 5 seconds to ensure prize audio completes
+      addToQueue({
+        id: 'game-over',
+        text: announcement,
+        priority: 'high'
+        // No callback needed - game is already over
+      });
+    }, 1000); // 1 second delay to let UI settle
   }
-}, [gameState?.triggerGameOverAudio, gameState?.lastWinnerAnnouncement, gameState?.pendingGameEnd, addToQueue, onGameOverAudioComplete]);
+}, [gameState?.gameOver, gameState?.lastWinnerAnnouncement, addToQueue]);
 // Reset announced prizes when game resets
   useEffect(() => {
     const wonPrizes = prizes.filter(p => p.won);
@@ -706,7 +679,7 @@ useEffect(() => {
       
       // FIX: Don't clear audio queue or cancel speech during game end sequence
       // Only reset if we're truly starting a new game (not during game end)
-      if (!gameState?.pendingGameEnd && !gameState?.triggerGameOverAudio && !gameState?.gameOver) {
+     if (!gameState?.pendingGameEnd && !gameState?.gameOver) {
         announcedPrizes.current.clear();
         announcedGameOver.current = false;
         lastCalledNumber.current = null;
