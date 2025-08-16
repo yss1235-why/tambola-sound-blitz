@@ -1127,25 +1127,25 @@ if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.
     const isLastNumber = updatedCalledNumbers.length >= 90;
     const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
     
-  if (shouldEndGame && !updatedGame.gameState.gameOver && !updatedGame.gameState.pendingGameEnd) {
-  console.log(`🏁 Game should end after audio: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+  if (shouldEndGame && !updatedGame.gameState.gameOver) {
+  console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
   
-  // Set pending end in Firebase WITHOUT triggering game over audio yet
+  // End game immediately
   await update(gameRef, {
-    'gameState/pendingGameEnd': true,
-    'gameState/triggerGameOverAudio': false, // Don't trigger yet
+    'gameState/gameOver': true,
+    'gameState/isActive': false,
     'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game Over!' : 'All numbers called! Game Over!',
     'lastWinnerAt': new Date().toISOString(),
     'updatedAt': new Date().toISOString()
   });
   
-  console.log(`✅ Pending game end set in Firebase (Game Over audio will trigger after prize audio)`);
+  console.log(`✅ Game ended successfully in Firebase`);
 }
     
     return {
       success: true,
       gameEnded: shouldEndGame,
-      hasMoreNumbers: updatedCalledNumbers.length < 90 && !updatedGame.gameState.pendingGameEnd,
+      hasMoreNumbers: updatedCalledNumbers.length < 90 && !shouldEndGame,
       number: selectedNumber,
       winners: prizeResult.hasWinners ? prizeResult.winners : undefined
     };
