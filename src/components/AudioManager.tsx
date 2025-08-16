@@ -670,20 +670,23 @@ useEffect(() => {
     // Mark as announced FIRST to prevent double queueing
     announcedGameOver.current = true;
     
-    // Small delay to ensure prize audio has finished
+    // FIX: Increase delay to ensure prize audio completes
     setTimeout(() => {
       addToQueue({
         id: 'game-over',
         text: announcement,
-        priority: 'normal',
+        priority: 'high', // Changed to high priority to ensure it plays
         callback: () => {
           console.log(`🏁 Game Over audio completed - calling onGameOverAudioComplete`);
           if (onGameOverAudioComplete) {
-            onGameOverAudioComplete();
+            // Add small delay before ending game to ensure audio fully completes
+            setTimeout(() => {
+              onGameOverAudioComplete();
+            }, 500);
           }
         }
       });
-    }, 1000); // 1 second delay after prize audio
+    }, 3000); // Increased to 3 seconds to ensure prize audio completes
   }
 }, [gameState?.triggerGameOverAudio, gameState?.lastWinnerAnnouncement, gameState?.pendingGameEnd, addToQueue, onGameOverAudioComplete]);
 // Reset announced prizes when game resets
@@ -691,19 +694,22 @@ useEffect(() => {
     const wonPrizes = prizes.filter(p => p.won);
     
    if (wonPrizes.length === 0 && (announcedPrizes.current.size > 0 || announcedGameOver.current)) {
-  console.log('🔄 Resetting audio state for new game');
-  announcedPrizes.current.clear();
-  announcedGameOver.current = false;
-      lastCalledNumber.current = null;
-      audioQueue.current = [];
+      console.log('🔄 Resetting audio state for new game');
       
-     // Check if game over audio is playing before canceling
-const isGameOverPlaying = audioQueue.current.some(item => item.id === 'game-over');
-if (window.speechSynthesis && !isGameOverPlaying) {
-  window.speechSynthesis.cancel();
-} else if (isGameOverPlaying) {
-  console.log('🛡️ Protecting game over audio from cancellation');
-}
+      // FIX: Don't clear audio queue or cancel speech during game end sequence
+      // Only reset if we're truly starting a new game (not during game end)
+      if (!gameState?.pendingGameEnd && !gameState?.triggerGameOverAudio && !gameState?.gameOver) {
+        announcedPrizes.current.clear();
+        announcedGameOver.current = false;
+        lastCalledNumber.current = null;
+        audioQueue.current = [];
+        
+        if (window.speechSynthesis) {
+          window.speechSynthesis.cancel();
+        }
+      } else {
+        console.log('🛡️ Protecting game end audio sequence from reset');
+      }
       
       if (fallbackTimer.current) {
         clearTimeout(fallbackTimer.current);
