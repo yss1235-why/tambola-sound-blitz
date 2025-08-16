@@ -42,6 +42,7 @@ interface HostControlsContextValue {
   // Audio system status
   isAudioReady: boolean;
   wasAutopaused: boolean; // ✅ NEW: Track auto-pause state
+  isPrizeAudioPlaying: boolean; // ✅ NEW: Track prize audio state
 }
 const HostControlsContext = createContext<HostControlsContextValue | null>(null);
 
@@ -78,6 +79,7 @@ const [speechRateScale, setSpeechRateScale] = React.useState(0); // NEW: Scale v
 const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
+const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = React.useState(false); // NEW: Track prize audio
 
 // ✅ ADD these new state variables BEFORE they're used:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
@@ -334,9 +336,10 @@ const handleAudioComplete = useCallback(() => {
     console.log('✅ Audio system now ready');
   }
   
-  // FIX: Update visual with the LAST called number, not the current one
+// FIX: Update visual with the LAST called number, not the current one
   // The current number in Firebase is already the NEXT number to be announced
-  if (gameData?.gameState?.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
+  // NEW: Only update visual if this is NOT a prize audio completion
+  if (!isPrizeAudioPlaying && gameData?.gameState?.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
     const lastAnnouncedNumber = gameData.gameState.calledNumbers[gameData.gameState.calledNumbers.length - 1];
     
     setVisualCalledNumbers(prev => {
@@ -351,6 +354,8 @@ const handleAudioComplete = useCallback(() => {
     // Track completed number
     lastCompletedNumber.current = lastAnnouncedNumber;
     console.log(`✅ Number ${lastAnnouncedNumber} audio confirmed complete`);
+  } else if (isPrizeAudioPlaying) {
+    console.log(`🏆 Skipping visual update - prize audio is playing`);
   }
   
   isProcessingCompletion.current = true;
@@ -392,6 +397,16 @@ const handleAudioComplete = useCallback(() => {
       
       firebaseService.callNextNumberAndContinue(gameData.gameId)
         .then(shouldContinue => {
+          // NEW: Check if this call resulted in a prize win
+          const latestPrizes = gameData?.prizes || {};
+          const hasNewWinner = Object.values(latestPrizes).some((prize: any) => 
+            prize.won && prize.winningNumber === gameData?.gameState?.currentNumber
+          );
+          
+          if (hasNewWinner) {
+            console.log(`🏆 Prize detected - setting prize audio flag`);
+            setIsPrizeAudioPlaying(true);
+          }
           if (!shouldContinue) {
             console.log('⏸️ Game should stop');
             isTimerActiveRef.current = false;
@@ -818,9 +833,26 @@ useEffect(() => {
  */
 const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   console.log(`🏆 Prize audio completed: ${prizeId}`);
-  // Prize audio completion is now handled by the separate useEffect above
-  // This keeps it simple and doesn't interfere with number calling
-}, []);
+  
+  // NEW: Reset the prize audio flag
+  setIsPrizeAudioPlaying(false);
+  
+  // NEW: Now update the visual with the number that caused the prize
+  if (gameData?.gameState?.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
+    const lastAnnouncedNumber = gameData.gameState.calledNumbers[gameData.gameState.calledNumbers.length - 1];
+    
+    setVisualCalledNumbers(prev => {
+      const newNumbers = [...prev];
+      if (!newNumbers.includes(lastAnnouncedNumber)) {
+        newNumbers.push(lastAnnouncedNumber);
+        console.log(`✅ Visual updated after prize: ${lastAnnouncedNumber}`);
+      }
+      return newNumbers;
+    });
+  }
+  
+  // Prize audio completion is now handled properly
+}, [gameData]);
 // ✅ NEW: Handle Game Over audio completion with explicit redirect
 const handleGameOverAudioComplete = useCallback(() => {
   console.log(`🏁 Game Over audio completed - now safe to end game`);
@@ -860,7 +892,7 @@ const handleGameOverAudioComplete = useCallback(() => {
       } catch (error) {
         console.error('❌ Failed to finalize game and redirect:', error);
       }
-    }, 5000); // 2-second delay
+    }, 4000); // 4-second delay
   }
 }, [gameData, stopTimer]);
   // ================== CONTEXT VALUE ==================
@@ -885,7 +917,8 @@ const value: HostControlsContextValue = {
   visualCalledNumbers,
   setVisualCalledNumbers,
   isAudioReady,
-  wasAutopaused
+  wasAutopaused,
+  isPrizeAudioPlaying
 };
   return (
     <HostControlsContext.Provider value={value}>
