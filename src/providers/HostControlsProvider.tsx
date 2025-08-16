@@ -334,19 +334,23 @@ const handleAudioComplete = useCallback(() => {
     console.log('✅ Audio system now ready');
   }
   
-  // Update visual called numbers immediately
-  if (gameData?.gameState?.currentNumber) {
+  // FIX: Update visual with the LAST called number, not the current one
+  // The current number in Firebase is already the NEXT number to be announced
+  if (gameData?.gameState?.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
+    const lastAnnouncedNumber = gameData.gameState.calledNumbers[gameData.gameState.calledNumbers.length - 1];
+    
     setVisualCalledNumbers(prev => {
       const newNumbers = [...prev];
-      if (!newNumbers.includes(gameData.gameState.currentNumber)) {
-        newNumbers.push(gameData.gameState.currentNumber);
+      if (!newNumbers.includes(lastAnnouncedNumber)) {
+        newNumbers.push(lastAnnouncedNumber);
+        console.log(`✅ Visual updated with announced number: ${lastAnnouncedNumber}`);
       }
       return newNumbers;
     });
     
     // Track completed number
-    lastCompletedNumber.current = gameData.gameState.currentNumber;
-    console.log(`✅ Number ${gameData.gameState.currentNumber} audio confirmed complete`);
+    lastCompletedNumber.current = lastAnnouncedNumber;
+    console.log(`✅ Number ${lastAnnouncedNumber} audio confirmed complete`);
   }
   
   isProcessingCompletion.current = true;
@@ -825,6 +829,7 @@ const handleGameOverAudioComplete = useCallback(() => {
   if (gameData?.gameState?.pendingGameEnd && !gameData?.gameState?.gameOver) {
     stopTimer();
     
+    // FIX: Increase delay to ensure audio system has fully stopped
     // Add a pleasant pause after audio before redirect
     setTimeout(async () => {
       try {
@@ -855,7 +860,7 @@ const handleGameOverAudioComplete = useCallback(() => {
       } catch (error) {
         console.error('❌ Failed to finalize game and redirect:', error);
       }
-    }, 2000); // 2-second delay
+    }, 5000); // 2-second delay
   }
 }, [gameData, stopTimer]);
   // ================== CONTEXT VALUE ==================
