@@ -18,23 +18,76 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
   // 🔊 Game Over Audio Announcement
+ // 🔊 Game Over Audio Announcement - MEGA FUN VERSION!
   React.useEffect(() => {
-    // Create the announcement message
-    let announcement = "Game Over! ";
-    
-    if (wonPrizes.length > 0) {
-      announcement += `Congratulations to all ${totalWinners} winners! `;
+    // HUGE array of fun celebration messages!
+    const funMessages = [
+      // 🎊 Classic Celebrations
+      `Game Over! Woohoo! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} emerged victorious! Party time!`,
+      `And that's a wrap folks! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are taking home the glory!`,
+      `Boom! Game Over! High fives to our ${totalWinners} superstar${totalWinners !== 1 ? 's' : ''}! You rocked it!`,
+      `Ladies and gentlemen, the game has ended! Let's hear it for our ${totalWinners} amazing winner${totalWinners !== 1 ? 's' : ''}!`,
+      `That's all folks! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} can now do the victory dance!`,
       
-      // Add first prize winner if exists
-      const firstPrize = wonPrizes[0];
-      if (firstPrize.winners && firstPrize.winners.length > 0) {
-        announcement += `${firstPrize.name} won by ${firstPrize.winners[0].name}. `;
-      }
+      // 🎯 Energetic & Exciting
+      `Game Over! ${totalWinners} legend${totalWinners !== 1 ? 's' : ''} have conquered the game! Absolutely brilliant!`,
+      `Stop the press! Game Over! We have ${totalWinners} incredible winner${totalWinners !== 1 ? 's' : ''}! Take a bow!`,
+      `Ding ding ding! That's a game! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are celebrating tonight!`,
+      `Jackpot! Game finished! ${totalWinners} lucky winner${totalWinners !== 1 ? 's' : ''} hit the jackpot! Amazing!`,
+      `Holy moly! That's a wrap! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} crushed it! Outstanding!`,
       
-      announcement += "Well done everyone!";
-    } else {
-      announcement += "Thanks for playing!";
-    }
+      // 😄 Funny & Quirky
+      `Bingo! Oh wait, wrong game! Tambola Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} for the win!`,
+      `Alert! Alert! Game Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} detected! Initiating celebration protocol!`,
+      `Breaking news! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} just won! In other news, everyone else didn't!`,
+      `Houston, we have winners! ${totalWinners} of them to be exact! Mission accomplished!`,
+      `Roses are red, violets are blue, game is over, ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} woohoo!`,
+      
+      // 🎪 Circus/Show Style
+      `Step right up! Step right up! We have ${totalWinners} magnificent winner${totalWinners !== 1 ? 's' : ''}! Spectacular!`,
+      `Roll up! Roll up! The show is over! ${totalWinners} star${totalWinners !== 1 ? 's' : ''} steal the spotlight!`,
+      `And the crowd goes wild! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} take the stage! Bravo!`,
+      `Ladies and gents, boys and girls! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} have triumphed!`,
+      
+      // 🏆 Sports Commentary Style
+      `And it's all over! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} cross the finish line! What a match!`,
+      `The final whistle blows! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} take home the trophy!`,
+      `Game, set, match! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} claim victory! Sensational!`,
+      `And that's the final bell! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are knockout champions!`,
+      `Goal! Wait no, Game Over! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} score big time!`,
+      
+      // 🎮 Game Show Host Style
+      `Survey says... Game Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} take the prize! Fantastic!`,
+      `Come on down! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''}, you're the next Tambola champion${totalWinners !== 1 ? 's' : ''}!`,
+      `Wheel... of... Fortune! Oh sorry, Tambola Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} win big!`,
+      `Is that your final answer? Yes! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} got it right!`,
+      
+      // 🌟 Motivational/Epic
+      `Champions are made today! ${totalWinners} hero${totalWinners !== 1 ? 'es' : ''} rise to glory! Epic win!`,
+      `History in the making! ${totalWinners} legend${totalWinners !== 1 ? 's' : ''} write their names in gold!`,
+      `Dreams come true! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} achieve greatness! Inspiring!`,
+      `Against all odds! ${totalWinners} warrior${totalWinners !== 1 ? 's' : ''} claim victory! Phenomenal!`,
+      
+      // 🎭 Dramatic/Theatre
+      `And scene! The curtain falls! ${totalWinners} star${totalWinners !== 1 ? 's' : ''} take their final bow!`,
+      `The show must go on! But not this one, it's over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''}! Magnificent!`,
+      `Exit stage left! But first, congratulate our ${totalWinners} brilliant performer${totalWinners !== 1 ? 's' : ''}!`,
+      
+      // 🚀 Modern/Tech Style
+      `Download complete! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} successfully installed! GG!`,
+      `Achievement unlocked! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} completed the mission! Level up!`,
+      `Victory.exe has loaded! ${totalWinners} user${totalWinners !== 1 ? 's' : ''} won the game! Press F to pay respects!`,
+      `404 Error: Losers not found! Just kidding! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} found instead!`,
+      
+      // 🍾 Party/Celebration
+      `Pop the champagne! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are partying tonight! Cheers!`,
+      `Confetti cannon ready! Fire! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} deserve a celebration!`,
+      `DJ, drop the beat! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} own the dance floor! Let's party!`,
+      `Fireworks time! ${totalWinners} superstar${totalWinners !== 1 ? 's' : ''} light up the sky! Dazzling!`
+    ];
+
+    // Pick a random message
+    const randomMessage = funMessages[Math.floor(Math.random() * funMessages.length)];
     
     // Play after 2 second delay
     const timer = setTimeout(() => {
@@ -43,12 +96,12 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
         window.speechSynthesis.cancel();
         
         // Create and play the announcement
-        const utterance = new SpeechSynthesisUtterance(announcement);
-        utterance.rate = 0.9; // Slightly slower for clarity
-        utterance.pitch = 1.1; // Slightly higher pitch for celebration
+        const utterance = new SpeechSynthesisUtterance(randomMessage);
+        utterance.rate = 0.95; // Slightly slower for clarity
+        utterance.pitch = 1.15; // Higher pitch for excitement
         utterance.volume = 1.0; // Full volume
         
-        console.log('🎯 Playing Game Over audio:', announcement);
+        console.log('🎯 Playing Game Over audio:', randomMessage);
         window.speechSynthesis.speak(utterance);
       }
     }, 2000); // 2 second delay
