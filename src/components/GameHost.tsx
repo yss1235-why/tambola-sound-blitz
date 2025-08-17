@@ -172,7 +172,6 @@ const AVAILABLE_PRIZES: GamePrize[] = [
   
 ];
 
-// ✅ ADD THIS ENTIRE COMPONENT BEFORE GameHost
 // Helper component to connect AudioManager with HostControls
 // ✅ SECURE: Host-only component with full controls
 const AudioManagerForHost: React.FC<{
@@ -181,7 +180,14 @@ const AudioManagerForHost: React.FC<{
   forceEnable: boolean;
   gameState: any;
 }> = ({ currentNumber, prizes, forceEnable, gameState }) => {
-  const { handleAudioComplete, handlePrizeAudioComplete, handleGameOverAudioComplete, speechRate } = useHostControls();
+  const { 
+    handleAudioComplete, 
+    handlePrizeAudioComplete, 
+    handleGameOverAudioComplete, 
+    handleAudioStarted,
+    handleGameOverAudioStarted,
+    speechRate 
+  } = useHostControls();
   
   return (
     <AudioManager
@@ -191,6 +197,8 @@ const AudioManagerForHost: React.FC<{
       onAudioComplete={handleAudioComplete}
       onPrizeAudioComplete={handlePrizeAudioComplete}
       onGameOverAudioComplete={handleGameOverAudioComplete}
+      onAudioStarted={handleAudioStarted}
+      onGameOverAudioStarted={handleGameOverAudioStarted}
       forceEnable={forceEnable}
       speechRate={speechRate}
     />
@@ -201,11 +209,13 @@ const AudioManagerForHost: React.FC<{
 const AudioManagerForPlayer: React.FC<{
   currentNumber: number | null;
   prizes: any[];
-}> = ({ currentNumber, prizes }) => {
+  gameState?: any;
+}> = ({ currentNumber, prizes, gameState }) => {
   return (
     <AudioManager
       currentNumber={currentNumber}
       prizes={prizes}
+      gameState={gameState}
       forceEnable={false}
       // NO host callbacks - players cannot control game timing
     />
