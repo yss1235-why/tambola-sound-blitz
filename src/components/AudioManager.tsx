@@ -4,12 +4,15 @@ import { Prize } from '@/services/firebase';
 
 interface AudioManagerProps {
   currentNumber: number | null;
-  prizes: PrizeWinner[];
+  prizes: Prize[];
   gameState: any;
   onAudioComplete?: () => void;
-  forceEnable?: boolean;
-  onPrizeAudioComplete?: () => void;
+  onPrizeAudioComplete?: (prizeId: string) => void;
+  onGameOverAudioComplete?: () => void;
+  onAudioStarted?: (number: number) => void; // NEW: Called when audio starts
+  onGameOverAudioStarted?: () => void; // NEW: Called when game over audio starts
   speechRate?: number;
+  forceEnable?: boolean;
 }
 interface AudioQueueItem {
   id: string;
@@ -115,18 +118,20 @@ const numberCalls: { [key: number]: string } = {
 export const AudioManager: React.FC<AudioManagerProps> = ({ 
   currentNumber, 
   prizes, 
-  gameState, 
+  gameState,
   onAudioComplete,
-  forceEnable = false,
   onPrizeAudioComplete,
-  speechRate
+  onGameOverAudioComplete,
+  onAudioStarted,
+  onGameOverAudioStarted,
+  speechRate = 1.0,
+  forceEnable = false
 }) => {
   
 const [isAudioSupported, setIsAudioSupported] = useState(false);
 const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 const [isPlaying, setIsPlaying] = useState(false);
-const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false); // ✅ SOLUTION 3
-
+const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false); // Track if blocked for prize
 // Debug logging for game state
 useEffect(() => {
   console.log('🎮 AudioManager Game State:', {
@@ -590,6 +595,13 @@ useEffect(() => {
     
     console.log(`📢 Announcing number: ${currentNumber} - will trigger timer continuation`);
     
+    // NEW: Add a small delay then update visual when audio STARTS
+    setTimeout(() => {
+      if (onAudioStarted) {
+        onAudioStarted(currentNumber);
+      }
+    }, 100); // Small delay to ensure audio has started
+    
     addToQueue({
       id: `number-${currentNumber}`,
       text: callText,
@@ -602,8 +614,7 @@ useEffect(() => {
       }
     });
   }
-}, [currentNumber, addToQueue, onAudioComplete, isBlockedForAnnouncement]);
-
+}, [currentNumber, addToQueue, onAudioComplete, isBlockedForAnnouncement, onAudioStarted]);
 // Handle prize announcements
 useEffect(() => {
   prizes.forEach(prize => {
@@ -659,17 +670,28 @@ useEffect(() => {
     
     console.log(`🏁 Game has ended - playing game over announcement`);
     
-    // Play the audio after a short delay (so UI has time to transition)
-    setTimeout(() => {
-      addToQueue({
-        id: 'game-over',
-        text: announcement,
-        priority: 'high'
-        // No callback needed - game is already over
-      });
-    }, 1000); // 1 second delay to let UI settle
+    // NEW: Signal that game over audio is starting
+    if (onGameOverAudioStarted) {
+      onGameOverAudioStarted();
+    }
+    
+    // Clear other audio but protect game over
+    audioQueue.current = audioQueue.current.filter(item => item.id === 'game-over');
+    
+    // Play the audio immediately (no delay)
+    addToQueue({
+      id: 'game-over',
+      text: announcement,
+      priority: 'high',
+      callback: () => {
+        console.log('🎯 Game over audio completed');
+        if (onGameOverAudioComplete) {
+          onGameOverAudioComplete();
+        }
+      }
+    });
   }
-}, [gameState?.gameOver, gameState?.lastWinnerAnnouncement, addToQueue]);
+}, [gameState?.gameOver, gameState?.lastWinnerAnnouncement, addToQueue, onGameOverAudioComplete, onGameOverAudioStarted]);
 // Reset announced prizes when game resets
   useEffect(() => {
     const wonPrizes = prizes.filter(p => p.won);
