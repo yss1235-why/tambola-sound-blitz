@@ -26,6 +26,12 @@ interface HostControlsContextValue {
   handleAudioComplete: () => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
   handleGameOverAudioComplete: () => void;
+ handleAudioStarted: (number: number) => void; // NEW
+  handleGameOverAudioStarted: () => void; // NEW
+  
+  // Call interval configuration
+  callInterval: number;
+  setCallInterval: React.Dispatch<React.SetStateAction<number>>;
   
   // Firebase status
   firebasePaused: boolean;
@@ -80,6 +86,9 @@ const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
 const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = React.useState(false); // NEW: Track prize audio
+const [audioAnnouncingNumber, setAudioAnnouncingNumber] = React.useState<number | null>(null); // Track which number audio is playing
+const [isGameOverAudioPlaying, setIsGameOverAudioPlaying] = React.useState(false); // Protect game over audio
+const [callInterval, setCallInterval] = React.useState(3); // Default 3 seconds between calls
 
 // ✅ ADD these new state variables BEFORE they're used:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
@@ -324,6 +333,9 @@ const handleAudioComplete = useCallback(() => {
   
   console.log(`🔊 Audio completion callback received (ID: ${completionId})`);
   
+  // Clear the announcing number since audio finished
+  setAudioAnnouncingNumber(null);
+  
   // Prevent duplicate processing
   if (isProcessingCompletion.current) {
     console.log('⚠️ Already processing a completion, ignoring');
@@ -336,27 +348,7 @@ const handleAudioComplete = useCallback(() => {
     console.log('✅ Audio system now ready');
   }
   
-// FIX: Update visual with the LAST called number, not the current one
-  // The current number in Firebase is already the NEXT number to be announced
-  // NEW: Only update visual if this is NOT a prize audio completion
-  if (!isPrizeAudioPlaying && gameData?.gameState?.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
-    const lastAnnouncedNumber = gameData.gameState.calledNumbers[gameData.gameState.calledNumbers.length - 1];
-    
-    setVisualCalledNumbers(prev => {
-      const newNumbers = [...prev];
-      if (!newNumbers.includes(lastAnnouncedNumber)) {
-        newNumbers.push(lastAnnouncedNumber);
-        console.log(`✅ Visual updated with announced number: ${lastAnnouncedNumber}`);
-      }
-      return newNumbers;
-    });
-    
-    // Track completed number
-    lastCompletedNumber.current = lastAnnouncedNumber;
-    console.log(`✅ Number ${lastAnnouncedNumber} audio confirmed complete`);
-  } else if (isPrizeAudioPlaying) {
-    console.log(`🏆 Skipping visual update - prize audio is playing`);
-  }
+  // Don't update visual here - it's already been updated when audio started
   
   isProcessingCompletion.current = true;
   
@@ -383,45 +375,41 @@ const handleAudioComplete = useCallback(() => {
     
     // Check for pending game end
     if (gameData?.gameState?.pendingGameEnd) {
-      console.log('🚫 Game is ending, not calling next number');
-      isTimerActiveRef.current = false;
+      console.log('🚫 Game is ending');
       return;
     }
     
-    // Schedule next call immediately
-    console.log('📞 Audio verified complete, calling next number immediately');
+    // Don't call next number if game over audio is playing
+    if (isGameOverAudioPlaying) {
+      console.log('🎯 Game over audio playing, not calling next number');
+      return;
+    }
     
-    if (!isCallInProgressRef.current) {
-      lastCallTimeRef.current = Date.now();
-      isCallInProgressRef.current = true;
-      
-      firebaseService.callNextNumberAndContinue(gameData.gameId)
-        .then(shouldContinue => {
-          // NEW: Check if this call resulted in a prize win
-          const latestPrizes = gameData?.prizes || {};
-          const hasNewWinner = Object.values(latestPrizes).some((prize: any) => 
-            prize.won && prize.winningNumber === gameData?.gameState?.currentNumber
-          );
-          
-          if (hasNewWinner) {
-            console.log(`🏆 Prize detected - setting prize audio flag`);
-            setIsPrizeAudioPlaying(true);
-          }
-          if (!shouldContinue) {
-            console.log('⏸️ Game should stop');
+    // Schedule next number call
+    console.log('📞 Audio verified complete, scheduling next call');
+    
+    setTimeout(() => {
+      if (!isCallInProgressRef.current && isTimerActiveRef.current) {
+        lastCallTimeRef.current = Date.now();
+        isCallInProgressRef.current = true;
+        
+        firebaseService.callNextNumberAndContinue(gameData.gameId)
+          .then(shouldContinue => {
+            if (!shouldContinue) {
+              console.log('⏸️ Game should stop');
+              isTimerActiveRef.current = false;
+              isCallInProgressRef.current = false;
+            }
+          })
+          .catch(error => {
+            console.error('❌ Error calling next number:', error);
             isTimerActiveRef.current = false;
             isCallInProgressRef.current = false;
-          }
-          // If shouldContinue is true, the next audio completion will trigger the next call
-        })
-        .catch(error => {
-          console.error('❌ Error calling next number:', error);
-          isTimerActiveRef.current = false;
-          isCallInProgressRef.current = false;
-        });
-    }
+          });
+      }
+    }, (callInterval * 1000)); // Use the configured interval
   }, 300); // 300ms verification delay
-}, [gameData, isAudioReady]);
+}, [gameData, isAudioReady, callInterval, isGameOverAudioPlaying]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
@@ -825,11 +813,36 @@ const handlePrizeAudioComplete = useCallback((prizeId: string) => {
   
   // Prize audio completion is now handled properly
 }, [gameData]);
+  // ✅ NEW: Handle when audio starts playing a number
+const handleAudioStarted = useCallback((number: number) => {
+  console.log(`🎤 Audio started for number ${number}`);
+  setAudioAnnouncingNumber(number);
+  
+  // Update visual with 500ms delay to sync with audio
+  setTimeout(() => {
+    setVisualCalledNumbers(prev => {
+      const newNumbers = [...prev];
+      if (!newNumbers.includes(number)) {
+        newNumbers.push(number);
+        console.log(`✅ Visual updated for number: ${number}`);
+      }
+      return newNumbers;
+    });
+  }, 500); // Delay visual update to sync with audio
+}, []);
+
+// ✅ NEW: Handle when game over audio starts
+const handleGameOverAudioStarted = useCallback(() => {
+  console.log(`🎮 Game over audio started`);
+  setIsGameOverAudioPlaying(true);
+  isTimerActiveRef.current = false; // Stop any timers
+}, []);
+
 // ✅ NEW: Handle Game Over audio completion with explicit redirect
-// Simplified: Just log completion, game is already ended
 const handleGameOverAudioComplete = useCallback(() => {
   console.log(`🏁 Game Over audio completed`);
-  // Game is already ended, nothing to do here
+  setIsGameOverAudioPlaying(false); // Reset the flag
+  // Game is already ended, nothing else to do here
 }, []);
   // ================== CONTEXT VALUE ==================
 
@@ -846,6 +859,8 @@ const value: HostControlsContextValue = {
   handleAudioComplete,
   handlePrizeAudioComplete,
   handleGameOverAudioComplete,
+  handleAudioStarted,
+  handleGameOverAudioStarted,
   firebasePaused,
   isPreparingGame,
   preparationStatus,
@@ -854,7 +869,9 @@ const value: HostControlsContextValue = {
   setVisualCalledNumbers,
   isAudioReady,
   wasAutopaused,
-  isPrizeAudioPlaying
+  isPrizeAudioPlaying,
+  callInterval,
+  setCallInterval
 };
   return (
     <HostControlsContext.Provider value={value}>
