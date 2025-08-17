@@ -17,6 +17,48 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
 }) => {
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
+  // 🔊 Game Over Audio Announcement
+  React.useEffect(() => {
+    // Create the announcement message
+    let announcement = "Game Over! ";
+    
+    if (wonPrizes.length > 0) {
+      announcement += `Congratulations to all ${totalWinners} winners! `;
+      
+      // Add first prize winner if exists
+      const firstPrize = wonPrizes[0];
+      if (firstPrize.winners && firstPrize.winners.length > 0) {
+        announcement += `${firstPrize.name} won by ${firstPrize.winners[0].name}. `;
+      }
+      
+      announcement += "Well done everyone!";
+    } else {
+      announcement += "Thanks for playing!";
+    }
+    
+    // Play after 2 second delay
+    const timer = setTimeout(() => {
+      if (window.speechSynthesis) {
+        // Cancel any ongoing speech
+        window.speechSynthesis.cancel();
+        
+        // Create and play the announcement
+        const utterance = new SpeechSynthesisUtterance(announcement);
+        utterance.rate = 0.9; // Slightly slower for clarity
+        utterance.pitch = 1.1; // Slightly higher pitch for celebration
+        utterance.volume = 1.0; // Full volume
+        
+        console.log('🎯 Playing Game Over audio:', announcement);
+        window.speechSynthesis.speak(utterance);
+      }
+    }, 2000); // 2 second delay
+    
+    // Cleanup function
+    return () => {
+      clearTimeout(timer);
+      // Don't cancel speech on cleanup so audio can finish
+    };
+  }, []); // Empty dependency array = runs once when component mounts
 
   // ✅ PRESERVE: All existing console logs for debugging
   console.log('🏆 SimplifiedWinnerDisplay rendered for game:', gameData.gameId);
