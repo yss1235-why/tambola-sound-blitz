@@ -183,9 +183,7 @@ const AudioManagerForHost: React.FC<{
   const { 
     handleAudioComplete, 
     handlePrizeAudioComplete, 
-    handleGameOverAudioComplete, 
     handleAudioStarted,
-    handleGameOverAudioStarted,
     speechRate 
   } = useHostControls();
   
@@ -196,15 +194,12 @@ const AudioManagerForHost: React.FC<{
       gameState={gameState}
       onAudioComplete={handleAudioComplete}
       onPrizeAudioComplete={handlePrizeAudioComplete}
-      onGameOverAudioComplete={handleGameOverAudioComplete}
       onAudioStarted={handleAudioStarted}
-      onGameOverAudioStarted={handleGameOverAudioStarted}
       forceEnable={forceEnable}
       speechRate={speechRate}
     />
   );
 };
-
 // ✅ SECURE: Player-only component with NO host controls
 const AudioManagerForPlayer: React.FC<{
   currentNumber: number | null;
