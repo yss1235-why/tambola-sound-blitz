@@ -86,7 +86,7 @@ const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([
 const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = React.useState(false); // NEW: Track prize audio
 const [audioAnnouncingNumber, setAudioAnnouncingNumber] = React.useState<number | null>(null); // Track which number audio is playing
 // isGameOverAudioPlaying removed - not needed
-const [callInterval, setCallInterval] = React.useState(3); // Default 3 seconds between calls
+const [callInterval, setCallInterval] = React.useState(2); // Default 3 seconds between calls
 
 // ✅ ADD these new state variables BEFORE they're used:
 const [isPreparingGame, setIsPreparingGame] = React.useState(false);
@@ -400,7 +400,7 @@ const handleAudioComplete = useCallback(() => {
           });
       }
     }, (callInterval * 1000)); // Use the configured interval
- }, 150); // 300ms verification delay
+ }, 300); // 300ms verification delay
 }, [gameData, isAudioReady, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
