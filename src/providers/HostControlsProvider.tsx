@@ -25,9 +25,7 @@ interface HostControlsContextValue {
   // Audio completion handlers
   handleAudioComplete: () => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
-  handleGameOverAudioComplete: () => void;
- handleAudioStarted: (number: number) => void; // NEW
-  handleGameOverAudioStarted: () => void; // NEW
+  handleAudioStarted: (number: number) => void;
   
   // Call interval configuration
   callInterval: number;
@@ -82,12 +80,12 @@ const [isProcessing, setIsProcessing] = React.useState(false);
 const [countdownTime, setCountdownTime] = React.useState(0);
 const [speechRate, setSpeechRate] = React.useState(1.0); // NEW: Speech rate control (1.0 = normal)
 const [speechRateScale, setSpeechRateScale] = React.useState(0); // NEW: Scale value for UI (-3 to +6)
-const [pendingGameEnd, setPendingGameEnd] = React.useState(false);
+// pendingGameEnd removed - using simpler approach
 const [firebasePaused, setFirebasePaused] = React.useState(false);
 const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
 const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = React.useState(false); // NEW: Track prize audio
 const [audioAnnouncingNumber, setAudioAnnouncingNumber] = React.useState<number | null>(null); // Track which number audio is playing
-const [isGameOverAudioPlaying, setIsGameOverAudioPlaying] = React.useState(false); // Protect game over audio
+// isGameOverAudioPlaying removed - not needed
 const [callInterval, setCallInterval] = React.useState(3); // Default 3 seconds between calls
 
 // ✅ ADD these new state variables BEFORE they're used:
@@ -186,9 +184,9 @@ console.log(`📞 Calling next number immediately after audio completion`);
       return;
     }
     
-    // ✅ NEW: Block if game is ending (same as startTimer)
-    if (gameData.gameState?.pendingGameEnd || pendingGameEnd) {
-      console.log('🚫 Schedule blocked - game is ending');
+   // Check if game is already over
+    if (gameData.gameState?.gameOver) {
+      console.log('🚫 Schedule blocked - game is over');
       isTimerActiveRef.current = false;
       isCallInProgressRef.current = false;
       return;
@@ -242,9 +240,9 @@ console.log(`📞 Calling next number immediately after audio completion`);
 const startTimer = useCallback(() => {
   if (!gameData) return;
   
-  // ✅ NEW: Block timer if game is ending
-  if (gameData.gameState?.pendingGameEnd || pendingGameEnd) {
-    console.log('🚫 Timer blocked - game is ending');
+  // Check if game is already over
+  if (gameData.gameState?.gameOver) {
+    console.log('🚫 Timer blocked - game is over');
     return;
   }
   
@@ -270,9 +268,9 @@ console.log(`📞 Starting first number call immediately`);
       return;
     }
     
-    // ✅ NEW: Block if game is ending
-    if (gameData.gameState?.pendingGameEnd || pendingGameEnd) {
-      console.log('🚫 Number calling blocked - game is ending');
+  // Check if game is already over
+    if (gameData.gameState?.gameOver) {
+      console.log('🚫 Number calling blocked - game is over');
       isTimerActiveRef.current = false;
       isCallInProgressRef.current = false;
       return;
@@ -373,15 +371,9 @@ const handleAudioComplete = useCallback(() => {
       return;
     }
     
-    // Check for pending game end
-    if (gameData?.gameState?.pendingGameEnd) {
-      console.log('🚫 Game is ending');
-      return;
-    }
-    
-    // Don't call next number if game over audio is playing
-    if (isGameOverAudioPlaying) {
-      console.log('🎯 Game over audio playing, not calling next number');
+   // Check if game is over
+    if (gameData?.gameState?.gameOver) {
+      console.log('🎯 Game is over, stopping timer');
       return;
     }
     
@@ -408,8 +400,8 @@ const handleAudioComplete = useCallback(() => {
           });
       }
     }, (callInterval * 1000)); // Use the configured interval
-  }, 300); // 300ms verification delay
-}, [gameData, isAudioReady, callInterval, isGameOverAudioPlaying]);
+ }, 300); // 300ms verification delay
+}, [gameData, isAudioReady, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
@@ -831,19 +823,7 @@ const handleAudioStarted = useCallback((number: number) => {
   }, 500); // Delay visual update to sync with audio
 }, []);
 
-// ✅ NEW: Handle when game over audio starts
-const handleGameOverAudioStarted = useCallback(() => {
-  console.log(`🎮 Game over audio started`);
-  setIsGameOverAudioPlaying(true);
-  isTimerActiveRef.current = false; // Stop any timers
-}, []);
-
-// ✅ NEW: Handle Game Over audio completion with explicit redirect
-const handleGameOverAudioComplete = useCallback(() => {
-  console.log(`🏁 Game Over audio completed`);
-  setIsGameOverAudioPlaying(false); // Reset the flag
-  // Game is already ended, nothing else to do here
-}, []);
+// Game over audio callbacks removed - handled by SimplifiedWinnerDisplay
   // ================== CONTEXT VALUE ==================
 
 const value: HostControlsContextValue = {
@@ -858,9 +838,7 @@ const value: HostControlsContextValue = {
   speechRateScale, 
   handleAudioComplete,
   handlePrizeAudioComplete,
-  handleGameOverAudioComplete,
   handleAudioStarted,
-  handleGameOverAudioStarted,
   firebasePaused,
   isPreparingGame,
   preparationStatus,
