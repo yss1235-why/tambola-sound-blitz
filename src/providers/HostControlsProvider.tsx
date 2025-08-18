@@ -780,48 +780,61 @@ useEffect(() => {
       }
     }
   }, [gameData?.gameState.isCountdown, gameData?.gameState.countdownTime, isProcessing, resumeCountdownTimer, startTimer]);
-/**
- * Handle prize audio completion
- */
+// Handle prize audio completion
 const handlePrizeAudioComplete = useCallback((prizeId: string) => {
-  console.log(`🏆 Prize audio completed: ${prizeId}`);
-  
-  // NEW: Reset the prize audio flag
-  setIsPrizeAudioPlaying(false);
-  
-  // NEW: Now update the visual with the number that caused the prize
-  if (gameData?.gameState?.calledNumbers && gameData.gameState.calledNumbers.length > 0) {
-    const lastAnnouncedNumber = gameData.gameState.calledNumbers[gameData.gameState.calledNumbers.length - 1];
-    
-    setVisualCalledNumbers(prev => {
-      const newNumbers = [...prev];
-      if (!newNumbers.includes(lastAnnouncedNumber)) {
-        newNumbers.push(lastAnnouncedNumber);
-        console.log(`✅ Visual updated after prize: ${lastAnnouncedNumber}`);
-      }
-      return newNumbers;
-    });
+  // ✅ FIX: Check if this is a start or complete signal
+  if (prizeId.startsWith('START:')) {
+    console.log(`🏆 Prize audio starting for: ${prizeId.replace('START:', '')}`);
+    setIsPrizeAudioPlaying(true);
+    return;
   }
   
+  console.log(`🏆 Prize audio complete for: ${prizeId}`);
+  setIsPrizeAudioPlaying(false);
+  
+  // ✅ FIX: Update visual state after prize audio completes
+  // Wait a short moment to ensure state is updated
+  setTimeout(() => {
+    if (gameData && gameData.gameState.calledNumbers.length > visualCalledNumbers.length) {
+      const lastAnnouncedNumber = gameData.gameState.calledNumbers[gameData.gameState.calledNumbers.length - 1];
+      
+      setVisualCalledNumbers(prev => {
+        const newNumbers = [...prev];
+        if (!newNumbers.includes(lastAnnouncedNumber)) {
+          newNumbers.push(lastAnnouncedNumber);
+          console.log(`✅ Visual updated after prize: ${lastAnnouncedNumber}`);
+        }
+        return newNumbers;
+      });
+    }
+  }, 100); // Small delay to ensure state updates properly
+  
   // Prize audio completion is now handled properly
-}, [gameData]);
-  // ✅ NEW: Handle when audio starts playing a number
+}, [gameData, visualCalledNumbers]);
+ // ✅ NEW: Handle when audio starts playing a number
 const handleAudioStarted = useCallback((number: number) => {
   console.log(`🎤 Audio started for number ${number}`);
   setAudioAnnouncingNumber(number);
   
   // Update visual with 500ms delay to sync with audio
   setTimeout(() => {
-    setVisualCalledNumbers(prev => {
-      const newNumbers = [...prev];
-      if (!newNumbers.includes(number)) {
-        newNumbers.push(number);
-        console.log(`✅ Visual updated for number: ${number}`);
-      }
-      return newNumbers;
-    });
+    // ✅ FIX: Only update visual if no prize audio is playing
+    if (!isPrizeAudioPlaying) {
+      setVisualCalledNumbers(prev => {
+        const newNumbers = [...prev];
+        if (!newNumbers.includes(number)) {
+          newNumbers.push(number);
+          console.log(`✅ Visual updated for number: ${number}`);
+        }
+        return newNumbers;
+      });
+    } else {
+      console.log(`⏸️ Visual update blocked - prize audio is playing`);
+    }
   }, 500); // Delay visual update to sync with audio
-}, []);
+}, [isPrizeAudioPlaying]);
+
+
 
 // Game over audio callbacks removed - handled by SimplifiedWinnerDisplay
   // ================== CONTEXT VALUE ==================
