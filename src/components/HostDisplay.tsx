@@ -2,7 +2,7 @@
 // FILE 1: src/components/HostDisplay.tsx - SIMPLIFIED WINNER DISPLAY
 // ================================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,7 +46,21 @@ const {
   preparationProgress
 } = hostControls || {};
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
+  const [showWinnerDisplay, setShowWinnerDisplay] = useState(false);
 
+  // Add delay before showing winner display
+  useEffect(() => {
+    if (gameData?.gameState?.gameOver) {
+      // Wait 2.5 seconds for prize audio to finish
+      const timer = setTimeout(() => {
+        setShowWinnerDisplay(true);
+      }, 2500);
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowWinnerDisplay(false);
+    }
+  }, [gameData?.gameState?.gameOver]);
  
   // Toggle prize expansion
   const togglePrize = (prizeId: string) => {
@@ -157,9 +171,9 @@ const {
     );
   }
 
-// ✅ NEW: SIMPLIFIED WINNER DISPLAY for finished games OR explicit game over
-  if (currentPhase === 'finished' || gameData?.gameState?.gameOver) {
-    console.log(`🏆 Showing winner display - Phase: ${currentPhase}, GameOver: ${gameData?.gameState?.gameOver}`);
+// ✅ NEW: SIMPLIFIED WINNER DISPLAY after delay
+  if (showWinnerDisplay && gameData?.gameState?.gameOver) {
+    console.log(`🏆 Showing winner display after delay`);
     return (
       <SimplifiedWinnerDisplay 
         gameData={gameData}
