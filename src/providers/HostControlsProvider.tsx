@@ -400,7 +400,7 @@ const handleAudioComplete = useCallback(() => {
           });
       }
     }, (callInterval * 1000)); // Use the configured interval
- }, 300); // 300ms verification delay
+ }, 150); // 300ms verification delay
 }, [gameData, isAudioReady, callInterval]);
   
   // ================== COUNTDOWN RECOVERY LOGIC ==================
