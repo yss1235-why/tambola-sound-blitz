@@ -635,7 +635,12 @@ useEffect(() => {
       
       announcement += '! Well done!';
       
-      console.log(`🏆 Announcing prize: ${prize.name}`);
+     console.log(`🏆 Announcing prize: ${prize.name}`);
+      
+      // ✅ FIX: Signal prize audio is starting
+      if (onPrizeAudioComplete) {
+        onPrizeAudioComplete(`START:${prize.id}`);
+      }
       
       addToQueue({
         id: `prize-${prize.id}`,
