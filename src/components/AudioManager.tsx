@@ -127,7 +127,10 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 const [isAudioSupported, setIsAudioSupported] = useState(false);
 const [isAudioEnabled, setIsAudioEnabled] = useState(false);
 const [isPlaying, setIsPlaying] = useState(false);
-const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false); // Track if blocked for prize
+  const [isBlockedForAnnouncement, setIsBlockedForAnnouncement] = useState(false);
+  
+  // FIX: Store speechRate in ref for dynamic reading
+  const speechRateRef = useRef(speechRate);
 // Debug logging for game state
 useEffect(() => {
   console.log('🎮 AudioManager Game State:', {
@@ -138,6 +141,12 @@ useEffect(() => {
 
 // Refs for voice management - FIXED: Proper scope
   const femaleVoice = useRef<SpeechSynthesisVoice | null>(null);
+  
+  // FIX: Update speechRate ref when prop changes
+  useEffect(() => {
+    speechRateRef.current = speechRate;
+    console.log(`🎤 Speech rate ref updated to: ${speechRate}`);
+  }, [speechRate]);
   const maleVoice = useRef<SpeechSynthesisVoice | null>(null);
   const fallbackVoice = useRef<SpeechSynthesisVoice | null>(null);
   
@@ -357,7 +366,8 @@ useEffect(() => {
             utterance.voice = chosenVoice;
           }
           
-          utterance.rate = speechRate || 1.0;
+         // FIX: Read current speech rate from ref, not closure
+          utterance.rate = speechRateRef.current || 1.0;
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
           
@@ -369,9 +379,10 @@ useEffect(() => {
           currentUtterance.current = utterance;
 
           // Calculate dynamic timeout based on text length and speech rate
-          const calculateTimeout = () => {
+         const calculateTimeout = () => {
           const baseMs = item.text.length * 80; // 80ms per character baseline
-          const adjustedMs = baseMs / (speechRate || 1.0);
+          // FIX: Use ref for calculation
+          const adjustedMs = baseMs / (speechRateRef.current || 1.0);
             
             // Browser-specific buffer adjustments
             let bufferMultiplier = 1.5;
@@ -409,7 +420,7 @@ useEffect(() => {
             
             // Check minimum time elapsed (prevent false early triggers)
             const elapsed = performance.now() - (audioStartTime.current || 0);
-            const minTime = (item.text.length * 30) / (speechRate || 1.0); // Minimum possible time
+           const minTime = (item.text.length * 30) / (speechRateRef.current || 1.0); // Minimum possible time
             
             if (elapsed < minTime) {
               console.warn(`⚠️ Completion too fast (${elapsed}ms < ${minTime}ms), delaying...`);
@@ -521,7 +532,7 @@ useEffect(() => {
       }
     };
     processNext();
-  }, [forceEnable, speechRate]);
+  }, [forceEnable]);
   // Stop all audio
   const stopAllAudio = useCallback(() => {
     if (window.speechSynthesis) {
