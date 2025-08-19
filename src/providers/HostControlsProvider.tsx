@@ -640,7 +640,7 @@ const resumeGame = useCallback(async () => {
  */
 const updateSpeechRate = useCallback((scaleValue: number) => {
   // Exponential scaling for more noticeable changes
-  const actualRate = Math.pow(1.15, scaleValue); // Exponential
+  const actualRate = Math.pow(2.0, scaleValue); // Exponential
   // -3 = 0.64, 0 = 1.0, +6 = 2.35
   
   setSpeechRateScale(scaleValue);
