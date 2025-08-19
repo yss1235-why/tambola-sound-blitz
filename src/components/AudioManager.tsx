@@ -367,7 +367,7 @@ useEffect(() => {
           }
           
          // FIX: Read current speech rate from ref, not closure
-          utterance.rate = speechRateRef.current || 1.0;
+          utterance.rate = speechRateRef.current
           utterance.pitch = 1.0;
           utterance.volume = 1.0;
           
