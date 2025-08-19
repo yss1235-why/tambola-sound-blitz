@@ -639,14 +639,12 @@ const resumeGame = useCallback(async () => {
  * Update speech rate - convert scale to actual rate
  */
 const updateSpeechRate = useCallback((scaleValue: number) => {
-  // Convert scale (-3 to +6) to actual speech rate
-  const actualRate = scaleValue <= 0 
-    ? 1.0 + (scaleValue * 0.1)  // -3 = 0.7, -1 = 0.9, 0 = 1.0
-    : 1.0 + (scaleValue * 0.1); // +1 = 1.1, +6 = 1.6
+  // Exponential scaling for more noticeable changes
+  const actualRate = Math.pow(1.15, scaleValue); // Exponential
+  // -3 = 0.64, 0 = 1.0, +6 = 2.35
   
-  setSpeechRateScale(scaleValue); // Store scale for UI
-  setSpeechRate(actualRate);     // Store actual rate for audio
-  console.log(`🎤 Speech rate updated to ${actualRate} (scale: ${scaleValue})`);
+  setSpeechRateScale(scaleValue);
+  setSpeechRate(actualRate);
 }, []);
 
  // ================== CLEANUP ==================
