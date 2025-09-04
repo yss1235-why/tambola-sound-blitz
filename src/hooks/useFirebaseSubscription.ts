@@ -126,14 +126,26 @@ export function useFirebaseSubscription<T>(
     }
   }, [subscriptionKey, enabled, subscriptionFn, stableCallback, onError]);
 
-  // Cleanup on unmount
+// Enhanced cleanup with resource tracking
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
+      console.log(`🧹 Cleaning up Firebase subscription: ${subscriptionKey}`);
       isMountedRef.current = false;
+      
+      // Force cleanup of subscription if it exists
+      const existing = activeSubscriptions.get(subscriptionKey);
+      if (existing) {
+        try {
+          existing.unsubscribe();
+          activeSubscriptions.delete(subscriptionKey);
+          console.log(`✅ Forced cleanup completed: ${subscriptionKey}`);
+        } catch (error) {
+          console.warn(`⚠️ Error during forced cleanup: ${subscriptionKey}`, error);
+        }
+      }
     };
-  }, []);
-
+  }, [subscriptionKey]);
   return state;
 }
 
