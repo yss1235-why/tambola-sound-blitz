@@ -54,17 +54,25 @@ class FirebaseGameService {
 
   // ================== TRANSACTION UTILITIES ==================
 
-  async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
-        
-        await runTransaction(ref(database, path), (currentData) => {
-          if (currentData === null) {
-            return updates;
-          }
-          return { ...currentData, ...updates };
-        });
+ async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
+    const mutexKey = `transaction-${path}`;
+    
+    // Prevent concurrent transactions on same path
+    return await this.gameMutex.withLock(
+      mutexKey,
+      async () => {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          try {
+            console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
+            
+            await runTransaction(ref(database, path), (currentData) => {
+              if (currentData === null) {
+                return updates;
+              }
+              
+              // Deep merge to prevent overwriting
+              return this.deepMerge(currentData, updates);
+            });
         
         console.log(`✅ Transaction successful for path: ${path}`);
         return;
@@ -626,15 +634,46 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
 
-  async endGame(gameId: string): Promise<void> {
+ async endGame(gameId: string): Promise<void> {
     try {
-      const updates = {
-        isActive: false,
-        gameOver: true
-      };
-      await update(ref(database, `games/${gameId}/gameState`), updates);
-      console.log(`🏁 Game ${gameId} ended`);
+      console.log(`🏁 Ending game with cleanup: ${gameId}`);
+      
+      return await this.gameMutex.withLock(
+        `end-${gameId}`,
+        async () => {
+          const gameRef = ref(database, `games/${gameId}`);
+          
+          await runTransaction(gameRef, (currentGame) => {
+            if (!currentGame) {
+              throw new Error('Game not found');
+            }
+            
+            return {
+              ...currentGame,
+              gameState: {
+                ...currentGame.gameState,
+                isActive: false,
+                gameOver: true,
+                gameEndedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              }
+            };
+          });
+          
+          // Clean up number caller
+          const numberCaller = this.numberCallers.get(gameId);
+          if (numberCaller) {
+            await numberCaller.cleanup();
+            this.numberCallers.delete(gameId);
+          }
+          
+          console.log(`✅ Game ended and cleaned up: ${gameId}`);
+        },
+        { timeout: 15000, lockTTL: 20000 }
+      );
+      
     } catch (error: any) {
+      console.error('❌ Failed to end game:', error);
       throw new Error(error.message || 'Failed to end game');
     }
   }
@@ -699,23 +738,93 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
    * @param gameId - Game to call number for
    * @returns boolean - true if game should continue, false if game should stop
    */
-   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
+  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
   try {
     console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
     
-    // Step 1: Validate game can accept calls
-    const canCall = await this.validateGameForCalling(gameId);
-    if (!canCall.isValid) {
-      console.log(`🚫 Cannot call number: ${canCall.reason}`);
-      return false;
-    }
+    // Use mutex to prevent concurrent calls
+    return await this.gameMutex.withLock(
+      `call-${gameId}`,
+      async () => {
+        // Step 1: Validate game can accept calls
+        const canCall = await this.validateGameForCalling(gameId);
+        if (!canCall.isValid) {
+          console.log(`🚫 Cannot call number: ${canCall.reason}`);
+          return false;
+        }
+        
+        // Step 2: Get or create secure number caller
+        let numberCaller = this.numberCallers.get(gameId);
+        if (!numberCaller) {
+          numberCaller = new SecureNumberCaller(gameId);
+          this.numberCallers.set(gameId, numberCaller);
+        }
+        
+        // Step 3: Use secure number calling
+        const result = await numberCaller.callNextNumber();
+        
+        if (!result.success) {
+          console.log(`❌ Secure number calling failed: ${result.error}`);
+          return false;
+        }
+        
+        console.log(`✅ Number ${result.number} called successfully via secure caller`);
+        
+        // Step 4: Process prizes after successful call
+        await this.processPrizesAfterNumberCall(gameId, result.number);
+        
+        // Step 5: Check if game should continue
+        const stats = await numberCaller.getGameStatistics();
+        const shouldContinue = stats.remainingNumbers > 0;
+        
+        console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
+        return shouldContinue;
+      },
+      {
+        timeout: 15000,
+        lockTTL: 20000
+      }
+    );
     
-    // Step 2: Ensure pre-generated sequence exists
-    const gameData = await this.getGameData(gameId);
-    if (!gameData?.sessionCache || gameData.sessionCache.length === 0) {
-      console.error('❌ No pre-generated sequence found - game cannot continue');
-      throw new Error('Pre-generated sequence is required but not found');
+   return shouldContinue;
+      },
+      {
+        timeout: 15000,
+        lockTTL: 20000
+      }
+    );
+    /**
+   * Process prizes after a number is called
+   */
+  private async processPrizesAfterNumberCall(gameId: string, calledNumber: number): Promise<void> {
+    try {
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) return;
+      
+      // Use existing prize validation logic
+      const prizeResult = await this.processNumberForPrizes(
+        gameData,
+        calledNumber,
+        gameData.gameState.calledNumbers || []
+      );
+      
+      if (prizeResult.hasWinners) {
+        const prizeUpdates = {
+          ...prizeResult.prizeUpdates,
+          lastWinnerAnnouncement: prizeResult.announcements.join(' '),
+          lastWinnerAt: new Date().toISOString()
+        };
+        
+        const gameRef = ref(database, `games/${gameId}`);
+        await update(gameRef, prizeUpdates);
+        
+        console.log(`🏆 Prize updates applied for number ${calledNumber}`);
+      }
+      
+    } catch (error: any) {
+      console.error('❌ Error processing prizes:', error);
     }
+  }
     
     // Step 3: Call the number with full processing
     const result = await this.processCompleteNumberCall(gameId);
@@ -1028,10 +1137,28 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
 
-  /**
-   * Complete number calling with all business logic
+/**
+   * DEPRECATED: Old number calling method - use callNextNumberAndContinue instead
    */
   private async processCompleteNumberCall(gameId: string): Promise<{
+  success: boolean;
+  gameEnded: boolean;
+  hasMoreNumbers: boolean;
+  number?: number;
+  winners?: any;
+}> {
+    console.warn('🚫 DEPRECATED: processCompleteNumberCall called - use callNextNumberAndContinue instead');
+    return {
+      success: false,
+      gameEnded: true,
+      hasMoreNumbers: false
+    };
+  }
+
+  /**
+   * LEGACY: Old complete number calling method - replaced by secure caller
+   */
+  private async processCompleteNumberCallLegacy(gameId: string): Promise<{
   success: boolean;
   gameEnded: boolean;
   hasMoreNumbers: boolean;
@@ -1503,11 +1630,71 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
       clearInterval(interval);
       this.firebaseRetryIntervals.delete(gameId);
     }
-    this.firebaseRetryActive.set(gameId, false);
+   this.firebaseRetryActive.set(gameId, false);
     console.log('🛑 Stopped Firebase retry mechanism for game:', gameId);
   }
+
+  /**
+   * Deep merge objects for transaction updates
+   */
+  private deepMerge(target: any, source: any): any {
+    if (source === null || source === undefined) return target;
+    if (target === null || target === undefined) return source;
+    
+    if (typeof source !== 'object' || typeof target !== 'object') {
+      return source;
+    }
+    
+    const result = { ...target };
+    
+    for (const key in source) {
+      if (source.hasOwnProperty(key)) {
+        if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
+          result[key] = this.deepMerge(result[key], source[key]);
+        } else {
+          result[key] = source[key];
+        }
+      }
+    }
+    
+    return result;
+  }
 }
-
   // ================== SINGLETON EXPORT ==================
+/**
+   * Cleanup all resources
+   */
+  async cleanup(): Promise<void> {
+    console.log('🧹 Cleaning up FirebaseGameService');
+    
+    // Cleanup all number callers
+    for (const [gameId, caller] of this.numberCallers) {
+      try {
+        await caller.cleanup();
+      } catch (error) {
+        console.warn(`⚠️ Error cleaning up caller for ${gameId}:`, error);
+      }
+    }
+    this.numberCallers.clear();
+    
+    // Clear retry intervals
+    for (const [gameId, interval] of this.firebaseRetryIntervals) {
+      clearInterval(interval);
+    }
+    this.firebaseRetryIntervals.clear();
+    this.firebaseRetryActive.clear();
+    
+    // Cleanup mutex
+    await this.gameMutex.cleanup();
+  }
 
+}
 export const firebaseGame = new FirebaseGameService();
+
+// Cleanup on process exit
+if (typeof process !== 'undefined') {
+  process.on('exit', () => {
+    console.log('🧹 Cleaning up Firebase game service');
+    firebaseGame.cleanup();
+  });
+}
