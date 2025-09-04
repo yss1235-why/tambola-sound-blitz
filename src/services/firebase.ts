@@ -157,7 +157,7 @@ class FirebaseService {
     return this.game.unbookTicket(gameId, ticketId);
   }
 
-  // ========== GAME STATE OPERATIONS (delegate to game) ==========
+ // ========== GAME STATE OPERATIONS (delegate to game) ==========
   async startGame(gameId: string) {
     return this.game.startGame(gameId);
   }
@@ -169,7 +169,23 @@ class FirebaseService {
   async resumeGame(gameId: string) {
     return this.game.resumeGame(gameId);
   }
-
+  
+  // ========== NEW: RACE CONDITION FREE OPERATIONS ==========
+  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
+    return this.game.callNextNumberAndContinue(gameId);
+  }
+  
+  async startGameWithCountdown(gameId: string): Promise<void> {
+    return this.game.startGameWithCountdown(gameId);
+  }
+  
+  async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
+    return this.game.updateCountdownTime(gameId, timeLeft);
+  }
+  
+  async activateGameAfterCountdown(gameId: string): Promise<void> {
+    return this.game.activateGameAfterCountdown(gameId);
+  }
   async endGame(gameId: string) {
     return this.game.endGame(gameId);
   }
