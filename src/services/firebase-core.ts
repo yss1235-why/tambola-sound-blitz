@@ -179,8 +179,8 @@ export const removeUndefinedValues = (obj: any): any => {
 
 class FirebaseCoreService {
   // ================== TRANSACTION UTILITIES ==================
-// Add this property at the top of the FirebaseCoreService class
-private cleanupInProgress = new Set<string>();
+  private cleanupInProgress = new Set<string>();
+  private operationMutex = new Map<string, Promise<any>>();
 
 // Add this method inside the FirebaseCoreService class
 private async cleanupOldCompletedGames(hostId: string, currentGameId: string): Promise<void> {
@@ -240,7 +240,85 @@ private async cleanupOldCompletedGames(hostId: string, currentGameId: string): P
     this.cleanupInProgress.delete(hostId);
   }
 }
+ /**
+   * Enhanced safe transaction with mutex protection
+   */
   async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
+    const mutexKey = `transaction-${path}`;
+    
+    // Prevent concurrent transactions on same path
+    if (this.operationMutex.has(mutexKey)) {
+      console.log(`⏳ Waiting for existing transaction: ${path}`);
+      await this.operationMutex.get(mutexKey);
+    }
+    
+    const transactionPromise = this.executeTransaction(path, updates, retries);
+    this.operationMutex.set(mutexKey, transactionPromise);
+    
+    try {
+      await transactionPromise;
+    } finally {
+      this.operationMutex.delete(mutexKey);
+    }
+  }
+  
+  private async executeTransaction(path: string, updates: any, retries: number): Promise<void> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
+        
+        await runTransaction(ref(database, path), (currentData) => {
+          if (currentData === null) {
+            return updates;
+          }
+          
+          // Deep merge to prevent overwriting
+          return this.deepMerge(currentData, updates);
+        });
+        
+        console.log(`✅ Transaction successful for path: ${path}`);
+        return;
+        
+      } catch (error: any) {
+        console.error(`❌ Transaction attempt ${attempt} failed for ${path}:`, error);
+        
+        if (attempt === retries) {
+          throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
+        }
+        
+        // Wait before retry with exponential backoff + jitter
+        const baseDelay = Math.pow(2, attempt) * 1000;
+        const jitter = Math.random() * 1000;
+        await new Promise(resolve => setTimeout(resolve, baseDelay + jitter));
+      }
+    }
+  }
+  
+  /**
+   * Deep merge objects for transaction updates
+   */
+  private deepMerge(target: any, source: any): any {
+    if (source === null || source === undefined) return target;
+    if (target === null || target === undefined) return source;
+    
+    if (typeof source !== 'object' || typeof target !== 'object') {
+      return source;
+    }
+    
+    const result = { ...target };
+    
+    for (const key in source) {
+      if (source.hasOwnProperty(key)) {
+        if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
+          result[key] = this.deepMerge(result[key], source[key]);
+        } else {
+          result[key] = source[key];
+        }
+      }
+    }
+    
+    return result;
+  }
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
