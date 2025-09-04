@@ -14,6 +14,8 @@ import {
   off,
   runTransaction
 } from 'firebase/database';
+import { FirebaseMutex, numberCallingMutex } from '@/services/FirebaseMutex';
+import { SecureNumberCaller } from '@/services/SecureNumberCaller';
 import { database, removeUndefinedValues } from './firebase-core'; 
 import { 
   validateTicketsForPrizes, 
@@ -47,6 +49,8 @@ interface TicketRowData {
 class FirebaseGameService {
   private firebaseRetryIntervals: Map<string, NodeJS.Timeout> = new Map();
   private firebaseRetryActive: Map<string, boolean> = new Map();
+  private numberCallers: Map<string, SecureNumberCaller> = new Map();
+  private gameMutex = new FirebaseMutex('game-operations');
 
   // ================== TRANSACTION UTILITIES ==================
 
