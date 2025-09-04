@@ -1,12 +1,18 @@
-// src/providers/HostControlsProvider.tsx - SIMPLIFIED: Pure Timer Implementation (Option A)
+// src/providers/HostControlsProvider.tsx - RACE CONDITION FREE: Complete Implementation
 import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react';
 import { ref, onValue, off, update } from 'firebase/database';
 import { firebaseService, database } from '@/services/firebase';
 import { useGameData } from './GameDataProvider';
+import { useGameStateMachine } from '@/hooks/useGameStateMachine';
+import { useGameResourceManager } from '@/hooks/useGameResourceManager';
+import { useAudioGameCoordination } from '@/hooks/useAudioGameCoordination';
+import { gameTimerManager } from '@/services/GameTimerManager';
+import { gameOperationQueue } from '@/services/OperationQueue';
+import { SecureNumberCaller } from '@/services/SecureNumberCaller';
 
 
 interface HostControlsContextValue {
-  // Game flow controls
+  // Game flow controls (state machine integrated)
   startGame: () => Promise<void>;
   pauseGame: () => Promise<void>;
   resumeGame: () => Promise<void>;
@@ -15,9 +21,20 @@ interface HostControlsContextValue {
   // Configuration
   updateSpeechRate: (scaleValue: number) => void;
   
-  // Status
+  // Status (race condition free)
   isProcessing: boolean;
   countdownTime: number;
+  
+  // State machine status
+  gameState: string;
+  isGameIdle: boolean;
+  isGameRunning: boolean;
+  isGamePaused: boolean;
+  isGameOver: boolean;
+  canStartGame: boolean;
+  canPauseGame: boolean;
+  canResumeGame: boolean;
+  canEndGame: boolean;
   
   speechRate: number;
   speechRateScale: number;
@@ -75,8 +92,43 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 }) => {
   const { gameData } = useGameData();
   
+  // Resource management for cleanup
+  const resourceManager = useGameResourceManager();
+  
+  // State machine for game flow
+  const stateMachine = useGameStateMachine({
+    onStateChange: (state, context) => {
+      console.log('🎮 Game state changed:', state, context);
+    },
+    onNumberCall: handleSecureNumberCall,
+    onGameEnd: handleGameEndCleanup,
+    onError: (error) => {
+      console.error('❌ State machine error:', error);
+      setIsProcessing(false);
+    }
+  });
+  
+  // Game state ref for timer coordination
+  const gameStateRef = useRef({
+    isActive: false,
+    gameOver: false,
+    isCountdown: false
+  });
+  
+  // Audio coordination
+  const audioCoordination = useAudioGameCoordination({
+    gameStateRef,
+    onAudioComplete: handleAudioComplete,
+    onAudioError: (error, type) => {
+      console.error(`❌ Audio error (${type}):`, error);
+    }
+  });
+  
+  // Secure number caller
+  const numberCallerRef = useRef<SecureNumberCaller | null>(null);
+  
   // Simple state - only for UI feedback
-const [isProcessing, setIsProcessing] = React.useState(false);
+  const [isProcessing, setIsProcessing] = React.useState(false);
 const [countdownTime, setCountdownTime] = React.useState(0);
 const [speechRate, setSpeechRate] = React.useState(1.0); // NEW: Speech rate control (1.0 = normal)
 const [speechRateScale, setSpeechRateScale] = React.useState(0); // NEW: Scale value for UI (-3 to +6)
