@@ -162,7 +162,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
   }
 
   const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
-  const prizes = createPrizeConfiguration(selectedPrizes)
+ const prizes = createPrizeConfiguration(selectedPrizes);
 
   const gameData: GameData = {
     gameId,
