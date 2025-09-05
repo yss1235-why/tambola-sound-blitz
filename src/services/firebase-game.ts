@@ -54,7 +54,7 @@ class FirebaseGameService {
 
   // ================== TRANSACTION UTILITIES ==================
 
- async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
+async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
     const mutexKey = `transaction-${path}`;
     
     // Prevent concurrent transactions on same path
@@ -74,20 +74,22 @@ class FirebaseGameService {
               return this.deepMerge(currentData, updates);
             });
         
-        console.log(`✅ Transaction successful for path: ${path}`);
-        return;
-        
-      } catch (error: any) {
-        console.error(`❌ Transaction attempt ${attempt} failed for ${path}:`, error);
-        
-        if (attempt === retries) {
-          throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
+            console.log(`✅ Transaction successful for path: ${path}`);
+            return;
+            
+          } catch (error: any) {
+            console.error(`❌ Transaction attempt ${attempt} failed for ${path}:`, error);
+            
+            if (attempt === retries) {
+              throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
+            }
+            
+            // Wait before retry (exponential backoff)
+            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          }
         }
-        
-        // Wait before retry (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
       }
-    }
+    ); 
   }
 
   // ================== GAME OPERATIONS ==================
