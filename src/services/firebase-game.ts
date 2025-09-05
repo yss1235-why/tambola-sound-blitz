@@ -740,62 +740,61 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
    * @param gameId - Game to call number for
    * @returns boolean - true if game should continue, false if game should stop
    */
-  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
-  try {
-    console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
-    
-    // Use mutex to prevent concurrent calls
-    return await this.gameMutex.withLock(
-      `call-${gameId}`,
-      async () => {
-        // Step 1: Validate game can accept calls
-        const canCall = await this.validateGameForCalling(gameId);
-        if (!canCall.isValid) {
-          console.log(`🚫 Cannot call number: ${canCall.reason}`);
-          return false;
+async callNextNumberAndContinue(gameId: string): Promise<boolean> {
+    try {
+      console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
+      
+      // Use mutex to prevent concurrent calls
+      return await this.gameMutex.withLock(
+        `call-${gameId}`,
+        async () => {
+          // Step 1: Validate game can accept calls
+          const canCall = await this.validateGameForCalling(gameId);
+          if (!canCall.isValid) {
+            console.log(`🚫 Cannot call number: ${canCall.reason}`);
+            return false;
+          }
+          
+          // Step 2: Get or create secure number caller
+          let numberCaller = this.numberCallers.get(gameId);
+          if (!numberCaller) {
+            numberCaller = new SecureNumberCaller(gameId);
+            this.numberCallers.set(gameId, numberCaller);
+          }
+          
+          // Step 3: Use secure number calling
+          const result = await numberCaller.callNextNumber();
+          
+          if (!result.success) {
+            console.log(`❌ Secure number calling failed: ${result.error}`);
+            return false;
+          }
+          
+          console.log(`✅ Number ${result.number} called successfully via secure caller`);
+          
+          // Step 4: Process prizes after successful call
+          await this.processPrizesAfterNumberCall(gameId, result.number);
+          
+          // Step 5: Check if game should continue
+          const stats = await numberCaller.getGameStatistics();
+          const shouldContinue = stats.remainingNumbers > 0;
+          
+          console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
+          return shouldContinue;
+        },
+        {
+          timeout: 15000,
+          lockTTL: 20000
         }
-        
-        // Step 2: Get or create secure number caller
-        let numberCaller = this.numberCallers.get(gameId);
-        if (!numberCaller) {
-          numberCaller = new SecureNumberCaller(gameId);
-          this.numberCallers.set(gameId, numberCaller);
-        }
-        
-        // Step 3: Use secure number calling
-        const result = await numberCaller.callNextNumber();
-        
-        if (!result.success) {
-          console.log(`❌ Secure number calling failed: ${result.error}`);
-          return false;
-        }
-        
-        console.log(`✅ Number ${result.number} called successfully via secure caller`);
-        
-        // Step 4: Process prizes after successful call
-        await this.processPrizesAfterNumberCall(gameId, result.number);
-        
-        // Step 5: Check if game should continue
-        const stats = await numberCaller.getGameStatistics();
-        const shouldContinue = stats.remainingNumbers > 0;
-        
-        console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
-        return shouldContinue;
-      },
-      {
-        timeout: 15000,
-        lockTTL: 20000
-      }
-    );
-    
-   return shouldContinue;
-      },
-      {
-        timeout: 15000,
-        lockTTL: 20000
-      }
-    );
-    /**
+      );
+      
+    } catch (error: any) {
+      console.error('❌ Firebase-game: Number calling error:', error);
+      return false;
+    }
+  }
+
+  /**
    * Process prizes after a number is called
    */
   private async processPrizesAfterNumberCall(gameId: string, calledNumber: number): Promise<void> {
@@ -828,25 +827,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
     
-    // Step 3: Call the number with full processing
-    const result = await this.processCompleteNumberCall(gameId);
-    
-    if (!result.success) {
-      console.log(`❌ Number calling failed - stopping game`);
-      return false;
     }
-    
-    // Step 4: Check if game should continue
-    const shouldContinue = !result.gameEnded && result.hasMoreNumbers;
-    
-    console.log(`✅ Number called successfully. Continue: ${shouldContinue}`);
-    return shouldContinue;
-    
-  } catch (error: any) {
-    console.error('❌ Firebase-game: Number calling error:', error);
-    return false;
-  }
-}
 /**
    * Generate and validate pre-game number sequence
    */
