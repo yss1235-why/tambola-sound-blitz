@@ -3,7 +3,7 @@
 // ✅ Import from firebase-core (both types and instance)
 import { database, auth, firebaseCore } from './firebase-core';
 import { firebaseGame } from './firebase-game';
-
+import { ref, update } from 'firebase/database';
 // Re-export types and database/auth for external consumption
 export { database, auth } from './firebase-core';
 export type {
@@ -170,26 +170,7 @@ class FirebaseService {
     return this.game.resumeGame(gameId);
   }
   
-  // ========== NEW: RACE CONDITION FREE OPERATIONS ==========
-  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
-    return this.game.callNextNumberAndContinue(gameId);
-  }
   
-  async startGameWithCountdown(gameId: string): Promise<void> {
-    return this.game.startGameWithCountdown(gameId);
-  }
-  
-  async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
-    return this.game.updateCountdownTime(gameId, timeLeft);
-  }
-  
-  async activateGameAfterCountdown(gameId: string): Promise<void> {
-    return this.game.activateGameAfterCountdown(gameId);
-  }
-  async endGame(gameId: string) {
-    return this.game.endGame(gameId);
-  }
-
   // ========== OPTION A: NEW METHODS FOR SIMPLIFIED HOSTCONTROLSPROVIDER ==========
 
 
