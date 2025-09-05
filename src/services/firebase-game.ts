@@ -1659,7 +1659,8 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
     
     return result;
   }
-}
+
+  // ================== GAME OPERATIONS ==================
   // ================== SINGLETON EXPORT ==================
 /**
    * Cleanup all resources
