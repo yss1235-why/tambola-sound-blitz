@@ -319,32 +319,7 @@ private async cleanupOldCompletedGames(hostId: string, currentGameId: string): P
     
     return result;
   }
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
-        
-        await runTransaction(ref(database, path), (currentData) => {
-          if (currentData === null) {
-            return updates;
-          }
-          return { ...currentData, ...updates };
-        });
-        
-        console.log(`✅ Transaction successful for path: ${path}`);
-        return;
-        
-      } catch (error: any) {
-        console.error(`❌ Transaction attempt ${attempt} failed for ${path}:`, error);
-        
-        if (attempt === retries) {
-          throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
-        }
-        
-        // Wait before retry (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-      }
-    }
-  }
+    
   // ================== GAME DATA OPERATIONS ==================
 
 async getGameData(gameId: string): Promise<GameData | null> {
