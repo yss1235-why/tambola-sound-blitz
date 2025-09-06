@@ -1,5 +1,5 @@
 // src/providers/GameDataProvider.tsx - FIXED: Better loading state management
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useMemo, useEffect, useRef } from 'react';
 import { GameData } from '@/services/firebase';
 import { useGameSubscription, useHostCurrentGameSubscription } from '@/hooks/useFirebaseSubscription';
 
@@ -31,6 +31,9 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   gameId,
   userId
 }) => {
+  // ADD THIS LINE:
+  const gameDataRef = useRef<GameData | null>(null);
+  
   // Determine subscription type based on props
   const isHostMode = !!userId && (!gameId || gameId === 'HOST_CURRENT');
   
@@ -47,7 +50,7 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
   // ✅ FIXED: Better loading state logic
   // Only show loading for a reasonable amount of time
   const [loadingStartTime] = React.useState(Date.now());
-  const isLoading = useMemo(() => {
+ const isLoading = useMemo(() => {
     // If subscription resolved (loading false) or has data/error, don't show loading
     if (!subscriptionLoading || gameData || error) {
       return false;
@@ -62,6 +65,14 @@ export const GameDataProvider: React.FC<GameDataProviderProps> = ({
     
     return true;
   }, [subscriptionLoading, gameData, error, loadingStartTime]);
+
+  // Prevent state loss after number calls
+  useEffect(() => {
+    if (gameData?.gameId && gameData.gameState?.isActive) {
+      console.log('🔒 Game state locked:', gameData.gameId);
+      gameDataRef.current = gameData;
+    }
+  }, [gameData]);
 
   // Calculate current game phase (pure function)
   const currentPhase = useMemo((): GamePhase => {
