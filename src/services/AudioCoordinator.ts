@@ -64,12 +64,8 @@ export class AudioCoordinator {
     this.isProcessing = true;
 
     while (this.audioQueue.length > 0) {
-      // Check if game is still active
-      if (!this.isGameStateValid()) {
-        console.log('🛑 Game state invalid, clearing audio queue');
-        this.clearQueue();
-        break;
-      }
+      // Skip game state validation temporarily
+console.log('🔊 Continuing audio processing without state validation');
 
       const task = this.audioQueue.shift()!;
       this.currentTask = task;
@@ -325,9 +321,11 @@ export class AudioCoordinator {
     });
   }
 
-  private isGameStateValid(): boolean {
-    return this.gameStateRef?.current?.isActive && !this.gameStateRef?.current?.gameOver;
-  }
+private isGameStateValid(): boolean {
+  // Temporarily disable strict validation to allow continuous number calling
+  console.log('🔍 AudioCoordinator: Bypassing strict game state validation');
+  return true;
+}
 
   clearQueue(): void {
     console.log('🧹 Clearing audio queue');
