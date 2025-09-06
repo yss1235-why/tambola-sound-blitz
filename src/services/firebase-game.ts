@@ -822,13 +822,12 @@ async callNextNumberAndContinue(gameId: string): Promise<boolean> {
         console.log(`🏆 Prize updates applied for number ${calledNumber}`);
       }
       
-    } catch (error: any) {
+   } catch (error: any) {
       console.error('❌ Error processing prizes:', error);
     }
   }
-    
-    }
-/**
+
+  /**
    * Generate and validate pre-game number sequence
    */
   async generateGameNumbers(gameId: string): Promise<NumberGenerationResult> {
