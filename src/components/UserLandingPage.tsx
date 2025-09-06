@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { TicketBookingGrid } from './TicketBookingGrid';
 import { UserDisplay } from './UserDisplay';
 import { RecentWinnersDisplay } from './RecentWinnersDisplay';
+import { AudioManager } from '@/components/AudioManager';
 import { GameDataProvider } from '@/providers/GameDataProvider';
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
 import { firebaseService, GameData } from '@/services/firebase';
@@ -283,11 +284,24 @@ useEffect(() => {
             </Button>
           </div>
           <UserDisplay />
+          
+          <AudioManager
+            gameId={selectedGameId}
+            gameState={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState}
+            currentNumber={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.currentNumber}
+            isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
+            forceEnable={true}
+            onAudioComplete={(type, data) => {
+              console.log('Player audio completed:', type, data);
+            }}
+            onAudioError={(error, type) => {
+              console.error('Player audio error:', error, type);
+            }}
+          />
         </div>
       </GameDataProvider>
     );
   }
-
    if (currentView === 'booking' && selectedGameId) {
   const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
   
