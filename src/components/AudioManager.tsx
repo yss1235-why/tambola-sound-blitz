@@ -44,14 +44,16 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       if ('speechSynthesis' in window) {
         setIsAudioSupported(true);
         
-        // Set up game state ref for audio coordinator
+      // Set up game state ref for audio coordinator
         gameStateRef.current = {
           isActive: gameState?.isActive || false,
-          gameOver: gameState?.gameOver || false
+          gameOver: gameState?.gameOver || false,
+          gameId: gameId || null
         };
-        
+
         audioCoordinator.setGameStateRef(gameStateRef);
         
+        // Force enable for hosts
         // Force enable for hosts
         if (forceEnable) {
           setIsAudioEnabled(true);
@@ -74,14 +76,15 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   }, [forceEnable]);
 
   // Update game state ref when props change
-  useEffect(() => {
-    if (gameStateRef.current) {
-      gameStateRef.current = {
-        isActive: gameState?.isActive || false,
-        gameOver: gameState?.gameOver || false
-      };
-    }
-  }, [gameState]);
+useEffect(() => {
+  if (gameStateRef.current) {
+    gameStateRef.current = {
+      isActive: gameState?.isActive || false,
+      gameOver: gameState?.gameOver || false,
+      gameId: gameId || null
+    };
+  }
+}, [gameState, gameId]);
 
   // Enable audio on user interaction (for players)
   useEffect(() => {
