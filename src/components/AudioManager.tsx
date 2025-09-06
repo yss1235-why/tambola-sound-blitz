@@ -25,7 +25,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   onAudioComplete,
   onAudioError
 }) => {
-  const [isAudioEnabled, setIsAudioEnabled] = useState(forceEnable);
+ const [isAudioEnabled, setIsAudioEnabled] = useState(false); // Always start disabled
   const [isAudioSupported, setIsAudioSupported] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   
@@ -52,14 +52,8 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         };
 
         audioCoordinator.setGameStateRef(gameStateRef);
-        
-        // Force enable for hosts
-        // Force enable for hosts
-        if (forceEnable) {
-          setIsAudioEnabled(true);
-          console.log('🔊 Audio force-enabled (host mode)');
-        }
-        
+     // Set up audio coordinator but don't enable yet - wait for user interaction
+        console.log('🔊 Audio coordinator set up, waiting for user interaction');
         audioInitialized.current = true;
       } else {
         setIsAudioSupported(false);
@@ -86,9 +80,9 @@ useEffect(() => {
   }
 }, [gameState, gameId]);
 
-  // Enable audio on user interaction (for players)
+  // Enable audio on user interaction (for both players and hosts)
   useEffect(() => {
-    if (!isAudioSupported || isAudioEnabled || forceEnable) return;
+    if (!isAudioSupported || isAudioEnabled) return; // Remove forceEnable condition
 
     const enableAudioOnInteraction = async (event: Event) => {
       try {
