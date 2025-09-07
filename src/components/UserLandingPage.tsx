@@ -57,7 +57,8 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
   gamesLoading = false,
   gamesError = null
 }) => {
-  const [currentView, setCurrentView] = useState<'list' | 'booking' | 'game' | 'winners'>('list'); // 🆕 NEW: Add winners view
+ const [currentView, setCurrentView] = useState<'list' | 'booking' | 'game' | 'winners'>('list'); // 🆕 NEW: Add winners view
+const [selectedGameData, setSelectedGameData] = useState<GameData | null>(null);
   
   // ✅ UNCHANGED: Use pre-loaded games with fallback subscription (now includes completed games)
   const fallbackSubscription = useActiveGamesSubscription();
@@ -124,22 +125,24 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [gameDataSource.games]);
 
-  // 🔧 MODIFIED: Handle completed game selection
   const selectGame = useCallback((gameId: string) => {
-    console.log('🎯 Selecting game:', gameId);
+  console.log('🎯 Selecting game:', gameId);
+  
+  if (onGameSelection) {
+    onGameSelection(gameId);
+  }
+  
+  const selectedGame = gameDataSource.games?.find(g => g.gameId === gameId);
+  if (selectedGame) {
+    console.log('🔍 Selected game state:', selectedGame.gameState);
+    setSelectedGameData(selectedGame); // Store the selected game
     
-    if (onGameSelection) {
-      onGameSelection(gameId);
+    // 🆕 NEW: Handle completed games
+    if (selectedGame.gameState.gameOver) {
+      console.log('🏆 Selected completed game - showing winners');
+      setCurrentView('winners');
+      return;
     }
-    
-    const selectedGame = gameDataSource.games?.find(g => g.gameId === gameId);
-    if (selectedGame) {
-      // 🆕 NEW: Handle completed games
-      if (selectedGame.gameState.gameOver) {
-        console.log('🏆 Selected completed game - showing winners');
-        setCurrentView('winners');
-        return;
-      }
       
       // ✅ UNCHANGED: Existing active game logic
       const hasStarted = (selectedGame.gameState.calledNumbers?.length || 0) > 0 || 
