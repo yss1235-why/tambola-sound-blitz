@@ -1238,7 +1238,15 @@ if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.
     // Check if game should end
     const allPrizesWon = this.checkAllPrizesWon(updatedGame.prizes, prizeResult.prizeUpdates);
     const isLastNumber = updatedCalledNumbers.length >= 90;
-    const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
+   const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
+
+console.log(`🔍 Game end check:`, {
+  allPrizesWon,
+  isLastNumber,
+  currentGameOver: updatedGame.gameState.gameOver,
+  shouldEndGame,
+  numbersCalledCount: updatedCalledNumbers.length
+});
     
   if (shouldEndGame && !updatedGame.gameState.gameOver) {
   console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
@@ -1253,6 +1261,17 @@ if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.
   });
   
   console.log(`✅ Game ended successfully in Firebase`);
+
+// Force immediate state propagation
+setTimeout(async () => {
+  try {
+    const verifyRef = ref(database, `games/${gameId}/gameState/gameOver`);
+    const snapshot = await get(verifyRef);
+    console.log(`🔍 Game over verification: ${snapshot.val()}`);
+  } catch (error) {
+    console.error('❌ Game over verification failed:', error);
+  }
+}, 1000);
 }
     
     return {
