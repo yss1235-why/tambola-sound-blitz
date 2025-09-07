@@ -1,5 +1,5 @@
 // src/components/UserDisplay.tsx - UPDATED: Replace renderTicket function with shared utility
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,20 @@ interface SearchedTicket {
 export const UserDisplay: React.FC = () => {
   const { gameData, currentPhase, timeUntilAction, isLoading } = useGameData();
   const calledNumbers = gameData?.gameState?.calledNumbers || [];
+
+  // Add game over detection for players
+  useEffect(() => {
+    console.log('🔍 UserDisplay checking game over:', gameData?.gameState?.gameOver);
+    if (gameData?.gameState?.gameOver) {
+      console.log('🏆 UserDisplay detected game over, notifying parent');
+      
+      // Dispatch custom event to notify parent components
+      const gameEndEvent = new CustomEvent('tambola-game-ended', {
+        detail: { gameId: gameData.gameId }
+      });
+      window.dispatchEvent(gameEndEvent);
+    }
+  }, [gameData?.gameState?.gameOver, gameData?.gameId]);
   // Local state for user interactions (search, etc.)
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
