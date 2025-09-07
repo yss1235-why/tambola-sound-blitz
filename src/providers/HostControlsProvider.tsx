@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react';
 import { ref, onValue, off, update } from 'firebase/database';
 import { firebaseService, database } from '@/services/firebase';
+import { firebaseGame } from '@/services/firebase-game';
 import { useGameData } from './GameDataProvider';
 import { gameTimerManager } from '@/services/GameTimerManager';
 import { SecureNumberCaller } from '@/services/SecureNumberCaller';
@@ -279,7 +280,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
               lastCallTimeRef.current = Date.now();
               isCallInProgressRef.current = true;
               
-              firebaseService.callNextNumberAndContinue(gameData.gameId)
+             firebaseGame.callNextNumberAndContinue(gameData.gameId)
                 .then(shouldContinue => {
                   if (!shouldContinue) {
                     console.log('⏸️ Game should stop');
@@ -417,7 +418,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       
       // Update Firebase with retry logic
       try {
-        await firebaseService.updateCountdownTime(gameData!.gameId, timeLeft);
+        await firebaseGame.updateCountdownTime(gameData!.gameId, timeLeft);
       } catch (error) {
         console.warn('⚠️ Countdown update failed:', error);
       }
@@ -428,7 +429,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         countdownTimerRef.current = null;
         
         try {
-          await firebaseService.activateGameAfterCountdown(gameData!.gameId);
+          await firebaseGame.activateGameAfterCountdown(gameData!.gameId);
           
           // Automatically set to paused state after countdown
           setFirebasePaused(true); 
@@ -456,7 +457,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       const result = await resourceManager.safeAsyncOperation(
         'prepare-game',
         async () => {
-          const result = await firebaseService.generateGameNumbers(gameData.gameId);
+          const result = await firebaseGame.generateGameNumbers(gameData.gameId);
           return result;
         },
         {
@@ -514,7 +515,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       
       console.log(`🎮 Starting countdown for: ${gameData.gameId}`);
       
-      await firebaseService.startGameWithCountdown(gameData.gameId);
+     await firebaseGame.startGameWithCountdown(gameData.gameId);
       
       // Start countdown timer (UI + Firebase sync)
       let timeLeft = 10;
@@ -525,7 +526,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         setCountdownTime(timeLeft);
         
         try {
-          await firebaseService.updateCountdownTime(gameData.gameId, timeLeft);
+         await firebaseGame.updateCountdownTime(gameData.gameId, timeLeft);
         } catch (error) {
           console.error('Failed to update countdown in Firebase:', error);
         }
@@ -535,7 +536,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
           countdownTimerRef.current = null;
           
           try {
-            await firebaseService.activateGameAfterCountdown(gameData.gameId);
+            await firebaseGame.activateGameAfterCountdown(gameData.gameId);
             
             setFirebasePaused(true); 
             setIsAudioReady(true);
@@ -581,7 +582,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     setIsProcessing(true);
     
     try {
-      await firebaseService.resumeGame(gameData.gameId);
+      await firebaseGame.resumeGame(gameData.gameId);
       setFirebasePaused(false);
       setIsAudioReady(true);
       setWasAutopaused(false);
@@ -608,7 +609,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       
       stopTimer();
       
-      await firebaseService.endGame(gameData.gameId);
+      await firebaseGame.endGame(gameData.gameId);
       
       console.log(`✅ Game ended: ${gameData.gameId}`);
       
@@ -700,7 +701,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         setIsAudioReady(false);
         
         if (isActiveGame) {
-          firebaseService.pauseGame(gameData.gameId)
+          firebaseGame.pauseGame(gameData.gameId)
             .then(() => console.log('✅ Game auto-paused on refresh for safety'))
             .catch(err => console.error('❌ Failed to auto-pause on refresh:', err));
         } else {
@@ -855,7 +856,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         resumeCountdownTimer(currentCountdown);
       } else if (currentCountdown === 0) {
         console.log(`🚨 Countdown expired during disconnect - activating game but paused`);
-        firebaseService.activateGameAfterCountdown(gameData.gameId)
+        firebaseGame.activateGameAfterCountdown(gameData.gameId)
           .then(() => {
             setFirebasePaused(true);
             setIsAudioReady(true);
