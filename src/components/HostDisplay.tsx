@@ -47,20 +47,26 @@ const {
 } = hostControls || {};
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
   const [showWinnerDisplay, setShowWinnerDisplay] = useState(false);
-
-  // Add delay before showing winner display
-  useEffect(() => {
-    if (gameData?.gameState?.gameOver) {
-      // Wait 2.5 seconds for prize audio to finish
-      const timer = setTimeout(() => {
-        setShowWinnerDisplay(true);
-      }, 2500);
-      
-      return () => clearTimeout(timer);
-    } else {
-      setShowWinnerDisplay(false);
-    }
-  }, [gameData?.gameState?.gameOver]);
+// Add delay before showing winner display
+useEffect(() => {
+  console.log('🔍 Game over check:', gameData?.gameState?.gameOver);
+  if (gameData?.gameState?.gameOver) {
+    console.log('🏆 Game is over, starting winner display timer');
+    // Wait 2.5 seconds for prize audio to finish
+    const timer = setTimeout(() => {
+      console.log('🎉 Showing winner display now');
+      setShowWinnerDisplay(true);
+    }, 2500);
+    
+    return () => {
+      console.log('🧹 Clearing winner display timer');
+      clearTimeout(timer);
+    };
+  } else {
+    console.log('📱 Game not over, hiding winner display');
+    setShowWinnerDisplay(false);
+  }
+}, [gameData?.gameState?.gameOver]);
  
   // Toggle prize expansion
   const togglePrize = (prizeId: string) => {
