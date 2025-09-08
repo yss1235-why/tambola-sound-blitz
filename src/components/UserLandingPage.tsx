@@ -275,8 +275,7 @@ useEffect(() => {
             currentNumber={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.currentNumber}
             lastWinnerAnnouncement={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.lastWinnerAnnouncement}
             isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
-            speechRate={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.speechRate}
-            forceEnable={true}
+            speechRate={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.speechRate || 1.0} forceEnable={true}
             onAudioComplete={(type, data) => {
               console.log('Player audio completed:', type, data);
             }}
@@ -310,7 +309,7 @@ useEffect(() => {
               currentNumber={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.currentNumber}
               lastWinnerAnnouncement={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.lastWinnerAnnouncement}
               isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
-              speechRate={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.speechRate}
+              speechRate={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.speechRate||1.0}
               forceEnable={true}
             onAudioComplete={(type, data) => {
               console.log('Player audio completed:', type, data);
