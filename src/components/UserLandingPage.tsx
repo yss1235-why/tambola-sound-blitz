@@ -256,22 +256,35 @@ useEffect(() => {
 
   // 🆕 NEW: Winners view rendering
   if (currentView === 'winners' && selectedGameId) {
-    return (
-      <GameDataProvider gameId={selectedGameId}>
-        <div className="space-y-4">
-          <div className="p-4 bg-white">
-            <Button 
-              onClick={handleBackToList} 
-              className="bg-black text-white hover:bg-gray-800 border-black"
-            >
-              ← Back to Games
-            </Button>
-          </div>
-          <RecentWinnersDisplay />
+  return (
+    <GameDataProvider gameId={selectedGameId}>
+      <div className="space-y-4">
+        <div className="p-4 text-white">
+          <Button 
+            onClick={handleBackToList} 
+            className="bg-black text-white hover:bg-gray-800 border-black"
+          >
+            ← Back to Games
+          </Button>
         </div>
-      </GameDataProvider>
-    );
-  }
+        <RecentWinnersDisplay />
+        
+        <AudioManager
+          gameId={selectedGameId}
+          gameState={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState}
+          isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
+          forceEnable={true}
+          onAudioComplete={(type, data) => {
+            console.log('Winner page audio completed:', type, data);
+          }}
+          onAudioError={(error, type) => {
+            console.error('Winner page audio error:', error, type);
+          }}
+        />
+      </div>
+    </GameDataProvider>
+  );
+}
 
   // ✅ UNCHANGED: All existing view rendering logic (game, booking, loading, error)
   if (currentView === 'game' && selectedGameId) {
