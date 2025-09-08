@@ -10,10 +10,10 @@ interface AudioManagerProps {
   lastWinnerAnnouncement?: string;
   isGameOver?: boolean;
   forceEnable?: boolean;
+  speechRate?: number;
   onAudioComplete?: (type: string, data?: any) => void;
   onAudioError?: (error: Error, type: string) => void;
 }
-
 export const AudioManager: React.FC<AudioManagerProps> = ({
   gameId,
   gameState,
@@ -22,6 +22,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   lastWinnerAnnouncement,
   isGameOver,
   forceEnable = false,
+  speechRate = 1.0,
   onAudioComplete,
   onAudioError
 }) => {
@@ -145,12 +146,13 @@ useEffect(() => {
         setIsPlaying(true);
         lastProcessedNumber.current = currentNumber;
         
-        await audioCoordinator.playNumberAudio(
+       await audioCoordinator.playNumberAudio(
           currentNumber,
           () => {
             setIsPlaying(false);
             onAudioComplete?.('number', { number: currentNumber });
-          }
+          },
+          speechRate
         );
         
       } catch (error) {
@@ -161,7 +163,7 @@ useEffect(() => {
     };
 
     playNumberAudio();
-  }, [currentNumber, isAudioEnabled, gameState, onAudioComplete, onAudioError]);
+ }, [currentNumber, isAudioEnabled, gameState, onAudioComplete, onAudioError, speechRate]);
 
   // Handle prize announcement audio
   useEffect(() => {
@@ -179,13 +181,14 @@ useEffect(() => {
         const prizeId = prizeMatch?.[1]?.toLowerCase().replace(/\s+/g, '') || 'unknown';
         const playerName = prizeMatch?.[2] || 'Unknown Player';
         
-        await audioCoordinator.playPrizeAudio(
+       await audioCoordinator.playPrizeAudio(
           prizeId,
           playerName,
           () => {
             setIsPlaying(false);
             onAudioComplete?.('prize', { prizeId, playerName });
-          }
+          },
+          speechRate
         );
         
       } catch (error) {
@@ -196,7 +199,7 @@ useEffect(() => {
     };
 
     playPrizeAudio();
-  }, [lastWinnerAnnouncement, isAudioEnabled, onAudioComplete, onAudioError]);
+ }, [lastWinnerAnnouncement, isAudioEnabled, onAudioComplete, onAudioError, speechRate]);
 
   // Handle game over audio
   useEffect(() => {
@@ -207,10 +210,10 @@ useEffect(() => {
         console.log('🏁 Playing game over audio');
         setIsPlaying(true);
         
-        await audioCoordinator.playGameOverAudio(() => {
+       await audioCoordinator.playGameOverAudio(() => {
           setIsPlaying(false);
           onAudioComplete?.('gameOver');
-        });
+        }, speechRate);
         
       } catch (error) {
         console.error('❌ Game over audio failed:', error);
@@ -220,7 +223,7 @@ useEffect(() => {
     };
 
     playGameOverAudio();
-  }, [isGameOver, isAudioEnabled, onAudioComplete, onAudioError]);
+}, [isGameOver, isAudioEnabled, onAudioComplete, onAudioError, speechRate]);
 
   // Stop all audio when component unmounts or game ends
   useEffect(() => {
