@@ -176,10 +176,12 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 // ✅ SECURE: Host-only component with full controls
 const AudioManagerForHost: React.FC<{
   currentNumber: number | null;
-  prizes: any[];
+  lastWinnerAnnouncement?: string;
+  isGameOver?: boolean;
+  gameId?: string;
   forceEnable: boolean;
   gameState: any;
-}> = ({ currentNumber, prizes, forceEnable, gameState }) => {
+}> = ({ currentNumber, lastWinnerAnnouncement, isGameOver, gameId, forceEnable, gameState }) => {
   const { 
     handleAudioComplete, 
     handlePrizeAudioComplete, 
@@ -189,12 +191,13 @@ const AudioManagerForHost: React.FC<{
   
   return (
     <AudioManager
+      gameId={gameId}
       currentNumber={currentNumber}
-      prizes={prizes}
+      lastWinnerAnnouncement={lastWinnerAnnouncement}
+      isGameOver={isGameOver}
       gameState={gameState}
       onAudioComplete={handleAudioComplete}
-      onPrizeAudioComplete={handlePrizeAudioComplete}
-      onAudioStarted={handleAudioStarted}
+      onAudioError={(error, type) => console.error('Audio error:', error, type)}
       forceEnable={forceEnable}
       speechRate={speechRate}
     />
@@ -921,9 +924,11 @@ if (cachedWinnerData) {
    
     <HostControlsProvider userId={user.uid}>
       <HostDisplay onCreateNewGame={createNewGame} />
-     <AudioManagerForHost
+    <AudioManagerForHost
         currentNumber={gameData.gameState.currentNumber}
-        prizes={Object.values(gameData.prizes)}
+        lastWinnerAnnouncement={gameData.lastWinnerAnnouncement}
+        isGameOver={gameData.gameState.gameOver}
+        gameId={gameData.gameId}
         forceEnable={true}
         gameState={gameData.gameState}
       />
