@@ -786,9 +786,29 @@ async callNextNumberAndContinue(gameId: string): Promise<boolean> {
           // Step 4: Process prizes after successful call
           await this.processPrizesAfterNumberCall(gameId, result.number);
           
-          // Step 5: Check if game should continue
-          const stats = await numberCaller.getGameStatistics();
-          const shouldContinue = stats.remainingNumbers > 0;
+          // Step 5: Check if game should continue (check both numbers AND prizes)
+const gameData = await this.getGameData(gameId);
+if (!gameData) return false;
+
+const stats = await numberCaller.getGameStatistics();
+const numbersRemaining = stats.remainingNumbers > 0;
+const allPrizesWon = this.checkAllPrizesWon(gameData.prizes, {});
+
+const shouldContinue = numbersRemaining && !allPrizesWon;
+
+console.log(`📊 Game continuation check:`, {
+  numbersRemaining,
+  allPrizesWon,
+  shouldContinue,
+  totalCalled: stats.totalCalled
+});
+
+// End game if all prizes won
+if (allPrizesWon && !gameData.gameState.gameOver) {
+  console.log(`🏁 All prizes won - ending game`);
+  await this.endGame(gameId);
+  return false;
+}
           
           console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
           return shouldContinue;
