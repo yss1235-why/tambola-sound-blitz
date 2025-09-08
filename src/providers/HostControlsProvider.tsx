@@ -620,7 +620,7 @@ try {
   }, [gameData, isProcessing, stopTimer]);
 
   const updateSpeechRate = useCallback(async (scaleValue: number) => {
-  const actualRate = Math.pow(2.0, scaleValue);
+ const actualRate = 1.0 + (scaleValue * 0.1);
   setSpeechRateScale(scaleValue);
   setSpeechRate(actualRate);
   
