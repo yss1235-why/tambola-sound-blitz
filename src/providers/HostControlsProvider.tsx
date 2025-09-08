@@ -19,7 +19,7 @@ interface HostControlsContextValue {
   endGame: () => Promise<void>;
   
   // Configuration
-  updateSpeechRate: (scaleValue: number) => void;
+  updateSpeechRate: (scaleValue: number) => Promise<void>;
   
   // Status (race condition free)
   isProcessing: boolean;
@@ -608,11 +608,21 @@ try {
     }
   }, [gameData, isProcessing, stopTimer]);
 
-  const updateSpeechRate = useCallback((scaleValue: number) => {
-    const actualRate = Math.pow(2.0, scaleValue);
-    setSpeechRateScale(scaleValue);
-    setSpeechRate(actualRate);
-  }, []);
+  const updateSpeechRate = useCallback(async (scaleValue: number) => {
+  const actualRate = Math.pow(2.0, scaleValue);
+  setSpeechRateScale(scaleValue);
+  setSpeechRate(actualRate);
+  
+  // ✅ Save to Firebase for players to receive updated rate
+  if (gameData?.gameId) {
+    try {
+      await firebaseGame.updateSpeechRate(gameData.gameId, actualRate);
+      console.log(`🔊 Speech rate ${actualRate} saved to Firebase for game ${gameData.gameId}`);
+    } catch (error) {
+      console.error('❌ Failed to save speech rate to Firebase:', error);
+    }
+  }
+}, [gameData?.gameId]);
 
   // Handle prize audio completion
   const handlePrizeAudioComplete = useCallback((prizeId: string) => {
