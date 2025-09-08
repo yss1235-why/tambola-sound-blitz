@@ -292,6 +292,7 @@ useEffect(() => {
             gameId={selectedGameId}
             gameState={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState}
             currentNumber={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.currentNumber}
+            lastWinnerAnnouncement={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.lastWinnerAnnouncement}
             isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
             forceEnable={true}
             onAudioComplete={(type, data) => {
