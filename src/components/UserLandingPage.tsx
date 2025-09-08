@@ -269,18 +269,21 @@ useEffect(() => {
         </div>
         <RecentWinnersDisplay />
         
-        <AudioManager
-          gameId={selectedGameId}
-          gameState={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState}
-          isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
-          forceEnable={true}
-          onAudioComplete={(type, data) => {
-            console.log('Winner page audio completed:', type, data);
-          }}
-          onAudioError={(error, type) => {
-            console.error('Winner page audio error:', error, type);
-          }}
-        />
+       <AudioManager
+            gameId={selectedGameId}
+            gameState={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState}
+            currentNumber={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.currentNumber}
+            lastWinnerAnnouncement={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.lastWinnerAnnouncement}
+            isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
+            speechRate={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.speechRate}
+            forceEnable={true}
+            onAudioComplete={(type, data) => {
+              console.log('Player audio completed:', type, data);
+            }}
+            onAudioError={(error, type) => {
+              console.error('Player audio error:', error, type);
+            }}
+          />
       </div>
     </GameDataProvider>
   );
@@ -302,12 +305,13 @@ useEffect(() => {
           <UserDisplay />
           
           <AudioManager
-            gameId={selectedGameId}
-            gameState={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState}
-            currentNumber={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.currentNumber}
-            lastWinnerAnnouncement={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.lastWinnerAnnouncement}
-            isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
-            forceEnable={true}
+              gameId={selectedGameId}
+              gameState={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState}
+              currentNumber={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.currentNumber}
+              lastWinnerAnnouncement={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.lastWinnerAnnouncement}
+              isGameOver={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.gameOver}
+              speechRate={gameDataSource.games?.find(g => g.gameId === selectedGameId)?.gameState?.speechRate}
+              forceEnable={true}
             onAudioComplete={(type, data) => {
               console.log('Player audio completed:', type, data);
             }}
