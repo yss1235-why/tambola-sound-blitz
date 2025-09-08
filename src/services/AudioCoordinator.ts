@@ -101,13 +101,13 @@ console.log('🔊 Continuing audio processing without state validation');
     this.isProcessing = false;
   }
 
-  playNumberAudio(number: number, onComplete?: () => void): Promise<string> {
+ playNumberAudio(number: number, onComplete?: () => void, speechRate: number = 0.9): Promise<string> {
     return new Promise((resolve, reject) => {
       const taskId = this.queueAudio({
         type: 'number',
         data: { number },
         priority: 100, // High priority for numbers
-        execute: () => this.executeNumberAudio(number),
+        execute: () => this.executeNumberAudio(number, speechRate),
         onComplete: () => {
           onComplete?.();
           resolve(taskId);
@@ -119,14 +119,13 @@ console.log('🔊 Continuing audio processing without state validation');
       });
     });
   }
-
-  playPrizeAudio(prizeId: string, playerName: string, onComplete?: () => void): Promise<string> {
+playPrizeAudio(prizeId: string, playerName: string, onComplete?: () => void, speechRate: number = 0.8): Promise<string> {
     return new Promise((resolve, reject) => {
       const taskId = this.queueAudio({
         type: 'prize',
         data: { prizeId, playerName },
         priority: 150, // Higher priority than numbers
-        execute: () => this.executePrizeAudio(prizeId, playerName),
+        execute: () => this.executePrizeAudio(prizeId, playerName, speechRate),
         onComplete: () => {
           onComplete?.();
           resolve(taskId);
@@ -139,13 +138,13 @@ console.log('🔊 Continuing audio processing without state validation');
     });
   }
 
-  playGameOverAudio(onComplete?: () => void): Promise<string> {
+ playGameOverAudio(onComplete?: () => void, speechRate: number = 0.8): Promise<string> {
     return new Promise((resolve, reject) => {
       const taskId = this.queueAudio({
         type: 'gameOver',
         data: {},
         priority: 200, // Highest priority
-        execute: () => this.executeGameOverAudio(),
+        execute: () => this.executeGameOverAudio(speechRate),
         onComplete: () => {
           onComplete?.();
           resolve(taskId);
@@ -158,7 +157,7 @@ console.log('🔊 Continuing audio processing without state validation');
     });
   }
 
-  private async executeNumberAudio(number: number): Promise<void> {
+ private async executeNumberAudio(number: number, speechRate: number = 0.9): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!('speechSynthesis' in window)) {
         reject(new Error('Speech synthesis not supported'));
@@ -261,7 +260,7 @@ console.log('🔊 Continuing audio processing without state validation');
       const text = traditionalCalls[number] || `Number ${number}`;
       const utterance = new SpeechSynthesisUtterance(text);
       
-      utterance.rate = 0.9;
+    utterance.rate = speechRate;
       utterance.volume = 1.0;
       
       let completed = false;
@@ -301,7 +300,7 @@ console.log('🔊 Continuing audio processing without state validation');
     });
   }
 
-  private async executePrizeAudio(prizeId: string, playerName: string): Promise<void> {
+  private async executePrizeAudio(prizeId: string, playerName: string, speechRate: number = 0.8): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!('speechSynthesis' in window)) {
         reject(new Error('Speech synthesis not supported'));
@@ -325,7 +324,7 @@ console.log('🔊 Continuing audio processing without state validation');
       const text = `Congratulations! ${prizeName} won by ${playerName}!`;
       
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.8;
+     utterance.rate = speechRate;
       utterance.volume = 1.0;
 
       let completed = false;
@@ -365,7 +364,7 @@ console.log('🔊 Continuing audio processing without state validation');
     });
   }
 
-  private async executeGameOverAudio(): Promise<void> {
+private async executeGameOverAudio(speechRate: number = 0.8): Promise<void> {
     return new Promise((resolve, reject) => {
       if (!('speechSynthesis' in window)) {
         reject(new Error('Speech synthesis not supported'));
@@ -373,7 +372,7 @@ console.log('🔊 Continuing audio processing without state validation');
       }
 
       const utterance = new SpeechSynthesisUtterance('Game Over! Thank you for playing!');
-      utterance.rate = 0.8;
+      utterance.rate = speechRate;
       utterance.volume = 1.0;
 
       let completed = false;
