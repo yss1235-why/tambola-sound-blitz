@@ -220,10 +220,13 @@ useEffect(() => {
         setIsPlaying(true);
         lastProcessedAnnouncement.current = lastWinnerAnnouncement;
         
-        // Extract prize type and player name from announcement
+       // Extract prize type and player name from announcement
         const prizeMatch = lastWinnerAnnouncement.match(/(.*?)\s+won\s+by\s+(.*?)!/);
         const prizeId = prizeMatch?.[1]?.toLowerCase().replace(/\s+/g, '') || 'unknown';
-        const playerName = prizeMatch?.[2] || 'Unknown Player';
+        let playerName = prizeMatch?.[2] || 'Unknown Player';
+        
+        // Fix: Replace "T" with "Ticket" for better speech pronunciation
+        playerName = playerName.replace(/\bT(\d+)\b/g, 'Ticket $1');
         
        await audioCoordinator.playPrizeAudio(
           prizeId,
