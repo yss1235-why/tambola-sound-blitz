@@ -44,9 +44,8 @@ interface HostControlsContextValue {
   handlePrizeAudioComplete: (prizeId: string) => void;
   handleAudioStarted: (number: number) => void;
   
-  // Call interval configuration
-  callInterval: number;
-  setCallInterval: React.Dispatch<React.SetStateAction<number>>;
+ // Call interval configuration (now dynamic)
+callInterval: number;
   
   // Firebase status
   firebasePaused: boolean;
@@ -102,7 +101,19 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
   const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = React.useState(false);
   const [audioAnnouncingNumber, setAudioAnnouncingNumber] = React.useState<number | null>(null);
-  const [callInterval, setCallInterval] = React.useState(2);
+  // Calculate dynamic call interval based on speech rate
+const calculateCallInterval = useCallback((speechRate: number): number => {
+  // Base interval for normal speech (1.0 rate) 
+  const baseInterval = 1.0;
+  
+  // Inverse relationship: slower speech = longer interval, faster speech = shorter interval
+  const dynamicInterval = baseInterval / speechRate;
+  
+  // Clamp between reasonable bounds (0.5s to 2.0s)
+  return Math.max(0.5, Math.min(2.0, dynamicInterval));
+}, []);
+
+const callInterval = calculateCallInterval(speechRate);
   const [isPreparingGame, setIsPreparingGame] = React.useState(false);
   const [preparationStatus, setPreparationStatus] = React.useState<string>('');
   const [preparationProgress, setPreparationProgress] = React.useState(0);
@@ -900,8 +911,7 @@ try {
     isAudioReady,
     wasAutopaused,
     isPrizeAudioPlaying,
-    callInterval,
-    setCallInterval
+    callInterval
   };
 
   return (
