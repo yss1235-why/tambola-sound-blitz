@@ -282,10 +282,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
               
              firebaseGame.callNextNumberAndContinue(gameData.gameId)
                 .then(shouldContinue => {
+                  console.log(`🎮 Audio complete - next call result: ${shouldContinue}`);
                   if (!shouldContinue) {
-                    console.log('⏸️ Game should stop');
+                    console.log('🏁 Game ending - stopping timer and clearing state');
                     isTimerActiveRef.current = false;
                     isCallInProgressRef.current = false;
+                    stopTimer(); // Ensure timer is fully stopped
                   }
                 })
                 .catch(error => {
@@ -363,38 +365,23 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       lastCallTimeRef.current = Date.now();
       isCallInProgressRef.current = true; // Mark call in progress
       
-      try {
-        // Use secure number caller
-        if (!numberCallerRef.current) {
-          numberCallerRef.current = new SecureNumberCaller(gameData.gameId);
-        }
-        
-        const result = await numberCallerRef.current.callNextNumber();
-        const shouldContinue = result.success && result.number > 0;
-        
-        if (result.success) {
-          // Update visual state immediately
-          setVisualCalledNumbers(prev => {
-            if (!prev.includes(result.number)) {
-              return [...prev, result.number];
-            }
-            return prev;
-          });
-        }
-        
-        if (shouldContinue && isTimerActiveRef.current) {
-          console.log('✅ First number called successfully, waiting for audio...');
-          // Audio completion will schedule the next call
-        } else {
-          console.log('⏸️ Game should stop after first call');
-          isTimerActiveRef.current = false;
-          isCallInProgressRef.current = false;
-        }
-      } catch (error) {
-        console.error('❌ Error in initial call:', error);
-        isTimerActiveRef.current = false;
-        isCallInProgressRef.current = false;
-      }
+try {
+  // Use consistent firebase-game method
+  const shouldContinue = await firebaseGame.callNextNumberAndContinue(gameData.gameId);
+  
+  if (shouldContinue && isTimerActiveRef.current) {
+    console.log('✅ First number called successfully, waiting for audio...');
+    // Audio completion will schedule the next call
+  } else {
+    console.log('⏸️ Game should stop after first call');
+    isTimerActiveRef.current = false;
+    isCallInProgressRef.current = false;
+  }
+} catch (error) {
+  console.error('❌ Error in initial call:', error);
+  isTimerActiveRef.current = false;
+  isCallInProgressRef.current = false;
+}
     })();
     
   }, [gameData, stopTimer]);
