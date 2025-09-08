@@ -308,14 +308,18 @@ console.log('🔊 Continuing audio processing without state validation');
         return;
       }
 
-      const prizeNames: { [key: string]: string } = {
-        'earlyFive': 'Early Five',
-        'topLine': 'Top Line',
-        'middleLine': 'Middle Line',
-        'bottomLine': 'Bottom Line',
-        'fullHouse': 'Full House',
-        'corner': 'Four Corners'
-      };
+     const prizeNames: { [key: string]: string } = {
+  'earlyFive': 'Early Five',
+  'topLine': 'Top Line',
+  'middleLine': 'Middle Line',
+  'bottomLine': 'Bottom Line',
+  'fullHouse': 'Full House',
+  'secondFullHouse': 'Second Full House',
+  'corners': 'Four Corners',
+  'starCorner': 'Star Corner',
+  'halfSheet': 'Half Sheet',
+  'fullSheet': 'Full Sheet',
+};
 
       const prizeName = prizeNames[prizeId] || prizeId;
       const text = `Congratulations! ${prizeName} won by ${playerName}!`;
