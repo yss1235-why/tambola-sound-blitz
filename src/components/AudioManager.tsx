@@ -22,7 +22,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   lastWinnerAnnouncement,
   isGameOver,
   forceEnable = false,
-  speechRate = 1.0,
+  speechRate,
   onAudioComplete,
   onAudioError
 }) => {
