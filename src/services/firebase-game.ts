@@ -175,13 +175,14 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     maxTickets: config.maxTickets,
     ticketPrice: config.ticketPrice,
     gameState: {
-      isActive: false,
-      isCountdown: false,
-      countdownTime: 0,
-      gameOver: false,
-      calledNumbers: [],
-      currentNumber: null
-    },
+        isActive: false,
+        isCountdown: false,
+        countdownTime: 0,
+        gameOver: false,
+        calledNumbers: [],
+        currentNumber: null,
+        speechRate: 1.0
+      },
     tickets,
     prizes,
     updatedAt: new Date().toISOString()
@@ -627,12 +628,22 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
 
-  async resumeGame(gameId: string): Promise<void> {
+ async resumeGame(gameId: string): Promise<void> {
     try {
       await update(ref(database, `games/${gameId}/gameState`), { isActive: true });
       console.log(`▶️ Game ${gameId} resumed`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to resume game');
+    }
+  }
+
+  async updateSpeechRate(gameId: string, speechRate: number): Promise<void> {
+    try {
+      await update(ref(database, `games/${gameId}/gameState`), { speechRate });
+      console.log(`🔊 Speech rate updated to ${speechRate} for game ${gameId}`);
+    } catch (error: any) {
+      console.error('❌ Failed to update speech rate:', error);
+      throw new Error(`Failed to update speech rate: ${error.message}`);
     }
   }
 
