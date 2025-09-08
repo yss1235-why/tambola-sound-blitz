@@ -81,15 +81,51 @@ useEffect(() => {
   }
 }, [gameState, gameId]);
 
-  // Enable audio on user interaction (for both players and hosts)
+ // Auto-enable audio for both hosts and players
   useEffect(() => {
-    if (!isAudioSupported || isAudioEnabled) return; // Remove forceEnable condition
+    if (!isAudioSupported || isAudioEnabled) return;
 
-    const enableAudioOnInteraction = async (event: Event) => {
+    const tryEnableAudio = async () => {
       try {
-        console.log('👆 User interaction detected, enabling audio...');
+        console.log('🔊 Attempting to auto-enable audio...');
         
-        // Test audio capability
+        // Try immediate enablement (works if user already interacted)
+        const testUtterance = new SpeechSynthesisUtterance(' ');
+        testUtterance.volume = 0.01;
+        testUtterance.rate = 10;
+        
+        const audioWorks = await new Promise<boolean>((resolve) => {
+          const timeout = setTimeout(() => resolve(false), 500);
+          
+          testUtterance.onend = () => {
+            clearTimeout(timeout);
+            resolve(true);
+          };
+          testUtterance.onerror = () => {
+            clearTimeout(timeout);
+            resolve(false);
+          };
+          
+          window.speechSynthesis.speak(testUtterance);
+        });
+        
+        if (audioWorks) {
+          setIsAudioEnabled(true);
+          console.log('✅ Audio auto-enabled successfully');
+          return true;
+        }
+        
+        console.log('⏳ Audio blocked by browser, waiting for user interaction...');
+        return false;
+        
+      } catch (error) {
+        console.error('❌ Auto audio enablement failed:', error);
+        return false;
+      }
+    };
+
+    const enableAudioOnInteraction = async () => {
+      try {
         const testUtterance = new SpeechSynthesisUtterance(' ');
         testUtterance.volume = 0.01;
         testUtterance.rate = 10;
@@ -111,10 +147,10 @@ useEffect(() => {
         
         if (audioWorks) {
           setIsAudioEnabled(true);
-          console.log('✅ Audio enabled successfully');
+          console.log('✅ Audio enabled after user interaction');
           
-          // Remove listeners after successful enablement
-          ['click', 'touchstart', 'keydown'].forEach(eventType => {
+          // Remove all listeners
+          ['click', 'touchstart', 'keydown', 'mousedown', 'touchend', 'scroll'].forEach(eventType => {
             document.removeEventListener(eventType, enableAudioOnInteraction);
           });
         }
@@ -124,16 +160,24 @@ useEffect(() => {
       }
     };
 
-    ['click', 'touchstart', 'keydown'].forEach(eventType => {
-      document.addEventListener(eventType, enableAudioOnInteraction, { once: true });
+    // First try immediate enablement
+    tryEnableAudio().then(success => {
+      if (!success) {
+        // If immediate enablement fails, wait for ANY user interaction
+        console.log('📢 Setting up listeners for user interaction...');
+        ['click', 'touchstart', 'keydown', 'mousedown', 'touchend', 'scroll'].forEach(eventType => {
+          document.addEventListener(eventType, enableAudioOnInteraction, { passive: true });
+        });
+      }
     });
 
     return () => {
-      ['click', 'touchstart', 'keydown'].forEach(eventType => {
+      // Cleanup listeners
+      ['click', 'touchstart', 'keydown', 'mousedown', 'touchend', 'scroll'].forEach(eventType => {
         document.removeEventListener(eventType, enableAudioOnInteraction);
       });
     };
-  }, [isAudioSupported, isAudioEnabled, forceEnable]);
+  }, [isAudioSupported, isAudioEnabled]);
 
   // Handle number calling audio
   useEffect(() => {
