@@ -1,9 +1,9 @@
 // src/hooks/useAuth.ts - SIMPLIFIED: Replaces useLazyAuth.ts completely
 import { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { auth, getCurrentUserRole, firebaseService, AdminUser, HostUser } from '@/services/firebase';
-import { cleanupAllSubscriptions } from './useFirebaseSubscription'; // ✅ ADDED: Import cleanup function
-
+import { ref, update, get, query, orderByChild, equalTo } from 'firebase/database';
+import { auth, getCurrentUserRole, firebaseService, AdminUser, HostUser, database } from '@/services/firebase';
+import { cleanupAllSubscriptions } from './useFirebaseSubscription';
 interface AuthState {
   user: AdminUser | HostUser | null;
   userRole: 'admin' | 'host' | null;
@@ -152,13 +152,16 @@ export const useAuth = (): AuthState & AuthActions => {
     }
   }, []);
 
-  // ✅ SIMPLIFIED: Direct host login - no initialization needed  
   const loginHost = useCallback(async (email: string, password: string) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
     
     try {
       console.log('🔐 Host login attempt:', email);
       await firebaseService.loginHost(email, password);
+      
+      // Register session after successful login
+      await registerHostSession();
+      
       console.log('✅ Host login successful - auth state will update automatically');
       // State will be updated by onAuthStateChanged listener
     } catch (error: any) {
@@ -171,6 +174,67 @@ export const useAuth = (): AuthState & AuthActions => {
       throw error;
     }
   }, []);
+
+ // Add session registration function
+  const registerHostSession = useCallback(async () => {
+    if (!auth.currentUser) return;
+    
+    try {
+      const sessionId = generateSessionId();
+      
+      // Get fresh user data for name
+      const userData = await firebaseService.getUserData();
+      
+      const sessionData = {
+        hostId: auth.currentUser.uid,
+        lastActivity: new Date().toISOString(),
+        hostName: userData?.name || 'Unknown Host',
+        deviceInfo: navigator.userAgent.slice(0, 50),
+        lastHeartbeat: new Date().toISOString()
+      };
+      
+      // Store session ID locally
+      sessionStorage.setItem('hostSessionId', sessionId);
+      
+      // Get all host's games using Firebase query
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('hostId'),
+        equalTo(auth.currentUser.uid)
+      );
+      
+      const gamesSnapshot = await get(gamesQuery);
+      
+      if (gamesSnapshot.exists()) {
+        const hostGames = Object.values(gamesSnapshot.val());
+        
+        for (const game of hostGames as any[]) {
+          // Add this session to the game
+          await update(
+            ref(database, `games/${game.gameId}/activeSessions/${sessionId}`),
+            sessionData
+          );
+          
+          // Set as primary if no primary exists
+          const currentGame = await get(ref(database, `games/${game.gameId}`));
+          if (!currentGame.val()?.primarySession) {
+            await update(ref(database, `games/${game.gameId}`), {
+              primarySession: sessionId
+            });
+          }
+        }
+        
+        console.log(`✅ Session registered for ${hostGames.length} games`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to register session:', error);
+      // Don't throw - session registration is not critical for login
+    }
+  }, []);
+
+  const generateSessionId = () => {
+    return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  };
 
   // ✅ FIXED: Logout with subscription cleanup to prevent permission errors
   const logout = useCallback(async () => {
