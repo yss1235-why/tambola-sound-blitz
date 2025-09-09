@@ -348,7 +348,7 @@ export const UserDisplay: React.FC = () => {
                 Search Your Tickets
               </CardTitle>
             </CardHeader>
-          <CardContent className="space-y-1">
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1">
               {/* Search Bar */}
               <div className="flex space-x-2">
                 <Input
