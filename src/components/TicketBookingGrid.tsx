@@ -236,21 +236,17 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 {/* ✅ FIXED: Ticket Grid with Safety Checks */}
 <div className="p-2">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
-                 {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
-                 <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-0 md:p-1 md:border border-yellow-500 rounded">
+                {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
+                  <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-0 md:p-1 md:border border-yellow-500 rounded">
                     {ticket.rows.flat().map((number, index) => (
                       <div
                         key={index}
-                       <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-1 md:border border-yellow-500 rounded">
-                        {ticket.rows.flat().map((number, index) => (
-                          <div
-                            key={index}
-                            className={`aspect-square flex items-center justify-center font-bold rounded border-2 text-black text-xs md:text-sm ${
-                              number === 0 
-                                ? 'bg-white border-yellow-500' 
-                                : 'bg-white border-yellow-500'
-                            }`}
-                          >
+                        className={`aspect-square flex items-center justify-center font-bold rounded border-2 text-black text-xs md:text-sm ${
+                          number === 0 
+                            ? 'bg-white border-yellow-500' 
+                            : 'bg-white border-yellow-500'
+                        }`}
+                      >
                         {number === 0 ? '' : number}
                       </div>
                     ))}
