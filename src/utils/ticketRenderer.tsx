@@ -302,9 +302,8 @@ return (
           return (
             <div
               key={index}
-             className={`
-                h-8 w-8 flex items-center justify-center text-sm font-bold rounded transition-all duration-200 text-black
-                ${isEmpty 
+            className={`
+                h-16 w-16 flex items-center justify-center text-2xl font-bold rounded transition-all duration-200 text-red-500 bg-blue-200
                   ? 'bg-gray-100/20 border-2 border-yellow-500' 
                   : isMarked 
                     ? `bg-green-300/50 border-2 border-yellow-500 shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
