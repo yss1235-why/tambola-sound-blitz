@@ -283,7 +283,7 @@ export const renderTicket = ({
 
   // ✅ ALL CHECKS PASSED: Render the ticket normally
 return (
-  <div className="bg-amber-50 p-2 rounded-lg border-2 border-yellow-500">
+  <div className="bg-amber-50 p-1 rounded-lg border border-yellow-500">
     {showPlayerInfo && ticket.playerName && (
       <div className="mb-2 flex items-center justify-between px-2">
         <div className="flex items-center space-x-1">
@@ -293,7 +293,7 @@ return (
         <p className="text-sm text-gray-600">{ticket.playerName}</p>
       </div>
     )}
-    <div className="grid grid-cols-9 gap-1">
+  <div className="grid grid-cols-9 gap-0.5">
         {allNumbers.map((number, index) => {
           const isMarked = number !== 0 && calledNumbers.includes(number);
           const isEmpty = number === 0;
@@ -302,8 +302,8 @@ return (
           return (
            <div
               key={index}
-              className={`
-                h-16 w-16 flex items-center justify-center text-2xl font-bold rounded transition-all duration-200 text-red-500 bg-blue-200
+             className={`
+                h-12 w-12 flex items-center justify-center text-lg font-bold rounded transition-all duration-200 text-black
                 ${isEmpty 
                   ? 'border-2 border-yellow-500' 
                   : isMarked 
