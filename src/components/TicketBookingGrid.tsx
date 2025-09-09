@@ -241,7 +241,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                     {ticket.rows.flat().map((number, index) => (
                       <div
                         key={index}
-                        className={`h-12 w-12 md:aspect-square flex items-center justify-center font-bold rounded border-2 text-black text-base md:text-sm ${
+                       className={`aspect-square flex items-center justify-center font-bold rounded border-2 text-black text-xs md:text-sm ${
                           number === 0 
                             ? 'bg-white border-yellow-500' 
                             : 'bg-white border-yellow-500'
