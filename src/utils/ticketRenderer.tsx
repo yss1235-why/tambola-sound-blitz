@@ -283,9 +283,9 @@ export const renderTicket = ({
 
   // ✅ ALL CHECKS PASSED: Render the ticket normally
 return (
-  <div className="bg-amber-50 p-1 rounded-lg border border-yellow-500">
+<div className="bg-amber-50 p-0 rounded border border-yellow-500">
     {showPlayerInfo && ticket.playerName && (
-      <div className="mb-2 flex items-center justify-between px-2">
+     <div className="mb-1 flex items-center justify-between px-1">
         <div className="flex items-center space-x-1">
           <CheckCircle className="w-3 h-3 text-green-600" />
           <p className="text-sm font-semibold text-gray-800">Ticket {ticket.ticketId}</p>
@@ -293,7 +293,7 @@ return (
         <p className="text-sm text-gray-600">{ticket.playerName}</p>
       </div>
     )}
-  <div className="grid grid-cols-9 gap-0.5">
+<div className="grid grid-cols-9 gap-0">
         {allNumbers.map((number, index) => {
           const isMarked = number !== 0 && calledNumbers.includes(number);
           const isEmpty = number === 0;
