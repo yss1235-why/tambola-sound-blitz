@@ -303,7 +303,7 @@ return (
             <div
               key={index}
               className={`
-              aspect-square flex items-center justify-center text-sm font-bold rounded transition-all duration-200 text-black
+            aspect-square flex items-center justify-center text-lg font-bold rounded transition-all duration-200 text-black
                 ${isEmpty 
                   ? 'bg-gray-100/20 border-2 border-yellow-500' 
                   : isMarked 
