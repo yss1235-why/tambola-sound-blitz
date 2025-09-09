@@ -300,10 +300,9 @@ return (
           const isPattern = isPatternPosition(index, patternHighlight, ticket, calledNumbers);
           
           return (
-            <div
+           <div
               key={index}
-            className={`
-               className={`
+              className={`
                 h-16 w-16 flex items-center justify-center text-2xl font-bold rounded transition-all duration-200 text-red-500 bg-blue-200
                 ${isEmpty 
                   ? 'border-2 border-yellow-500' 
