@@ -237,7 +237,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 <div className="p-2">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                  {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
-                  <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-1 border border-yellow-500 rounded">
+                 <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-0 md:p-1 md:border border-yellow-500 rounded">
                     {ticket.rows.flat().map((number, index) => (
                       <div
                         key={index}
