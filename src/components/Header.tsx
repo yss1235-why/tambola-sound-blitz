@@ -1,5 +1,6 @@
 // src/components/Header.tsx - OPTIMIZED: Works with lazy authentication system
 import React, { useState, useEffect } from 'react';
+import { useHostControls } from '@/providers/HostControlsProvider';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -28,7 +29,7 @@ interface HeaderProps {
   onAdminLoginClose?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
+export const Header: React.FC<HeaderProps> = ({
   currentUser,
   userRole,
   authLoading,
@@ -41,6 +42,10 @@ export const Header: React.FC<HeaderProps> = ({
   forceShowAdminLogin = false,
   onAdminLoginClose
 }) => {
+  // Always call useHostControls (follows Rules of Hooks)
+  // We'll conditionally use the data based on userRole
+  const hostControls = useHostControls();
+  
   // Local state for dialog management
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isHostLoginOpen, setIsHostLoginOpen] = useState(false);
@@ -179,6 +184,23 @@ const handleCloseAdminDialog = (open: boolean) => {
             )}
           </div>
           
+       {/* Session Warning - Only show for authenticated hosts */}
+          {userRole === 'host' && hostControls.sessionStatus.conflictWarning && (
+            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-2 rounded mr-4">
+              ⚠️ {hostControls.sessionStatus.conflictWarning}
+              {!hostControls.sessionStatus.isPrimary && (
+                <div className="text-sm mt-1">
+                  Another device has game control. You can view but cannot start/control games.
+                  <button 
+                    onClick={() => hostControls.requestPrimaryControl()}
+                    className="text-blue-600 underline ml-2 hover:text-blue-800"
+                  >
+                    Take Control
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex items-center space-x-2">
             {currentUser ? (
               // ✅ EXISTING: Authenticated user dropdown (unchanged)
@@ -255,7 +277,17 @@ const handleCloseAdminDialog = (open: boolean) => {
                     <LogIn className="w-4 h-4 mr-2" />
                     Host Login
                   </DropdownMenuItem>
-                 
+                  <DropdownMenuItem 
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      handleOpenLogin('admin');
+                    }}
+                    className="cursor-pointer"
+                    disabled={authLoading}
+                  >
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Admin Login
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
