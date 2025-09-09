@@ -208,8 +208,8 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <CardContent className="p-2 md:p-6">
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6">
   {Object.entries(availableTickets).map(([ticketId, ticket]) => (
     <div
       key={ticketId}
@@ -234,7 +234,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
       </div>
 
 {/* ✅ FIXED: Ticket Grid with Safety Checks */}
-<div className="p-2">
+<div className="p-1 md:p-2">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                 {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
                   <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-0 md:p-1 md:border border-yellow-500 rounded">
