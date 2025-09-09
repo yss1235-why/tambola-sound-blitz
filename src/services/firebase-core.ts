@@ -107,20 +107,28 @@ export interface NumberGenerationResult {
 // MODIFY the existing GameData interface - replace sessionMeta?: any; with:
 export interface GameData {
   gameId: string;
-  name: string;
   hostId: string;
-  hostPhone: string;
-  createdAt: string;
+  name: string;
   maxTickets: number;
-  ticketPrice: number;
-  gameState: GameState;
   tickets: { [ticketId: string]: TambolaTicket };
   prizes: { [prizeId: string]: Prize };
-  lastWinnerAnnouncement?: string;
-  lastWinnerAt?: string;
+  gameState: GameState;
+  createdAt: string;
   updatedAt?: string;
-  sessionCache?: number[];              // ✅ Already exists
-  sessionMeta?: SessionMetadata;        // ✅ CHANGE: Replace 'any' with 'SessionMetadata'
+  sessionCache?: number[];
+  sessionMeta?: SessionMetadata;
+  activeSessions?: {
+    [sessionId: string]: {
+      hostId: string;
+      lastActivity: string;
+      hostName: string;
+      deviceInfo: string;
+      lastHeartbeat: string;
+    }
+  };
+  primarySession?: string;
+  lastNumberCallTime?: string;
+  callInterval?: number;
 }
 
 export interface HostUser {
