@@ -283,9 +283,9 @@ export const renderTicket = ({
 
   // ✅ ALL CHECKS PASSED: Render the ticket normally
 return (
-<div className="bg-amber-50 p-0 rounded border border-yellow-500">
+  <div className="bg-amber-50 p-2 rounded-lg border-2 border-yellow-500">
     {showPlayerInfo && ticket.playerName && (
-     <div className="mb-1 flex items-center justify-between px-1">
+      <div className="mb-2 flex items-center justify-between px-2">
         <div className="flex items-center space-x-1">
           <CheckCircle className="w-3 h-3 text-green-600" />
           <p className="text-sm font-semibold text-gray-800">Ticket {ticket.ticketId}</p>
@@ -293,24 +293,24 @@ return (
         <p className="text-sm text-gray-600">{ticket.playerName}</p>
       </div>
     )}
-<div className="grid grid-cols-9 gap-0">
+    <div className="grid grid-cols-9 gap-1">
         {allNumbers.map((number, index) => {
           const isMarked = number !== 0 && calledNumbers.includes(number);
           const isEmpty = number === 0;
           const isPattern = isPatternPosition(index, patternHighlight, ticket, calledNumbers);
           
           return (
-           <div
+            <div
               key={index}
-             className={`
-                h-12 w-12 flex items-center justify-center text-lg font-bold rounded transition-all duration-200 text-black
+              className={`
+                aspect-square flex items-center justify-center text-xs font-bold rounded transition-all duration-200 text-black
                 ${isEmpty 
-                  ? 'border-2 border-yellow-500' 
+                  ? 'bg-gray-100/20 border-2 border-yellow-500' 
                   : isMarked 
-                    ? `border-2 border-yellow-500 shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
+                    ? `bg-green-300/50 border-2 border-yellow-500 shadow-md transform scale-105 ${isPattern ? 'ring-2 ring-yellow-300' : ''}` 
                     : isPattern
-                      ? 'border-2 border-yellow-500'
-                      : 'border-2 border-yellow-500'
+                      ? 'bg-green-200/50 border-2 border-yellow-500'
+                      : 'bg-white border-2 border-yellow-500'
                 }
               `}
             >
