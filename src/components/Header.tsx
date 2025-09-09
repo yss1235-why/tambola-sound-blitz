@@ -42,9 +42,14 @@ export const Header: React.FC<HeaderProps> = ({
   forceShowAdminLogin = false,
   onAdminLoginClose
 }) => {
-  // Always call useHostControls (follows Rules of Hooks)
-  // We'll conditionally use the data based on userRole
-  const hostControls = useHostControls();
+  // Safely try to get host controls - may not be available on public pages
+  let hostControls = null;
+  try {
+    hostControls = useHostControls();
+  } catch (error) {
+    // HostControlsProvider not available (public pages) - this is fine
+    console.log('HostControls not available - public page');
+  }
   
   // Local state for dialog management
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
@@ -184,15 +189,15 @@ const handleCloseAdminDialog = (open: boolean) => {
             )}
           </div>
           
-       {/* Session Warning - Only show for authenticated hosts */}
-          {userRole === 'host' && hostControls.sessionStatus.conflictWarning && (
+     {/* Session Warning - Only show for authenticated hosts */}
+          {userRole === 'host' && hostControls?.sessionStatus.conflictWarning && (
             <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-2 rounded mr-4">
               ⚠️ {hostControls.sessionStatus.conflictWarning}
               {!hostControls.sessionStatus.isPrimary && (
                 <div className="text-sm mt-1">
                   Another device has game control. You can view but cannot start/control games.
                   <button 
-                    onClick={() => hostControls.requestPrimaryControl()}
+                   onClick={() => hostControls?.requestPrimaryControl()}
                     className="text-blue-600 underline ml-2 hover:text-blue-800"
                   >
                     Take Control
