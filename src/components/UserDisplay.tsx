@@ -348,7 +348,7 @@ export const UserDisplay: React.FC = () => {
                 Search Your Tickets
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+          <CardContent className="space-y-1">
               {/* Search Bar */}
               <div className="flex space-x-2">
                 <Input
@@ -392,7 +392,7 @@ export const UserDisplay: React.FC = () => {
               {Object.entries(groupedSearchResults).map(([playerName, playerTickets]) => (
                 <div key={playerName} className="border rounded-lg p-4 bg-gray-50">
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1">
                     {playerTickets.map((item) => (
                       <div key={item.uniqueId} className="relative">
                         <Button
