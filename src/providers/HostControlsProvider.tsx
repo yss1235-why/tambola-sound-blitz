@@ -1,5 +1,5 @@
 // src/providers/HostControlsProvider.tsx - RACE CONDITION FREE: Complete Implementation
-import React, { createContext, useContext, useCallback, useRef, useEffect, useState } from 'react';
+import React, { createContext, useContext, useCallback, useRef, useEffect } from 'react';
 import { ref, onValue, off, update } from 'firebase/database';
 import { firebaseService, database } from '@/services/firebase';
 import { firebaseGame } from '@/services/firebase-game';
@@ -17,15 +17,6 @@ interface HostControlsContextValue {
   pauseGame: () => Promise<void>;
   resumeGame: () => Promise<void>;
   endGame: () => Promise<void>;
-  
-  // Session management
-  sessionStatus: {
-    isActive: boolean;
-    isPrimary: boolean;
-    otherSessions: Array<{id: string; hostName: string; lastActivity: string}>;
-    conflictWarning: string | null;
-  };
-  requestPrimaryControl: () => Promise<void>;
   
   // Configuration
   updateSpeechRate: (scaleValue: number) => Promise<void>;
@@ -102,81 +93,14 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const numberCallerRef = useRef<SecureNumberCaller | null>(null);
 
   // Simple state - only for UI feedback
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [sessionStatus, setSessionStatus] = useState({
-    isActive: false,
-    isPrimary: false,
-    otherSessions: [],
-    conflictWarning: null
-  });
-
-  // Monitor session status
-  const checkSessionStatus = useCallback(async () => {
-    const currentSessionId = sessionStorage.getItem('hostSessionId');
-    
-    if (!gameData || !currentSessionId) return;
-    
-    const activeSessions = gameData.activeSessions || {};
-    const primarySession = gameData.primarySession;
-    const otherSessions = Object.entries(activeSessions)
-      .filter(([id]) => id !== currentSessionId)
-      .map(([id, data]) => ({ id, ...data }));
-    
-    setSessionStatus({
-      isActive: currentSessionId in activeSessions,
-      isPrimary: currentSessionId === primarySession,
-      otherSessions,
-      conflictWarning: otherSessions.length > 0 ? 
-        `${otherSessions.length} other device(s) logged in` : null
-    });
-  }, [gameData]);
-
-  // Check session status when game data changes
-  useEffect(() => {
-    checkSessionStatus();
-  }, [checkSessionStatus]);
-
-  // Send heartbeat every 10 seconds (only for primary)
-  useEffect(() => {
-    if (!sessionStatus.isPrimary || !gameData) return;
-    
-    const heartbeatInterval = setInterval(() => {
-      const currentSessionId = sessionStorage.getItem('hostSessionId');
-      if (currentSessionId) {
-        update(ref(database, `games/${gameData.gameId}/activeSessions/${currentSessionId}/lastHeartbeat`), 
-               new Date().toISOString())
-          .catch(error => console.error('Heartbeat failed:', error));
-      }
-    }, 10000); // 10 seconds
-    
-    return () => clearInterval(heartbeatInterval);
-}, [sessionStatus.isPrimary, gameData]);
-
-  // Monitor for missed calls (only for secondary sessions) - moved after startTimer definition
-
-  const requestPrimaryControl = useCallback(async () => {
-    const confirmed = confirm(
-      'This will transfer game control to this device. The other device will become view-only. Continue?'
-    );
-    
-    if (confirmed && gameData) {
-      const currentSessionId = sessionStorage.getItem('hostSessionId');
-      await update(ref(database, `games/${gameData.gameId}`), {
-        primarySession: currentSessionId
-      });
-    }
-  }, [gameData]);
-
- 
-  
- 
-  const [countdownTime, setCountdownTime] = useState(0);
-  const [speechRate, setSpeechRate] = useState(1.0);
-  const [speechRateScale, setSpeechRateScale] = useState(0);
-  const [firebasePaused, setFirebasePaused] = useState(false);
-  const [visualCalledNumbers, setVisualCalledNumbers] = useState<number[]>([]);
-  const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = useState(false);
-  const [audioAnnouncingNumber, setAudioAnnouncingNumber] = useState<number | null>(null);
+  const [isProcessing, setIsProcessing] = React.useState(false);
+  const [countdownTime, setCountdownTime] = React.useState(0);
+  const [speechRate, setSpeechRate] = React.useState(1.0);
+  const [speechRateScale, setSpeechRateScale] = React.useState(0);
+  const [firebasePaused, setFirebasePaused] = React.useState(false);
+  const [visualCalledNumbers, setVisualCalledNumbers] = React.useState<number[]>([]);
+  const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = React.useState(false);
+  const [audioAnnouncingNumber, setAudioAnnouncingNumber] = React.useState<number | null>(null);
   // Calculate dynamic call interval based on speech rate
 const calculateCallInterval = useCallback((speechRate: number): number => {
   // Base interval for normal speech (1.0 rate) 
@@ -190,12 +114,12 @@ const calculateCallInterval = useCallback((speechRate: number): number => {
 }, []);
 
 const callInterval = calculateCallInterval(speechRate);
-  const [isPreparingGame, setIsPreparingGame] = useState(false);
-  const [preparationStatus, setPreparationStatus] = useState<string>('');
-  const [preparationProgress, setPreparationProgress] = useState(0);
-  const [isAudioReady, setIsAudioReady] = useState(false);
-  const [wasAutopaused, setWasAutopaused] = useState(false);
-  const hasInitializedRef = useRef(false);
+  const [isPreparingGame, setIsPreparingGame] = React.useState(false);
+  const [preparationStatus, setPreparationStatus] = React.useState<string>('');
+  const [preparationProgress, setPreparationProgress] = React.useState(0);
+  const [isAudioReady, setIsAudioReady] = React.useState(false);
+  const [wasAutopaused, setWasAutopaused] = React.useState(false);
+  const hasInitializedRef = React.useRef(false);
 
   // ================== TIMER CONTROL FUNCTIONS ==================
   
@@ -362,20 +286,10 @@ const callInterval = calculateCallInterval(speechRate);
           // Schedule next number call
           console.log('📞 Audio verified complete, scheduling next call');
           
-         setTimeout(async () => {
+          setTimeout(() => {
             if (!isCallInProgressRef.current && isTimerActiveRef.current) {
               lastCallTimeRef.current = Date.now();
               isCallInProgressRef.current = true;
-              
-              // ✅ Update last call time in Firebase for session monitoring
-              try {
-                await update(ref(database, `games/${gameData.gameId}`), {
-                  lastNumberCallTime: new Date().toISOString(),
-                  callInterval: callInterval
-                });
-              } catch (error) {
-                console.error('Failed to update call time:', error);
-              }
               
              firebaseGame.callNextNumberAndContinue(gameData.gameId)
                 .then(shouldContinue => {
@@ -482,52 +396,7 @@ try {
     })();
     
   }, [gameData, stopTimer]);
-  
-// Emergency takeover with proper startTimer reference
-  const emergencyTakeover = useCallback(async () => {
-    if (!gameData) return;
-    
-    const currentSessionId = sessionStorage.getItem('hostSessionId');
-    
-    // Take primary control
-    await update(ref(database, `games/${gameData.gameId}`), {
-      primarySession: currentSessionId
-    });
-    
-    console.log('🎯 Emergency takeover complete - continuing game');
-    
-    // Continue game immediately if it was active
-    if (gameData.gameState.isActive && !isTimerActiveRef.current) {
-      setTimeout(() => {
-        console.log('🎯 Emergency takeover - restarting number calling');
-        startTimer();
-      }, 1000);
-    }
-  }, [gameData, startTimer]);
 
-  // Monitor for missed calls (only for secondary sessions)
-  useEffect(() => {
-    if (sessionStatus.isPrimary || !gameData || !gameData.gameState.isActive) return;
-    
-    const checkMissedCalls = () => {
-      const lastCallTime = gameData.lastNumberCallTime ? 
-        new Date(gameData.lastNumberCallTime).getTime() : 0;
-      const callInterval = gameData.callInterval || 5; // Default 5 seconds
-      const now = Date.now();
-      const expectedNextCall = lastCallTime + (callInterval * 1000);
-      
-      // Check if we're 2 intervals behind (missed 2 calls)
-      if (now > expectedNextCall + (callInterval * 2000)) {
-        console.log('🚨 Primary host missed 2 calls - taking emergency control');
-        emergencyTakeover();
-      }
-    };
-    
-    const monitorInterval = setInterval(checkMissedCalls, 2000); // Check every 2 seconds
-    
-    return () => clearInterval(monitorInterval);
-  }, [sessionStatus.isPrimary, gameData, emergencyTakeover]);
-  
   // ================== COUNTDOWN RECOVERY LOGIC ==================
 
   /**
@@ -631,11 +500,6 @@ try {
   const startGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
-    // Check if user has control
-    if (!sessionStatus.isPrimary) {
-      throw new Error('Only the primary session can start the game');
-    }
-    
     setIsProcessing(true);
     try {
       console.log(`🎮 Starting game preparation: ${gameData.gameId}`);
@@ -693,14 +557,9 @@ try {
       setIsProcessing(false);
     }
   }, [gameData, isProcessing, clearAllTimers, prepareGame]);
-const pauseGame = useCallback(async () => {
+
+  const pauseGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
-    
-    // Check if user has control
-    if (!sessionStatus.isPrimary) {
-      throw new Error('Only the primary session can pause the game');
-    }
-    
     setIsProcessing(true);
     try {
       console.log(`⏸️ Pausing number calling: ${gameData.gameId}`);
@@ -715,13 +574,8 @@ const pauseGame = useCallback(async () => {
     }
   }, [gameData, isProcessing, stopTimer]);
 
- const resumeGame = useCallback(async () => {
+  const resumeGame = useCallback(async () => {
     if (!gameData) return;
-    
-    // Check if user has control
-    if (!sessionStatus.isPrimary) {
-      throw new Error('Only the primary session can resume the game');
-    }
     
     setIsProcessing(true);
     
@@ -746,11 +600,6 @@ const pauseGame = useCallback(async () => {
 
   const endGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
-    
-    // Check if user has control
-    if (!sessionStatus.isPrimary) {
-      throw new Error('Only the primary session can end the game');
-    }
     
     setIsProcessing(true);
     try {
@@ -1028,7 +877,7 @@ const pauseGame = useCallback(async () => {
 
   // ================== CONTEXT VALUE ==================
 
- const value: HostControlsContextValue = {
+  const value: HostControlsContextValue = {
     startGame,
     pauseGame,
     resumeGame,
@@ -1036,10 +885,6 @@ const pauseGame = useCallback(async () => {
     updateSpeechRate, 
     isProcessing,
     countdownTime,
-    
-    // Session management
-    sessionStatus,
-    requestPrimaryControl,
     
     // State machine status
     gameState: stateMachine.state as string,
