@@ -218,12 +218,20 @@ useEffect(() => {
     playNumberAudio();
  }, [currentNumber, isAudioEnabled, gameState, onAudioComplete, onAudioError, speechRate]);
 
-  // Handle prize announcement audio
-  useEffect(() => {
-    if (!isAudioEnabled || !lastWinnerAnnouncement) return;
-    if (lastWinnerAnnouncement === lastProcessedAnnouncement.current) return;
+  /// Handle prize announcement audio
+useEffect(() => {
+  if (!isAudioEnabled || !lastWinnerAnnouncement) return;
+  if (lastWinnerAnnouncement === lastProcessedAnnouncement.current) return;
+  
+  // Check if announcement actually contains valid winner info
+  const prizeMatch = lastWinnerAnnouncement.match(/(.*?)\s+won\s+by\s+(.*?)!/);
+  if (!prizeMatch || !prizeMatch[1] || !prizeMatch[2] || prizeMatch[1].includes('unknown') || prizeMatch[2].includes('unknown')) {
+    console.log('🔇 Skipping audio - no valid winner info found in:', lastWinnerAnnouncement);
+    lastProcessedAnnouncement.current = lastWinnerAnnouncement; // Mark as processed to avoid loops
+    return;
+  }
 
-    const playPrizeAudio = async () => {
+  const playPrizeAudio = async () => {
       try {
         console.log(`🏆 Playing prize audio: ${lastWinnerAnnouncement}`);
         setIsPlaying(true);
