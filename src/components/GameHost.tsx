@@ -66,80 +66,6 @@ interface OperationState {
   inProgress: boolean;
   message: string;
 }
-// Primary Control Dialog Component
-const PrimaryControlDialog: React.FC = () => {
-  const hostControls = useHostControls();
-  
-  if (!hostControls?.showPrimaryDialog) return null;
-  
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
-        <h3 className="text-lg font-semibold mb-4 text-red-600">
-          ⚠️ You are not the primary host!
-        </h3>
-        
-        <div className="mb-4 text-gray-700">
-          <p className="mb-2">
-            Another device currently has game control. 
-          </p>
-          <p className="mb-2">
-            <strong>Option 1:</strong> Contact the primary host to coordinate.
-          </p>
-          <p className="mb-2">
-            <strong>Option 2:</strong> Take control and continue exactly where they left off.
-          </p>
-          <p className="text-sm text-green-600">
-            ✅ <strong>No data will be lost</strong> - you'll pick up the game state seamlessly.
-          </p>
-        </div>
-        
-        {hostControls.sessionStatus.otherSessions.length > 0 && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-            <p className="text-sm text-yellow-800">
-              <strong>Active devices:</strong> {hostControls.sessionStatus.otherSessions.length} other device(s) logged in
-            </p>
-          </div>
-        )}
-        
-        <div className="flex space-x-3">
-          <Button
-            onClick={() => {
-              hostControls.setShowPrimaryDialog(false);
-              hostControls.setPendingAction(null);
-            }}
-            variant="outline"
-            className="flex-1"
-          >
-            Cancel
-          </Button>
-          
-          <Button
-            onClick={async () => {
-              hostControls.setShowPrimaryDialog(false);
-              await hostControls.takePrimaryControl();
-              
-              // Wait for primary control to take effect, then execute action
-              setTimeout(async () => {
-                if (hostControls.pendingAction) {
-                  await hostControls.executeAction(hostControls.pendingAction);
-                }
-                hostControls.setPendingAction(null);
-              }, 1000);
-            }}
-            className="flex-1 bg-red-500 hover:bg-red-600 text-white"
-          >
-            {hostControls.pendingAction === 'startGame' ? 'Start Game Anyway' :
-             hostControls.pendingAction === 'pauseGame' ? 'Pause Game Anyway' :
-             hostControls.pendingAction === 'resumeGame' ? 'Resume Game Anyway' :
-             hostControls.pendingAction === 'endGame' ? 'End Game Anyway' :
-             'Take Control'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // Available ticket sets
 const TICKET_SETS = [
@@ -250,12 +176,10 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 // ✅ SECURE: Host-only component with full controls
 const AudioManagerForHost: React.FC<{
   currentNumber: number | null;
-  lastWinnerAnnouncement?: string;
-  isGameOver?: boolean;
-  gameId?: string;
+  prizes: any[];
   forceEnable: boolean;
   gameState: any;
-}> = ({ currentNumber, lastWinnerAnnouncement, isGameOver, gameId, forceEnable, gameState }) => {
+}> = ({ currentNumber, prizes, forceEnable, gameState }) => {
   const { 
     handleAudioComplete, 
     handlePrizeAudioComplete, 
@@ -265,13 +189,12 @@ const AudioManagerForHost: React.FC<{
   
   return (
     <AudioManager
-      gameId={gameId}
       currentNumber={currentNumber}
-      lastWinnerAnnouncement={lastWinnerAnnouncement}
-      isGameOver={isGameOver}
+      prizes={prizes}
       gameState={gameState}
       onAudioComplete={handleAudioComplete}
-      onAudioError={(error, type) => console.error('Audio error:', error, type)}
+      onPrizeAudioComplete={handlePrizeAudioComplete}
+      onAudioStarted={handleAudioStarted}
       forceEnable={forceEnable}
       speechRate={speechRate}
     />
@@ -965,7 +888,6 @@ if (cachedWinnerData) {
           <div className="space-y-6">
 
             <HostControlsProvider userId={user.uid}>
-              <PrimaryControlDialog />
               <HostDisplay />
             </HostControlsProvider>
             
@@ -998,13 +920,10 @@ if (cachedWinnerData) {
   <div className="space-y-4">
    
     <HostControlsProvider userId={user.uid}>
-      <PrimaryControlDialog />
       <HostDisplay onCreateNewGame={createNewGame} />
-    <AudioManagerForHost
+     <AudioManagerForHost
         currentNumber={gameData.gameState.currentNumber}
-        lastWinnerAnnouncement={gameData.lastWinnerAnnouncement}
-        isGameOver={gameData.gameState.gameOver}
-        gameId={gameData.gameId}
+        prizes={Object.values(gameData.prizes)}
         forceEnable={true}
         gameState={gameData.gameState}
       />
