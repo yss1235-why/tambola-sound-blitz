@@ -8,6 +8,8 @@ import { gameTimerManager } from '@/services/GameTimerManager';
 import { SecureNumberCaller } from '@/services/SecureNumberCaller';
 import { useGameStateMachine } from '@/hooks/useGameStateMachine';
 import { useGameResourceManager } from '@/hooks/useGameResourceManager';
+import { useAudioGameCoordination } from '@/hooks/useAudioGameCoordination';
+import { gameOperationQueue } from '@/services/OperationQueue';
 
 interface HostControlsContextValue {
   // Game flow controls (state machine integrated)
@@ -24,14 +26,6 @@ interface HostControlsContextValue {
     conflictWarning: string | null;
   };
   requestPrimaryControl: () => Promise<void>;
-  
-  // NEW: Dialog management
-  showPrimaryDialog: boolean;
-  setShowPrimaryDialog: (show: boolean) => void;
-  pendingAction: string | null;
-  setPendingAction: (action: string | null) => void;
-  takePrimaryControl: () => Promise<void>;
-  executeAction: (action: string) => Promise<void>;
   
   // Configuration
   updateSpeechRate: (scaleValue: number) => Promise<void>;
@@ -93,16 +87,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 }) => {
   const { gameData } = useGameData();
   
-  // TEMPORARY: Disable to test for circular dependency
-  // const resourceManager = useGameResourceManager();
-  const resourceManager = {
-    safeAsyncOperation: async (name: string, operation: () => Promise<any>, options?: any) => {
-      return await operation();
-    },
-    registerInterval: (callback: () => void, delay: number) => {
-      return setInterval(callback, delay);
-    }
-  };
+  // Resource management for cleanup
+  const resourceManager = useGameResourceManager();
   
   // Simple refs - only for timer management  
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -115,7 +101,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const isProcessingCompletion = useRef(false);
   const numberCallerRef = useRef<SecureNumberCaller | null>(null);
 
- // Simple state - only for UI feedback
+  // Simple state - only for UI feedback
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessionStatus, setSessionStatus] = useState({
     isActive: false,
@@ -123,10 +109,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     otherSessions: [],
     conflictWarning: null
   });
-
-  // NEW: Dialog state for primary control
-  const [showPrimaryDialog, setShowPrimaryDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   // Monitor session status
   const checkSessionStatus = useCallback(async () => {
@@ -172,7 +154,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
   // Monitor for missed calls (only for secondary sessions) - moved after startTimer definition
 
- const requestPrimaryControl = useCallback(async () => {
+  const requestPrimaryControl = useCallback(async () => {
     const confirmed = confirm(
       'This will transfer game control to this device. The other device will become view-only. Continue?'
     );
@@ -184,178 +166,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       });
     }
   }, [gameData]);
-
-  // NEW: Simple primary control takeover
-  const takePrimaryControl = useCallback(async () => {
-    const currentSessionId = sessionStorage.getItem('hostSessionId');
-    if (!currentSessionId || !gameData) return;
-    
-    console.log('🎯 Taking primary control...');
-    
-    await update(ref(database, `games/${gameData.gameId}`), {
-      primarySession: currentSessionId,
-      primaryTakenAt: new Date().toISOString(),
-      primaryTakenReason: 'user-requested'
-    });
-    
-    // Sync local state with current game state
-    syncWithGameState();
-    
-    console.log('✅ Primary control taken');
-  }, [gameData]);
-
-  // NEW: Synchronize local state with current game state
-  const syncWithGameState = useCallback(() => {
-    if (!gameData) return;
-    
-    console.log('🔄 Syncing local state with current game state...');
-    
-    // Sync visual numbers
-    setVisualCalledNumbers(gameData.gameState.calledNumbers || []);
-    
-    // Sync game phase states
-    if (gameData.gameState.isCountdown && gameData.gameState.countdownTime > 0) {
-      setCountdownTime(gameData.gameState.countdownTime);
-    }
-    
-    // Sync audio readiness
-    if (gameData.gameState.isActive) {
-      setIsAudioReady(true);
-      setFirebasePaused(false);
-    }
-    
-    console.log('✅ Local state synchronized');
-  }, [gameData]);
-
-  // NEW: Execute pending action after taking control and resume state
-  const executeAction = useCallback(async (action: string) => {
-    switch (action) {
-      case 'startGame':
-        // Check current game state first
-        if (gameData?.gameState.isCountdown && gameData.gameState.countdownTime > 0) {
-          // Resume existing countdown
-          console.log('🔄 Resuming existing countdown...');
-          setCountdownTime(gameData.gameState.countdownTime);
-          resumeCountdownTimer(gameData.gameState.countdownTime);
-          return;
-        } else if (gameData?.gameState.isActive && !gameData.gameState.gameOver) {
-          // Game is already active, resume number calling
-          console.log('🔄 Resuming active game...');
-          setFirebasePaused(false);
-          setIsAudioReady(true);
-          startTimer();
-          return;
-        }
-        
-        // Start new game only if not already started
-        setIsProcessing(true);
-        try {
-          clearAllTimers();
-          const preparationSuccess = await prepareGame();
-          if (!preparationSuccess) {
-            throw new Error('Game preparation failed');
-          }
-          
-          await firebaseGame.startGameWithCountdown(gameData!.gameId);
-          
-          let timeLeft = 10;
-          setCountdownTime(timeLeft);
-          
-          countdownTimerRef.current = setInterval(async () => {
-            timeLeft--;
-            setCountdownTime(timeLeft);
-            
-            try {
-              await firebaseGame.updateCountdownTime(gameData!.gameId, timeLeft);
-            } catch (error) {
-              console.error('Failed to update countdown in Firebase:', error);
-            }
-            
-            if (timeLeft <= 0) {
-              clearInterval(countdownTimerRef.current!);
-              countdownTimerRef.current = null;
-              
-              try {
-                await firebaseGame.activateGameAfterCountdown(gameData!.gameId);
-                setFirebasePaused(true);
-                setIsAudioReady(true);
-                console.log('✅ Game activated but paused - host must click Resume to start');
-              } catch (error) {
-                console.error('❌ Failed to activate game after countdown:', error);
-              }
-            }
-          }, 1000);
-          
-          console.log(`✅ Game start initiated: ${gameData!.gameId}`);
-        } catch (error: any) {
-          console.error('❌ Start game error:', error);
-          clearAllTimers();
-          setCountdownTime(0);
-          throw new Error(error.message || 'Failed to start game');
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-        
-      case 'pauseGame':
-        // Take over and pause the active game
-        setIsProcessing(true);
-        try {
-          console.log(`⏸️ Taking control and pausing number calling: ${gameData!.gameId}`);
-          stopTimer();
-          setFirebasePaused(true);
-          console.log(`✅ Primary control taken - game paused: ${gameData!.gameId}`);
-        } catch (error: any) {
-          console.error('❌ Pause error:', error);
-          throw new Error(error.message || 'Failed to pause number calling');
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-        
-      case 'resumeGame':
-        // Take over and resume exactly where previous host left off
-        setIsProcessing(true);
-        try {
-          console.log('🎯 Taking control and resuming game...');
-          await firebaseGame.resumeGame(gameData!.gameId);
-          setFirebasePaused(false);
-          setIsAudioReady(true);
-          setWasAutopaused(false);
-          
-          // Sync visual state with current game state
-          setVisualCalledNumbers(gameData!.gameState.calledNumbers || []);
-          
-          if (gameData!.gameState.isActive && !gameData!.gameState.gameOver) {
-            console.log('🔄 Resuming number calling where previous host left off');
-            startTimer();
-          }
-          
-          console.log('✅ Primary control taken - game resumed successfully');
-        } catch (error: any) {
-          console.error('❌ Failed to resume game:', error);
-          throw new Error(error.message || 'Failed to resume game');
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-        
-      case 'endGame':
-        setIsProcessing(true);
-        try {
-          console.log(`🏁 Ending game: ${gameData!.gameId}`);
-          stopTimer();
-          await firebaseGame.endGame(gameData!.gameId);
-          console.log(`✅ Game ended: ${gameData!.gameId}`);
-        } catch (error: any) {
-          console.error('❌ End game error:', error);
-          throw new Error(error.message || 'Failed to end game');
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-    }
-  }, [gameData, prepareGame, clearAllTimers, stopTimer, startTimer, resumeCountdownTimer]);
 
  
   
@@ -469,23 +279,10 @@ const callInterval = calculateCallInterval(speechRate);
     gameTimerManager.pauseAll();
   }, [stopTimer, clearAllTimers]);
 
-  // Game state ref for timer coordination (moved up)
-  const gameStateRef = useRef({
-    isActive: false,
-    gameOver: false,
-    isCountdown: false
-  });
-
-  // State machine for game flow (moved after all dependencies)
+  // State machine for game flow
   const stateMachine = useGameStateMachine({
     onStateChange: (state, context) => {
       console.log('🎮 Game state changed:', state, context);
-      // Update game state ref
-      gameStateRef.current = {
-        isActive: state.matches('running'),
-        gameOver: state.matches('gameOver'),
-        isCountdown: state.matches('initializing')
-      };
     },
     onNumberCall: handleSecureNumberCall,
     onGameEnd: handleGameEndCleanup,
@@ -493,6 +290,13 @@ const callInterval = calculateCallInterval(speechRate);
       console.error('❌ State machine error:', error);
       setIsProcessing(false);
     }
+  });
+  
+  // Game state ref for timer coordination
+  const gameStateRef = useRef({
+    isActive: false,
+    gameOver: false,
+    isCountdown: false
   });
 
   /**
@@ -600,8 +404,14 @@ const callInterval = calculateCallInterval(speechRate);
     });
   }, [gameData, isAudioReady, callInterval, resourceManager]);
   
- // Remove audioCoordination - not used anywhere and causing initialization conflicts
-  // Audio handling is done directly in handleAudioComplete callback
+  // Audio coordination
+  const audioCoordination = useAudioGameCoordination({
+    gameStateRef,
+    onAudioComplete: handleAudioComplete,
+    onAudioError: (error, type) => {
+      console.error(`❌ Audio error (${type}):`, error);
+    }
+  });
 
   const startTimer = useCallback(() => {
     if (!gameData) return;
@@ -818,14 +628,12 @@ try {
     }
   }, [gameData, resourceManager]);
 
- const startGame = useCallback(async () => {
+  const startGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
-    // NEW: Check if user is secondary and show choice dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('startGame');
-      return;
+      throw new Error('Only the primary session can start the game');
     }
     
     setIsProcessing(true);
@@ -888,11 +696,9 @@ try {
 const pauseGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
-    // NEW: Check if user is secondary and show choice dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('pauseGame');
-      return;
+      throw new Error('Only the primary session can pause the game');
     }
     
     setIsProcessing(true);
@@ -912,11 +718,9 @@ const pauseGame = useCallback(async () => {
  const resumeGame = useCallback(async () => {
     if (!gameData) return;
     
-    // NEW: Check if user is secondary and show choice dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('resumeGame');
-      return;
+      throw new Error('Only the primary session can resume the game');
     }
     
     setIsProcessing(true);
@@ -940,14 +744,12 @@ const pauseGame = useCallback(async () => {
     }
   }, [gameData, startTimer]);
 
- const endGame = useCallback(async () => {
+  const endGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
-    // NEW: Check if user is secondary and show choice dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('endGame');
-      return;
+      throw new Error('Only the primary session can end the game');
     }
     
     setIsProcessing(true);
@@ -1226,7 +1028,7 @@ const pauseGame = useCallback(async () => {
 
   // ================== CONTEXT VALUE ==================
 
-const value: HostControlsContextValue = {
+ const value: HostControlsContextValue = {
     startGame,
     pauseGame,
     resumeGame,
@@ -1239,24 +1041,16 @@ const value: HostControlsContextValue = {
     sessionStatus,
     requestPrimaryControl,
     
-    // NEW: Dialog state for components
-    showPrimaryDialog,
-    setShowPrimaryDialog,
-    pendingAction,
-    setPendingAction,
-    takePrimaryControl,
-    executeAction,
-    
-    // State machine status (safe access)
-    gameState: stateMachine?.state as string || 'idle',
-    isGameIdle: stateMachine?.isIdle || false,
-    isGameRunning: stateMachine?.isRunning || false,
-    isGamePaused: stateMachine?.isPaused || false,
-    isGameOver: stateMachine?.isGameOver || false,
-    canStartGame: (stateMachine?.canStartGame || stateMachine?.isIdle) || false,
-    canPauseGame: stateMachine?.canPause?.() || false,
-    canResumeGame: stateMachine?.canResume?.() || false,
-    canEndGame: stateMachine?.canEnd?.() || false,
+    // State machine status
+    gameState: stateMachine.state as string,
+    isGameIdle: stateMachine.isIdle,
+    isGameRunning: stateMachine.isRunning,
+    isGamePaused: stateMachine.isPaused,
+    isGameOver: stateMachine.isGameOver,
+    canStartGame: stateMachine.canStartGame || stateMachine.isIdle,
+    canPauseGame: stateMachine.canPause(),
+    canResumeGame: stateMachine.canResume(),
+    canEndGame: stateMachine.canEnd(),
     
     speechRate, 
     speechRateScale, 
