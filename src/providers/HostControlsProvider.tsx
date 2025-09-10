@@ -226,97 +226,77 @@ const callInterval = calculateCallInterval(speechRate);
   /**
    * ✅ SIMPLIFIED: Handle audio completion - focus only on calling next number
    */
-  const handleAudioComplete = useCallback(() => {
+ const handleAudioComplete = useCallback(() => {
+    // Early exit if game is already over or component unmounted
+    if (!gameData?.gameState?.isActive || gameData?.gameState?.gameOver) {
+      console.log('🛑 Audio complete but game is over - ignoring callback');
+      return;
+    }
+
     // Generate unique completion ID for race prevention
     const completionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     audioCompletionId.current = completionId;
     
     console.log(`🔊 Audio completion callback received (ID: ${completionId})`);
     
-    // Use resource manager for safe async operations
-    resourceManager.safeAsyncOperation(
-      'audio-completion',
-      async () => {
-        console.log(`🔊 Audio completion callback received (ID: ${completionId})`);
-        
-        // Clear the announcing number since audio finished
-        setAudioAnnouncingNumber(null);
-        
-        // Prevent duplicate processing
-        if (isProcessingCompletion.current) {
-          console.log('⚠️ Already processing a completion, ignoring');
-          return;
-        }
-        
-        // Mark audio system as ready on first callback
-        if (!isAudioReady) {
-          setIsAudioReady(true);
-          console.log('✅ Audio system now ready');
-        }
-        
-        isProcessingCompletion.current = true;
-        
-        // Add verification delay to ensure audio is truly done
-        setTimeout(() => {
-          // Verify this completion is still valid
-          if (audioCompletionId.current !== completionId) {
-            console.log('🚫 Stale completion ID, ignoring');
-            isProcessingCompletion.current = false;
-            return;
-          }
-          
-          // Reset flags
-          isCallInProgressRef.current = false;
-          isProcessingCompletion.current = false;
-          
-          // Verify game is still active
-          if (!gameData?.gameState?.isActive || 
-              gameData?.gameState?.gameOver || 
-              !isTimerActiveRef.current) {
-            console.log('🛑 Game not active, stopping after audio completion');
-            return;
-          }
-          
-          // Check if game is over
-          if (gameData?.gameState?.gameOver) {
-            console.log('🎯 Game is over, stopping timer');
-            return;
-          }
-          
-          // Schedule next number call
-          console.log('📞 Audio verified complete, scheduling next call');
-          
-          setTimeout(() => {
-            if (!isCallInProgressRef.current && isTimerActiveRef.current) {
-              lastCallTimeRef.current = Date.now();
-              isCallInProgressRef.current = true;
-              
-             firebaseGame.callNextNumberAndContinue(gameData.gameId)
-                .then(shouldContinue => {
-                  console.log(`🎮 Audio complete - next call result: ${shouldContinue}`);
-                  if (!shouldContinue) {
-                    console.log('🏁 Game ending - stopping timer and clearing state');
-                    isTimerActiveRef.current = false;
-                    isCallInProgressRef.current = false;
-                    stopTimer(); // Ensure timer is fully stopped
-                  }
-                })
-                .catch(error => {
-                  console.error('❌ Error calling next number:', error);
-                  isTimerActiveRef.current = false;
-                  isCallInProgressRef.current = false;
-                });
-            }
-          }, (callInterval * 1000)); // Use the configured interval
-        }, 300); // 300ms verification delay
-      },
-      { timeout: 5000 }
-    ).catch(error => {
-      console.error('❌ Error in audio completion handling:', error);
+    // Clear the announcing number since audio finished
+    setAudioAnnouncingNumber(null);
+    
+    // Prevent duplicate processing with immediate check
+    if (isProcessingCompletion.current) {
+      console.log('⚠️ Already processing a completion, ignoring');
+      return;
+    }
+    
+    // Mark audio system as ready on first callback
+    if (!isAudioReady) {
+      setIsAudioReady(true);
+      console.log('✅ Audio system now ready');
+    }
+    
+    isProcessingCompletion.current = true;
+    
+    // Single setTimeout instead of nested ones
+    setTimeout(() => {
+      // Verify this completion is still valid and game is still active
+      if (audioCompletionId.current !== completionId || 
+          !gameData?.gameState?.isActive || 
+          gameData?.gameState?.gameOver || 
+          !isTimerActiveRef.current) {
+        console.log('🚫 Completion invalid or game ended, stopping');
+        isProcessingCompletion.current = false;
+        return;
+      }
+      
+      // Reset flags
       isCallInProgressRef.current = false;
       isProcessingCompletion.current = false;
-    });
-  }, [gameData, isAudioReady, callInterval, resourceManager]);
+      
+      console.log('📞 Audio verified complete, scheduling next call');
+      
+      // Use a single timeout for the next call - NO NESTED TIMEOUTS
+      if (!isCallInProgressRef.current && isTimerActiveRef.current) {
+        lastCallTimeRef.current = Date.now();
+        isCallInProgressRef.current = true;
+        
+        firebaseGame.callNextNumberAndContinue(gameData.gameId)
+          .then(shouldContinue => {
+            console.log(`🎮 Audio complete - next call result: ${shouldContinue}`);
+            if (!shouldContinue) {
+              console.log('🏁 Game ending - stopping timer and clearing state');
+              isTimerActiveRef.current = false;
+              isCallInProgressRef.current = false;
+              stopTimer(); // Ensure timer is fully stopped
+            }
+          })
+          .catch(error => {
+            console.error('❌ Error calling next number:', error);
+            isTimerActiveRef.current = false;
+            isCallInProgressRef.current = false;
+          });
+      }
+    }, Math.max(300, callInterval * 1000)); // Use whichever is larger: 300ms or call interval
+  }, [gameData, isAudioReady, callInterval, stopTimer]); // Removed resourceManager from dependencies
   
   // Audio coordination
   const audioCoordination = useAudioGameCoordination({
