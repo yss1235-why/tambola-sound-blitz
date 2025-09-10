@@ -8,8 +8,6 @@ import { gameTimerManager } from '@/services/GameTimerManager';
 import { SecureNumberCaller } from '@/services/SecureNumberCaller';
 import { useGameStateMachine } from '@/hooks/useGameStateMachine';
 import { useGameResourceManager } from '@/hooks/useGameResourceManager';
-import { useAudioGameCoordination } from '@/hooks/useAudioGameCoordination';
-import { gameOperationQueue } from '@/services/OperationQueue';
 
 interface HostControlsContextValue {
   // Game flow controls (state machine integrated)
