@@ -784,24 +784,25 @@ async callNextNumberAndContinue(gameId: string): Promise<boolean> {
           console.log(`✅ Number ${result.number} called successfully via secure caller`);
           
           // Step 4: Process prizes after successful call
-          await this.processPrizesAfterNumberCall(gameId, result.number);
+          const prizeResult = await this.processPrizesAfterNumberCall(gameId, result.number);
           
           // Step 5: Check if game should continue (check both numbers AND prizes)
-const gameData = await this.getGameData(gameId);
-if (!gameData) return false;
-
-const stats = await numberCaller.getGameStatistics();
-const numbersRemaining = stats.remainingNumbers > 0;
-const allPrizesWon = this.checkAllPrizesWon(gameData.prizes, {});
-
-const shouldContinue = numbersRemaining && !allPrizesWon;
-
-console.log(`📊 Game continuation check:`, {
-  numbersRemaining,
-  allPrizesWon,
-  shouldContinue,
-  totalCalled: stats.totalCalled
-});
+              const gameData = await this.getGameData(gameId);
+              if (!gameData) return false;
+              
+              const stats = await numberCaller.getGameStatistics();
+              const numbersRemaining = stats.remainingNumbers > 0;
+              // 🔧 FIX: Use the actual prize updates, not empty object
+              const allPrizesWon = this.checkAllPrizesWon(gameData.prizes, prizeResult?.prizeUpdates || {});
+              
+              const shouldContinue = numbersRemaining && !allPrizesWon;
+              
+              console.log(`📊 Game continuation check:`, {
+                numbersRemaining,
+                allPrizesWon,
+                shouldContinue,
+                totalCalled: stats.totalCalled
+              });
 
 // Check if game should end with pending logic for last number
 const isLastNumber = stats.totalCalled >= 90;
@@ -855,7 +856,7 @@ return shouldContinue;
   /**
    * Process prizes after a number is called
    */
-  private async processPrizesAfterNumberCall(gameId: string, calledNumber: number): Promise<void> {
+ private async processPrizesAfterNumberCall(gameId: string, calledNumber: number): Promise<any> {
     try {
       const gameData = await this.getGameData(gameId);
       if (!gameData) return;
@@ -878,10 +879,13 @@ return shouldContinue;
         await update(gameRef, prizeUpdates);
         
         console.log(`🏆 Prize updates applied for number ${calledNumber}`);
+        return prizeResult; // Return the prize result for game ending logic
       }
       
+      return null; // No winners
    } catch (error: any) {
       console.error('❌ Error processing prizes:', error);
+      return null;
     }
   }
 
