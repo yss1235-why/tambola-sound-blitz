@@ -200,15 +200,9 @@ useEffect(() => {
             setIsPlaying(false);
             onAudioComplete?.('number', { number: currentNumber });
             
-            // If this was the last number and game is pending end, complete the game end
+            // Don't end game here - let the pending game end effect handle coordination
             if (isPendingEnd && gameId) {
-              console.log(`🏁 Last number audio completed - ending game now`);
-              try {
-                const { firebaseGame } = await import('@/services/firebase');
-                await firebaseGame.completePendingGameEnd(gameId);
-              } catch (error) {
-                console.error(`❌ Failed to complete pending game end:`, error);
-              }
+              console.log(`🏁 Last number audio completed - pending game end will coordinate final sequence`);
             }
           },
           speechRate
@@ -263,13 +257,74 @@ useEffect(() => {
     playPrizeAudio();
  }, [lastWinnerAnnouncement, isAudioEnabled, onAudioComplete, onAudioError, speechRate]);
 
-  // Handle game over audio
+ // Handle pending game end coordination
   useEffect(() => {
-    if (!isAudioEnabled || !isGameOver) return;
+    const isPendingEnd = gameState?.pendingGameEnd;
+    if (!isAudioEnabled || !isPendingEnd || !gameId) return;
+
+    console.log('🏁 Pending game end detected - coordinating final audio sequence');
+
+    const coordinateFinalAudio = async () => {
+      try {
+        // Small delay to ensure all audio effects have processed
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+       // Wait for any currently playing audio to finish
+        let waitCount = 0;
+        while (isPlaying && waitCount < 50) { // Max 5 seconds wait
+          console.log('⏳ Waiting for current audio to finish before game end sequence');
+          await new Promise(resolve => setTimeout(resolve, 100));
+          waitCount++;
+        }
+        
+        if (waitCount >= 50) {
+          console.warn('⚠️ Timeout waiting for audio to finish, proceeding anyway');
+        }
+        
+        // Play game over celebration audio
+        console.log('🎉 Playing final game over celebration');
+        setIsPlaying(true);
+        
+        await audioCoordinator.playGameOverAudio(() => {
+          setIsPlaying(false);
+          console.log('✅ Game over audio completed - finalizing game end');
+          
+          // Now complete the pending game end
+          setTimeout(async () => {
+            try {
+              const { firebaseGame } = await import('@/services/firebase');
+              await firebaseGame.completePendingGameEnd(gameId);
+              console.log('🏁 Game end completed successfully');
+            } catch (error) {
+              console.error('❌ Failed to complete pending game end:', error);
+            }
+          }, 100);
+        }, speechRate);
+        
+      } catch (error) {
+        console.error('❌ Final audio coordination failed:', error);
+        // Fallback: still try to end the game
+        try {
+          const { firebaseGame } = await import('@/services/firebase');
+          await firebaseGame.completePendingGameEnd(gameId);
+        } catch (fallbackError) {
+          console.error('❌ Fallback game end also failed:', fallbackError);
+        }
+      }
+    };
+
+    coordinateFinalAudio();
+ }, [gameState?.pendingGameEnd, isAudioEnabled, gameId, speechRate]);
+
+  // Handle regular game over audio (when game ends immediately without pending)
+  useEffect(() => {
+    // Only play if game is over but was NOT pending (immediate game end)
+    const isImmediateGameOver = isGameOver && !gameState?.pendingGameEnd;
+    if (!isAudioEnabled || !isImmediateGameOver) return;
 
     const playGameOverAudio = async () => {
       try {
-        console.log('🏁 Playing game over audio');
+        console.log('🏁 Playing immediate game over audio');
         setIsPlaying(true);
         
        await audioCoordinator.playGameOverAudio(() => {
@@ -285,8 +340,7 @@ useEffect(() => {
     };
 
     playGameOverAudio();
-}, [isGameOver, isAudioEnabled, onAudioComplete, onAudioError, speechRate]);
-
+}, [isGameOver, gameState?.pendingGameEnd, isAudioEnabled, onAudioComplete, onAudioError, speechRate]);
   // Stop all audio when component unmounts or game ends
   useEffect(() => {
     return () => {
