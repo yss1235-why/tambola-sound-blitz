@@ -811,23 +811,31 @@ const shouldEndGame = allPrizesWon || isLastNumber;
 if (shouldEndGame && !gameData.gameState.gameOver) {
   console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
   
-  // Stop calling new numbers immediately
+  // Set gameOver immediately to stop all ghost numbers (strict signal)
   const gameRef = ref(database, `games/${gameId}`);
   await update(gameRef, {
     'gameState/isActive': false,
+    'gameState/gameOver': true,
+    'gameState/gameEndedAt': new Date().toISOString(),
     'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...',
     'lastWinnerAt': new Date().toISOString(),
     'updatedAt': new Date().toISOString()
   });
+  console.log(`✅ Game ended immediately - no more ghost numbers possible`);
   
-  // Give audio 3 seconds to finish, then end the game
-  console.log(`🎵 Giving audio 3 seconds to finish...`);
+  // Give audio 6 seconds to finish, then do cleanup and trigger UI redirect
+  console.log(`🎵 Game ended, giving audio 6 seconds to finish...`);
   setTimeout(async () => {
     try {
-      await this.endGame(gameId);
-      console.log(`✅ Game ended successfully after audio delay`);
+      // Clean up number caller
+      const numberCaller = this.numberCallers.get(gameId);
+      if (numberCaller) {
+        await numberCaller.cleanup();
+        this.numberCallers.delete(gameId);
+      }
+      console.log(`✅ Game cleanup completed after audio delay`);
     } catch (error) {
-      console.error(`❌ Error ending game after timeout:`, error);
+      console.error(`❌ Error during game cleanup:`, error);
     }
   }, 6000);
   
@@ -1135,7 +1143,7 @@ return shouldContinue;
   /**
    * Validate if game can accept number calls
    */
-  private async validateGameForCalling(gameId: string): Promise<{
+ private async validateGameForCalling(gameId: string): Promise<{
     isValid: boolean;
     reason?: string;
   }> {
@@ -1148,24 +1156,27 @@ return shouldContinue;
         return { isValid: true };
       }
       
-      // Only stop for definitive end conditions
+      // STRICT: Always stop for gameOver (no forgiveness)
       if (gameData.gameState.gameOver) {
+        console.log('🛑 Game is over - strictly stopping all number calls');
         return { isValid: false, reason: 'Game has ended' };
       }
       
+      // STRICT: Always stop if all numbers called
       const calledNumbers = gameData.gameState.calledNumbers || [];
       if (calledNumbers.length >= 90) {
+        console.log('🛑 All 90 numbers called - strictly stopping');
         return { isValid: false, reason: 'All numbers have been called' };
       }
       
-      // Allow calling even if game appears inactive or in countdown
+      // FORGIVING: Allow calling even if game appears inactive or in countdown
       // These might be temporary states due to network issues
       if (!gameData.gameState.isActive) {
-        console.log('⚠️ Game appears inactive - but continuing anyway');
+        console.log('⚠️ Game appears inactive - but continuing anyway (network forgiveness)');
       }
       
       if (gameData.gameState.isCountdown) {
-        console.log('⚠️ Game appears in countdown - but continuing anyway');
+        console.log('⚠️ Game appears in countdown - but continuing anyway (network forgiveness)');
       }
       
       return { isValid: true };
