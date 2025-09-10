@@ -27,14 +27,6 @@ interface HostControlsContextValue {
   };
   requestPrimaryControl: () => Promise<void>;
   
-  // Dialog management for primary control
-  showPrimaryDialog: boolean;
-  setShowPrimaryDialog: (show: boolean) => void;
-  pendingAction: string | null;
-  setPendingAction: (action: string | null) => void;
-  takePrimaryControl: () => Promise<void>;
-  executeAction: (action: string) => Promise<void>;
-  
   // Configuration
   updateSpeechRate: (scaleValue: number) => Promise<void>;
   
@@ -109,7 +101,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const isProcessingCompletion = useRef(false);
   const numberCallerRef = useRef<SecureNumberCaller | null>(null);
 
- // Simple state - only for UI feedback
+  // Simple state - only for UI feedback
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessionStatus, setSessionStatus] = useState({
     isActive: false,
@@ -117,10 +109,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     otherSessions: [],
     conflictWarning: null
   });
-
-  // Dialog state for primary control
-  const [showPrimaryDialog, setShowPrimaryDialog] = useState(false);
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
   // Monitor session status
   const checkSessionStatus = useCallback(async () => {
@@ -177,128 +165,11 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         primarySession: currentSessionId
       });
     }
- }, [gameData]);
-
-  // Take primary control function
-  const takePrimaryControl = useCallback(async () => {
-    const currentSessionId = sessionStorage.getItem('hostSessionId');
-    if (!currentSessionId || !gameData) return;
-    
-    console.log('🎯 Taking primary control...');
-    
-    await update(ref(database, `games/${gameData.gameId}`), {
-      primarySession: currentSessionId,
-      primaryTakenAt: new Date().toISOString(),
-      primaryTakenReason: 'user-requested'
-    });
-    
-    console.log('✅ Primary control taken');
   }, [gameData]);
 
-  // Execute pending action after taking control
-  const executeAction = useCallback(async (action: string) => {
-    setShowPrimaryDialog(false);
-    setPendingAction(null);
-    
-    // Wait for dialog to close
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    switch (action) {
-      case 'startGame':
-        if (!gameData || isProcessing) return;
-        setIsProcessing(true);
-        try {
-          console.log(`🎮 Executing start game with primary control: ${gameData.gameId}`);
-          clearAllTimers();
-          const preparationSuccess = await prepareGame();
-          if (!preparationSuccess) throw new Error('Game preparation failed');
-          
-          await firebaseGame.startGameWithCountdown(gameData.gameId);
-          let timeLeft = 10;
-          setCountdownTime(timeLeft);
-          
-          countdownTimerRef.current = setInterval(async () => {
-            timeLeft--;
-            setCountdownTime(timeLeft);
-            try {
-              await firebaseGame.updateCountdownTime(gameData.gameId, timeLeft);
-            } catch (error) {
-              console.error('Failed to update countdown:', error);
-            }
-            if (timeLeft <= 0) {
-              clearInterval(countdownTimerRef.current!);
-              countdownTimerRef.current = null;
-              try {
-                await firebaseGame.activateGameAfterCountdown(gameData.gameId);
-                setFirebasePaused(true);
-                setIsAudioReady(true);
-                console.log('✅ Game started with primary control');
-              } catch (error) {
-                console.error('❌ Failed to activate game:', error);
-              }
-            }
-          }, 1000);
-        } catch (error: any) {
-          console.error('❌ Start game error:', error);
-          clearAllTimers();
-          setCountdownTime(0);
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-        
-      case 'pauseGame':
-        if (!gameData || isProcessing) return;
-        setIsProcessing(true);
-        try {
-          console.log(`⏸️ Executing pause with primary control: ${gameData.gameId}`);
-          stopTimer();
-          setFirebasePaused(true);
-          console.log(`✅ Game paused with primary control`);
-        } catch (error: any) {
-          console.error('❌ Pause error:', error);
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-        
-      case 'resumeGame':
-        if (!gameData) return;
-        setIsProcessing(true);
-        try {
-          console.log('🎯 Executing resume with primary control...');
-          await firebaseGame.resumeGame(gameData.gameId);
-          setFirebasePaused(false);
-          setIsAudioReady(true);
-          setWasAutopaused(false);
-          if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
-            startTimer();
-          }
-          console.log('✅ Game resumed with primary control');
-        } catch (error: any) {
-          console.error('❌ Failed to resume game:', error);
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-        
-      case 'endGame':
-        if (!gameData || isProcessing) return;
-        setIsProcessing(true);
-        try {
-          console.log(`🏁 Executing end game with primary control: ${gameData.gameId}`);
-          stopTimer();
-          await firebaseGame.endGame(gameData.gameId);
-          console.log(`✅ Game ended with primary control`);
-        } catch (error: any) {
-          console.error('❌ End game error:', error);
-        } finally {
-          setIsProcessing(false);
-        }
-        break;
-    }
-  }, [gameData, isProcessing, clearAllTimers, prepareGame, stopTimer, startTimer]);
-
+ 
+  
+ 
   const [countdownTime, setCountdownTime] = useState(0);
   const [speechRate, setSpeechRate] = useState(1.0);
   const [speechRateScale, setSpeechRateScale] = useState(0);
@@ -760,11 +631,9 @@ try {
   const startGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
-    // Check if user is secondary and show dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('startGame');
-      return;
+      throw new Error('Only the primary session can start the game');
     }
     
     setIsProcessing(true);
@@ -827,12 +696,11 @@ try {
 const pauseGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
-   // Check if user is secondary and show dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('pauseGame');
-      return;
+      throw new Error('Only the primary session can pause the game');
     }
+    
     setIsProcessing(true);
     try {
       console.log(`⏸️ Pausing number calling: ${gameData.gameId}`);
@@ -850,11 +718,9 @@ const pauseGame = useCallback(async () => {
  const resumeGame = useCallback(async () => {
     if (!gameData) return;
     
-   // Check if user is secondary and show dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('resumeGame');
-      return;
+      throw new Error('Only the primary session can resume the game');
     }
     
     setIsProcessing(true);
@@ -881,11 +747,9 @@ const pauseGame = useCallback(async () => {
   const endGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
     
-   // Check if user is secondary and show dialog
+    // Check if user has control
     if (!sessionStatus.isPrimary) {
-      setShowPrimaryDialog(true);
-      setPendingAction('endGame');
-      return;
+      throw new Error('Only the primary session can end the game');
     }
     
     setIsProcessing(true);
@@ -1176,14 +1040,6 @@ const pauseGame = useCallback(async () => {
     // Session management
     sessionStatus,
     requestPrimaryControl,
-    
-    // Dialog management
-    showPrimaryDialog,
-    setShowPrimaryDialog,
-    pendingAction,
-    setPendingAction,
-    takePrimaryControl,
-    executeAction,
     
     // State machine status
     gameState: stateMachine.state as string,
