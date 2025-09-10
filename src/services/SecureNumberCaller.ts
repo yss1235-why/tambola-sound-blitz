@@ -1,6 +1,6 @@
 // src/services/SecureNumberCaller.ts
 import { FirebaseMutex } from './FirebaseMutex';
-import { ref, runTransaction } from 'firebase/database';
+import { ref, get, runTransaction } from 'firebase/database';
 import { database } from '@/services/firebase-core';
 
 interface NumberCallResult {
