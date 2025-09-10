@@ -811,33 +811,27 @@ const shouldEndGame = allPrizesWon || isLastNumber;
 if (shouldEndGame && !gameData.gameState.gameOver) {
   console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
   
-  // Set gameOver immediately to stop all ghost numbers (strict signal)
+  // Stop ghost numbers with a strict signal, but don't end game yet
   const gameRef = ref(database, `games/${gameId}`);
   await update(gameRef, {
     'gameState/isActive': false,
-    'gameState/gameOver': true,
-    'gameState/gameEndedAt': new Date().toISOString(),
+    'gameState/finalizing': true, // New signal: stops numbers but doesn't trigger UI cleanup
     'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...',
     'lastWinnerAt': new Date().toISOString(),
     'updatedAt': new Date().toISOString()
   });
-  console.log(`✅ Game ended immediately - no more ghost numbers possible`);
+  console.log(`✅ Game finalizing - no more ghost numbers possible`);
   
-  // Give audio 6 seconds to finish, then do cleanup and trigger UI redirect
-  console.log(`🎵 Game ended, giving audio 6 seconds to finish...`);
+  // Give audio 6 seconds to finish, then actually end the game
+  console.log(`🎵 Giving audio 6 seconds to finish...`);
   setTimeout(async () => {
     try {
-      // Clean up number caller
-      const numberCaller = this.numberCallers.get(gameId);
-      if (numberCaller) {
-        await numberCaller.cleanup();
-        this.numberCallers.delete(gameId);
-      }
-      console.log(`✅ Game cleanup completed after audio delay`);
+      await this.endGame(gameId);
+      console.log(`✅ Game ended successfully after audio delay`);
     } catch (error) {
-      console.error(`❌ Error during game cleanup:`, error);
+      console.error(`❌ Error ending game after timeout:`, error);
     }
-  }, 6000);
+  }, 5500);
   
   return false; // Stop calling more numbers
 }
@@ -1157,9 +1151,15 @@ return shouldContinue;
       }
       
       // STRICT: Always stop for gameOver (no forgiveness)
+      // STRICT: Always stop for gameOver or finalizing (no forgiveness)
       if (gameData.gameState.gameOver) {
         console.log('🛑 Game is over - strictly stopping all number calls');
         return { isValid: false, reason: 'Game has ended' };
+      }
+      
+      if (gameData.gameState.finalizing) {
+        console.log('🛑 Game is finalizing - strictly stopping all number calls');
+        return { isValid: false, reason: 'Game is finalizing' };
       }
       
       // STRICT: Always stop if all numbers called
