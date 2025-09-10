@@ -66,14 +66,81 @@ interface OperationState {
   inProgress: boolean;
   message: string;
 }
-// Simplified wrapper without dialog
-const HostControlsWrapper: React.FC<{ children: React.ReactNode; userId: string }> = ({ children, userId }) => {
+// Primary Control Dialog Component
+const PrimaryControlDialog: React.FC = () => {
+  const hostControls = useHostControls();
+  
+  if (!hostControls?.showPrimaryDialog) return null;
+  
   return (
-    <HostControlsProvider userId={userId}>
-      {children}
-    </HostControlsProvider>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+        <h3 className="text-lg font-semibold mb-4 text-red-600">
+          ⚠️ You are not the primary host!
+        </h3>
+        
+        <div className="mb-4 text-gray-700">
+          <p className="mb-2">
+            Another device currently has game control. 
+          </p>
+          <p className="mb-2">
+            <strong>Option 1:</strong> Contact the primary host to coordinate.
+          </p>
+          <p className="mb-2">
+            <strong>Option 2:</strong> Take control and continue exactly where they left off.
+          </p>
+          <p className="text-sm text-green-600">
+            ✅ <strong>No data will be lost</strong> - you'll pick up the game state seamlessly.
+          </p>
+        </div>
+        
+        {hostControls.sessionStatus.otherSessions.length > 0 && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <p className="text-sm text-yellow-800">
+              <strong>Active devices:</strong> {hostControls.sessionStatus.otherSessions.length} other device(s) logged in
+            </p>
+          </div>
+        )}
+        
+        <div className="flex space-x-3">
+          <Button
+            onClick={() => {
+              hostControls.setShowPrimaryDialog(false);
+              hostControls.setPendingAction(null);
+            }}
+            variant="outline"
+            className="flex-1"
+          >
+            Cancel
+          </Button>
+          
+          <Button
+            onClick={async () => {
+              hostControls.setShowPrimaryDialog(false);
+              await hostControls.takePrimaryControl();
+              
+              // Wait for primary control to take effect, then execute action
+              setTimeout(async () => {
+                if (hostControls.pendingAction) {
+                  await hostControls.executeAction(hostControls.pendingAction);
+                }
+                hostControls.setPendingAction(null);
+              }, 1000);
+            }}
+            className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+          >
+            {hostControls.pendingAction === 'startGame' ? 'Start Game Anyway' :
+             hostControls.pendingAction === 'pauseGame' ? 'Pause Game Anyway' :
+             hostControls.pendingAction === 'resumeGame' ? 'Resume Game Anyway' :
+             hostControls.pendingAction === 'endGame' ? 'End Game Anyway' :
+             'Take Control'}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 };
+
 // Available ticket sets
 const TICKET_SETS = [
   {
@@ -827,39 +894,11 @@ if (cachedWinnerData) {
       </div>
     );
   }
-// Primary Control Dialog Component - Safe implementation
-  const PrimaryControlDialog: React.FC = () => {
-    // Use a state to track if we're in a host controls context
-    const [showDialog, setShowDialog] = useState(false);
-    const [pendingAction, setPendingAction] = useState<string | null>(null);
-    
-    // Only try to access hostControls when we know it's safe
-    React.useEffect(() => {
-      // This will be called after all components are mounted
-      const checkHostControls = () => {
-        try {
-          // We'll manually check if we need to show the dialog
-          // This avoids the initialization issue
-          setShowDialog(false); // For now, we'll implement this differently
-        } catch (error) {
-          console.log('HostControls not ready yet');
-        }
-      };
-      
-      const timer = setTimeout(checkHostControls, 100);
-      return () => clearTimeout(timer);
-    }, []);
-    
-    return null; // Temporarily disabled to fix the error
-  };
 
   // ================== MAIN RENDER ==================
 
   return (
     <div className="min-h-screen bg-gray-50">
-    {/* Primary Control Dialog - Temporarily disabled */}
-      {/* <PrimaryControlDialog /> */}
-      
       <div className="container mx-auto px-4 py-8">
        {/* Unified Header */}
         <div className="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow-sm border">
@@ -925,9 +964,10 @@ if (cachedWinnerData) {
         {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
 
-            <HostControlsWrapper userId={user.uid}>
+            <HostControlsProvider userId={user.uid}>
+              <PrimaryControlDialog />
               <HostDisplay />
-            </HostControlsWrapper>
+            </HostControlsProvider>
             
             <TicketManagementGrid
               gameData={gameData}
@@ -953,13 +993,14 @@ if (cachedWinnerData) {
         )}
 
        
-     {/* Live Game Phases */}
+        {/* Live Game Phases */}
 {currentView === 'live' && gameData && (
   <div className="space-y-4">
    
-    <HostControlsWrapper userId={user.uid}>
+    <HostControlsProvider userId={user.uid}>
+      <PrimaryControlDialog />
       <HostDisplay onCreateNewGame={createNewGame} />
-      <AudioManagerForHost
+    <AudioManagerForHost
         currentNumber={gameData.gameState.currentNumber}
         lastWinnerAnnouncement={gameData.lastWinnerAnnouncement}
         isGameOver={gameData.gameState.gameOver}
@@ -967,7 +1008,7 @@ if (cachedWinnerData) {
         forceEnable={true}
         gameState={gameData.gameState}
       />
-    </HostControlsWrapper>
+    </HostControlsProvider>
   </div>
 )}
 
