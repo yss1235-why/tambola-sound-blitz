@@ -390,7 +390,7 @@ try {
     let timeLeft = currentTimeLeft;
     setCountdownTime(timeLeft);
     
-    countdownTimerRef.current = resourceManager.registerInterval(async () => {
+   countdownTimerRef.current = setInterval(async () => {
       timeLeft--;
       setCountdownTime(timeLeft);
       
@@ -432,20 +432,7 @@ try {
     setPreparationProgress(20);
     
     try {
-      const result = await resourceManager.safeAsyncOperation(
-        'prepare-game',
-        async () => {
-          const result = await firebaseGame.generateGameNumbers(gameData.gameId);
-          return result;
-        },
-        {
-          timeout: 15000,
-          retries: 2,
-          onRetry: (attempt, error) => {
-            setPreparationStatus(`Retry ${attempt}: ${error.message}`);
-          }
-        }
-      );
+      const result = await firebaseGame.generateGameNumbers(gameData.gameId);
       
       if (!result || !result.success) {
         throw new Error(result?.error || 'Game preparation failed');
@@ -475,7 +462,7 @@ try {
     } finally {
       setIsPreparingGame(false);
     }
-  }, [gameData, resourceManager]);
+  }, [gameData]);
 
   const startGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
