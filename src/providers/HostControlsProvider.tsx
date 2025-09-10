@@ -594,14 +594,8 @@ const callInterval = calculateCallInterval(speechRate);
     });
   }, [gameData, isAudioReady, callInterval, resourceManager]);
   
-  // Audio coordination
-  const audioCoordination = useAudioGameCoordination({
-    gameStateRef,
-    onAudioComplete: handleAudioComplete,
-    onAudioError: (error, type) => {
-      console.error(`❌ Audio error (${type}):`, error);
-    }
-  });
+ // Remove audioCoordination - not used anywhere and causing initialization conflicts
+  // Audio handling is done directly in handleAudioComplete callback
 
   const startTimer = useCallback(() => {
     if (!gameData) return;
