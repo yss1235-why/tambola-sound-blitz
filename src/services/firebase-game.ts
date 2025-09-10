@@ -804,38 +804,34 @@ async callNextNumberAndContinue(gameId: string): Promise<boolean> {
                 totalCalled: stats.totalCalled
               });
 
-// Check if game should end with pending logic for last number
+// Check if game should end with simple timeout approach
 const isLastNumber = stats.totalCalled >= 90;
 const shouldEndGame = allPrizesWon || isLastNumber;
 
 if (shouldEndGame && !gameData.gameState.gameOver) {
   console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
   
-  if (isLastNumber && !allPrizesWon) {
-    // Set pending state for last number - let audio play first
-    const gameRef = ref(database, `games/${gameId}`);
-    await update(gameRef, {
-      'gameState/pendingGameEnd': true,
-      'gameState/lastNumberCalled': true,
-      'lastWinnerAnnouncement': 'All numbers called! Game will end after this number!',
-      'lastWinnerAt': new Date().toISOString(),
-      'updatedAt': new Date().toISOString()
-    });
-    console.log(`⏳ Game ending pending - waiting for last number audio`);
-    return true; // Continue so audio can play
-  } else {
-  // Set pending for all prizes won too - be consistent
+  // Stop calling new numbers immediately
   const gameRef = ref(database, `games/${gameId}`);
   await update(gameRef, {
-    'gameState/pendingGameEnd': true,
     'gameState/isActive': false,
-    'lastWinnerAnnouncement': 'All prizes won! Game will end after audio!',
+    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...',
     'lastWinnerAt': new Date().toISOString(),
     'updatedAt': new Date().toISOString()
   });
-  console.log(`⏳ All prizes won - game ending queued for audio coordination`);
-  return true; // Let audio finish
-}
+  
+  // Give audio 3 seconds to finish, then end the game
+  console.log(`🎵 Giving audio 3 seconds to finish...`);
+  setTimeout(async () => {
+    try {
+      await this.endGame(gameId);
+      console.log(`✅ Game ended successfully after audio delay`);
+    } catch (error) {
+      console.error(`❌ Error ending game after timeout:`, error);
+    }
+  }, 3000);
+  
+  return false; // Stop calling more numbers
 }
           
 console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
