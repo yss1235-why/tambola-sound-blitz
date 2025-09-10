@@ -803,15 +803,34 @@ console.log(`📊 Game continuation check:`, {
   totalCalled: stats.totalCalled
 });
 
-// End game if all prizes won
-if (allPrizesWon && !gameData.gameState.gameOver) {
-  console.log(`🏁 All prizes won - ending game`);
-  await this.endGame(gameId);
-  return false;
+// Check if game should end with pending logic for last number
+const isLastNumber = stats.totalCalled >= 90;
+const shouldEndGame = allPrizesWon || isLastNumber;
+
+if (shouldEndGame && !gameData.gameState.gameOver) {
+  console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+  
+  if (isLastNumber && !allPrizesWon) {
+    // Set pending state for last number - let audio play first
+    const gameRef = ref(database, `games/${gameId}`);
+    await update(gameRef, {
+      'gameState/pendingGameEnd': true,
+      'gameState/lastNumberCalled': true,
+      'lastWinnerAnnouncement': 'All numbers called! Game will end after this number!',
+      'lastWinnerAt': new Date().toISOString(),
+      'updatedAt': new Date().toISOString()
+    });
+    console.log(`⏳ Game ending pending - waiting for last number audio`);
+    return true; // Continue so audio can play
+  } else {
+    // End immediately for all prizes won
+    await this.endGame(gameId);
+    return false;
+  }
 }
           
-          console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
-          return shouldContinue;
+console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
+return shouldContinue;
         },
         {
           timeout: 15000,
