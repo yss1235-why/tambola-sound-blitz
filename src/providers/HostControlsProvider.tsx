@@ -93,8 +93,16 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 }) => {
   const { gameData } = useGameData();
   
-  // Resource management for cleanup
-  const resourceManager = useGameResourceManager();
+  // TEMPORARY: Disable to test for circular dependency
+  // const resourceManager = useGameResourceManager();
+  const resourceManager = {
+    safeAsyncOperation: async (name: string, operation: () => Promise<any>, options?: any) => {
+      return await operation();
+    },
+    registerInterval: (callback: () => void, delay: number) => {
+      return setInterval(callback, delay);
+    }
+  };
   
   // Simple refs - only for timer management  
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
