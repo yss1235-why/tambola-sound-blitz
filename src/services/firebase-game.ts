@@ -823,10 +823,18 @@ if (shouldEndGame && !gameData.gameState.gameOver) {
     console.log(`⏳ Game ending pending - waiting for last number audio`);
     return true; // Continue so audio can play
   } else {
-    // End immediately for all prizes won
-    await this.endGame(gameId);
-    return false;
-  }
+  // Set pending for all prizes won too - be consistent
+  const gameRef = ref(database, `games/${gameId}`);
+  await update(gameRef, {
+    'gameState/pendingGameEnd': true,
+    'gameState/isActive': false,
+    'lastWinnerAnnouncement': 'All prizes won! Game will end after audio!',
+    'lastWinnerAt': new Date().toISOString(),
+    'updatedAt': new Date().toISOString()
+  });
+  console.log(`⏳ All prizes won - game ending queued for audio coordination`);
+  return true; // Let audio finish
+}
 }
           
 console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
@@ -1297,27 +1305,18 @@ console.log(`🔍 Game end check:`, {
   shouldEndGame,
   numbersCalledCount: updatedCalledNumbers.length
 });
-    
  if (shouldEndGame && !updatedGame.gameState.gameOver) {
   console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
   
-  // Stop calling new numbers immediately
+  // Set pending game end - let AudioCoordinator handle the rest
   await update(gameRef, {
+    'gameState/pendingGameEnd': true,
     'gameState/isActive': false,
-    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...'
+    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game will end after audio!' : 'All numbers called! Game will end after audio!',
+    'lastWinnerAt': new Date().toISOString(),
+    'updatedAt': new Date().toISOString()
   });
-  
-  // Give audio time to finish, then end the game
-  console.log("🎵 Giving audio 2.5 seconds to finish...");
-  setTimeout(async () => {
-    await update(gameRef, {
-      'gameState/gameOver': true,
-      'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game Over! 🎉' : 'All numbers called! Game Over! 🎉',
-      'lastWinnerAt': new Date().toISOString(),
-      'updatedAt': new Date().toISOString()
-    });
-    console.log(`✅ Game ended successfully after audio delay`);
-  }, 2500); // 2.5 second delay
+  console.log(`⏳ Game ending queued - letting AudioCoordinator finish sequence`);
 }
   
   
@@ -1548,6 +1547,55 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
       throw new Error(`Failed to activate game: ${error.message}`);
     }
   }
+  /**
+   * Complete pending game end (called by AudioCoordinator after all audio finishes)
+   */
+  async completePendingGameEnd(gameId: string): Promise<void> {
+    try {
+      console.log(`🏁 Completing pending game end for ${gameId}`);
+      
+      const gameRef = ref(database, `games/${gameId}`);
+      
+      await runTransaction(gameRef, (currentGame) => {
+        if (!currentGame) {
+          throw new Error('Game not found');
+        }
+        
+        // Only end if there's a pending game end
+        if (!currentGame.gameState?.pendingGameEnd) {
+          console.log('No pending game end - skipping');
+          return currentGame;
+        }
+        
+        return {
+          ...currentGame,
+          gameState: {
+            ...currentGame.gameState,
+            isActive: false,
+            gameOver: true,
+            pendingGameEnd: false,
+            gameEndedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          lastWinnerAnnouncement: 'Game Over! All audio completed! 🎉'
+        };
+      });
+      
+      // Clean up number caller
+      const numberCaller = this.numberCallers.get(gameId);
+      if (numberCaller) {
+        await numberCaller.cleanup();
+        this.numberCallers.delete(gameId);
+      }
+      
+      console.log(`✅ Game ${gameId} ended successfully after audio completion`);
+      
+    } catch (error: any) {
+      console.error('❌ Failed to complete pending game end:', error);
+      throw new Error(error.message || 'Failed to complete pending game end');
+    }
+  }
+
   /**
    * Actually end the game after audio completion
    */
