@@ -181,20 +181,35 @@ useEffect(() => {
 
   // Handle number calling audio
   useEffect(() => {
-    if (!isAudioEnabled || !gameState?.isActive || gameState?.gameOver) return;
+    // Allow last number audio even when game is pending end
+    const isPendingEnd = gameState?.pendingGameEnd && gameState?.lastNumberCalled;
+    const shouldPlayAudio = (gameState?.isActive && !gameState?.gameOver) || isPendingEnd;
+    
+    if (!isAudioEnabled || !shouldPlayAudio) return;
     if (!currentNumber || currentNumber === lastProcessedNumber.current) return;
 
     const playNumberAudio = async () => {
       try {
-        console.log(`🔊 Playing audio for number: ${currentNumber}`);
+       console.log(`🔊 Playing audio for number: ${currentNumber} ${isPendingEnd ? '(LAST NUMBER)' : ''}`);
         setIsPlaying(true);
         lastProcessedNumber.current = currentNumber;
         
-       await audioCoordinator.playNumberAudio(
+     await audioCoordinator.playNumberAudio(
           currentNumber,
-          () => {
+          async () => {
             setIsPlaying(false);
             onAudioComplete?.('number', { number: currentNumber });
+            
+            // If this was the last number and game is pending end, complete the game end
+            if (isPendingEnd && gameId) {
+              console.log(`🏁 Last number audio completed - ending game now`);
+              try {
+                const { firebaseGame } = await import('@/services/firebase');
+                await firebaseGame.completePendingGameEnd(gameId);
+              } catch (error) {
+                console.error(`❌ Failed to complete pending game end:`, error);
+              }
+            }
           },
           speechRate
         );
