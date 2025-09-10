@@ -1298,31 +1298,29 @@ console.log(`🔍 Game end check:`, {
   numbersCalledCount: updatedCalledNumbers.length
 });
     
-  if (shouldEndGame && !updatedGame.gameState.gameOver) {
+ if (shouldEndGame && !updatedGame.gameState.gameOver) {
   console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
   
-  // End game immediately
+  // Stop calling new numbers immediately
   await update(gameRef, {
-    'gameState/gameOver': true,
     'gameState/isActive': false,
-    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game Over!' : 'All numbers called! Game Over!',
-    'lastWinnerAt': new Date().toISOString(),
-    'updatedAt': new Date().toISOString()
+    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...'
   });
   
-  console.log(`✅ Game ended successfully in Firebase`);
-
-// Force immediate state propagation
-setTimeout(async () => {
-  try {
-    const verifyRef = ref(database, `games/${gameId}/gameState/gameOver`);
-    const snapshot = await get(verifyRef);
-    console.log(`🔍 Game over verification: ${snapshot.val()}`);
-  } catch (error) {
-    console.error('❌ Game over verification failed:', error);
-  }
-}, 1000);
+  // Give audio time to finish, then end the game
+  console.log("🎵 Giving audio 2.5 seconds to finish...");
+  setTimeout(async () => {
+    await update(gameRef, {
+      'gameState/gameOver': true,
+      'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game Over! 🎉' : 'All numbers called! Game Over! 🎉',
+      'lastWinnerAt': new Date().toISOString(),
+      'updatedAt': new Date().toISOString()
+    });
+    console.log(`✅ Game ended successfully after audio delay`);
+  }, 2500); // 2.5 second delay
 }
+  
+  
     
     return {
       success: true,
