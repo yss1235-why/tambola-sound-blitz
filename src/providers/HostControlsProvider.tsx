@@ -463,10 +463,23 @@ const callInterval = calculateCallInterval(speechRate);
     gameTimerManager.pauseAll();
   }, [stopTimer, clearAllTimers]);
 
-  // State machine for game flow
+  // Game state ref for timer coordination (moved up)
+  const gameStateRef = useRef({
+    isActive: false,
+    gameOver: false,
+    isCountdown: false
+  });
+
+  // State machine for game flow (moved after all dependencies)
   const stateMachine = useGameStateMachine({
     onStateChange: (state, context) => {
       console.log('🎮 Game state changed:', state, context);
+      // Update game state ref
+      gameStateRef.current = {
+        isActive: state.matches('running'),
+        gameOver: state.matches('gameOver'),
+        isCountdown: state.matches('initializing')
+      };
     },
     onNumberCall: handleSecureNumberCall,
     onGameEnd: handleGameEndCleanup,
@@ -474,13 +487,6 @@ const callInterval = calculateCallInterval(speechRate);
       console.error('❌ State machine error:', error);
       setIsProcessing(false);
     }
-  });
-  
-  // Game state ref for timer coordination
-  const gameStateRef = useRef({
-    isActive: false,
-    gameOver: false,
-    isCountdown: false
   });
 
   /**
@@ -1241,16 +1247,16 @@ const value: HostControlsContextValue = {
     takePrimaryControl,
     executeAction,
     
-    // State machine status
-    gameState: stateMachine.state as string,
-    isGameIdle: stateMachine.isIdle,
-    isGameRunning: stateMachine.isRunning,
-    isGamePaused: stateMachine.isPaused,
-    isGameOver: stateMachine.isGameOver,
-    canStartGame: stateMachine.canStartGame || stateMachine.isIdle,
-    canPauseGame: stateMachine.canPause(),
-    canResumeGame: stateMachine.canResume(),
-    canEndGame: stateMachine.canEnd(),
+    // State machine status (safe access)
+    gameState: stateMachine?.state as string || 'idle',
+    isGameIdle: stateMachine?.isIdle || false,
+    isGameRunning: stateMachine?.isRunning || false,
+    isGamePaused: stateMachine?.isPaused || false,
+    isGameOver: stateMachine?.isGameOver || false,
+    canStartGame: (stateMachine?.canStartGame || stateMachine?.isIdle) || false,
+    canPauseGame: stateMachine?.canPause?.() || false,
+    canResumeGame: stateMachine?.canResume?.() || false,
+    canEndGame: stateMachine?.canEnd?.() || false,
     
     speechRate, 
     speechRateScale, 
