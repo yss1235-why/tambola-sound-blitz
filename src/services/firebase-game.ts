@@ -829,7 +829,7 @@ if (shouldEndGame && !gameData.gameState.gameOver) {
     } catch (error) {
       console.error(`❌ Error ending game after timeout:`, error);
     }
-  }, 45000);
+  }, 6000);
   
   return false; // Stop calling more numbers
 }
