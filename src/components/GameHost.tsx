@@ -66,7 +66,17 @@ interface OperationState {
   inProgress: boolean;
   message: string;
 }
-// Primary Control Dialog Component
+// Wrapper component that ensures proper initialization
+const HostControlsWrapper: React.FC<{ children: React.ReactNode; userId: string }> = ({ children, userId }) => {
+  return (
+    <HostControlsProvider userId={userId}>
+      <PrimaryControlDialog />
+      {children}
+    </HostControlsProvider>
+  );
+};
+
+// Primary Control Dialog Component - moved inside wrapper
 const PrimaryControlDialog: React.FC = () => {
   const hostControls = useHostControls();
   
@@ -119,7 +129,6 @@ const PrimaryControlDialog: React.FC = () => {
               hostControls.setShowPrimaryDialog(false);
               await hostControls.takePrimaryControl();
               
-              // Wait for primary control to take effect, then execute action
               setTimeout(async () => {
                 if (hostControls.pendingAction) {
                   await hostControls.executeAction(hostControls.pendingAction);
@@ -140,7 +149,6 @@ const PrimaryControlDialog: React.FC = () => {
     </div>
   );
 };
-
 // Available ticket sets
 const TICKET_SETS = [
   {
@@ -964,10 +972,9 @@ if (cachedWinnerData) {
         {currentView === 'booking' && gameData && !editMode && (
           <div className="space-y-6">
 
-            <HostControlsProvider userId={user.uid}>
-              <PrimaryControlDialog />
+            <HostControlsWrapper userId={user.uid}>
               <HostDisplay />
-            </HostControlsProvider>
+            </HostControlsWrapper>
             
             <TicketManagementGrid
               gameData={gameData}
@@ -993,14 +1000,13 @@ if (cachedWinnerData) {
         )}
 
        
-        {/* Live Game Phases */}
+     {/* Live Game Phases */}
 {currentView === 'live' && gameData && (
   <div className="space-y-4">
    
-    <HostControlsProvider userId={user.uid}>
-      <PrimaryControlDialog />
+    <HostControlsWrapper userId={user.uid}>
       <HostDisplay onCreateNewGame={createNewGame} />
-    <AudioManagerForHost
+      <AudioManagerForHost
         currentNumber={gameData.gameState.currentNumber}
         lastWinnerAnnouncement={gameData.lastWinnerAnnouncement}
         isGameOver={gameData.gameState.gameOver}
@@ -1008,7 +1014,7 @@ if (cachedWinnerData) {
         forceEnable={true}
         gameState={gameData.gameState}
       />
-    </HostControlsProvider>
+    </HostControlsWrapper>
   </div>
 )}
 
