@@ -1442,41 +1442,56 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
  * Check if all ACTIVE/CONFIGURED prizes are won
  */
 private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
+  console.log(`🔍 Starting prize completion check...`);
+  console.log(`📊 Current prizes:`, Object.keys(currentPrizes || {}));
+  console.log(`📊 Prize updates:`, Object.keys(prizeUpdates || {}));
+  
   const allPrizes = { ...currentPrizes };
   
-  // Apply updates
-  for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
-    if (updatePath.startsWith('prizes/')) {
-      const prizeId = updatePath.replace('prizes/', '');
-      allPrizes[prizeId] = updateData;
+  // Apply updates more robustly
+  if (prizeUpdates && typeof prizeUpdates === 'object') {
+    for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
+      if (updatePath.startsWith('prizes/')) {
+        const prizeId = updatePath.replace('prizes/', '');
+        allPrizes[prizeId] = { ...allPrizes[prizeId], ...updateData };
+        console.log(`🔄 Applied update for prize ${prizeId}:`, updateData);
+      }
     }
   }
   
-  // ✅ FIX: Get only the prizes that are actually configured/active for this game
-const activePrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
-  // ✅ SIMPLIFIED: Only check if prize exists and has basic properties
-  return prize && prize.name && typeof prize.won === 'boolean';
-});
+  // Get all configured prizes (regardless of won status for filtering)
+  const allConfiguredPrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
+    const isValid = prize && 
+                   prize.name && 
+                   typeof prize.won === 'boolean' &&
+                   prize.name !== '';
+    
+    console.log(`🎯 Prize ${prizeId}: valid=${isValid}, name="${prize?.name}", won=${prize?.won}`);
+    return isValid;
+  });
   
-  console.log(`🔍 Active prizes check: ${activePrizes.length} active prizes found`);
+  console.log(`📋 Total configured prizes: ${allConfiguredPrizes.length}`);
   
-  // If no active prizes configured, don't end game based on prize logic
-  if (activePrizes.length === 0) {
-    console.log(`⚠️ No active prizes found - game will not end based on prize completion`);
+  // If no prizes configured, don't end based on prize logic
+  if (allConfiguredPrizes.length === 0) {
+    console.log(`⚠️ No configured prizes found - game will not end based on prize completion`);
     return false;
   }
   
-  // Check if all active prizes are won
-  const allActivePrizesWon = activePrizes.every(([prizeId, prize]) => {
-    const isWon = prize.won === true;
-    console.log(`🎯 Prize ${prizeId} (${prize.name}): ${isWon ? 'WON' : 'NOT WON'}`);
-    return isWon;
+  // Check if ALL configured prizes are won
+  const wonPrizes = allConfiguredPrizes.filter(([prizeId, prize]) => prize.won === true);
+  const allPrizesWon = wonPrizes.length === allConfiguredPrizes.length;
+  
+  console.log(`🏆 Prizes won: ${wonPrizes.length}/${allConfiguredPrizes.length}`);
+  console.log(`🏁 All prizes completed: ${allPrizesWon}`);
+  
+  // List each prize status for debugging
+  allConfiguredPrizes.forEach(([prizeId, prize]) => {
+    console.log(`   📌 ${prizeId} (${prize.name}): ${prize.won ? 'WON' : 'NOT WON'}`);
   });
   
-  console.log(`🏁 All active prizes won: ${allActivePrizesWon}`);
-  return allActivePrizesWon;
+  return allPrizesWon;
 }
-
  /**
    * Start game with countdown setup
    */
