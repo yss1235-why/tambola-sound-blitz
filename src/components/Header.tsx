@@ -179,7 +179,7 @@ const handleCloseAdminDialog = (open: boolean) => {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-              Group Of Game
+              RS Tambola
             </h1>
             {/* ✅ NEW: Show auth status in development */}
             {process.env.NODE_ENV === 'development' && (
