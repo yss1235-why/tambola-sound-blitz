@@ -416,7 +416,7 @@ useEffect(() => {
         <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
-              Welcome to RS's Tambola!
+              Welcome to Friend's Tambola!
             </CardTitle>
             <p className="text-gray-600 text-lg mt-2">
               Join the excitement! Book your tickets and play live Tambola games.
