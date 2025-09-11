@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Menu, LogOut, User, Loader2 } from 'lucide-react';
+import { LogIn, Menu, LogOut, User, Loader2, ImageIcon } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -240,13 +240,20 @@ const handleCloseAdminDialog = (open: boolean) => {
                         {currentUser.isActive ? '✓ Active' : '❌ Inactive'}
                       </div>
                     )}
-                  </div>
+                 </div>
                   <DropdownMenuSeparator />
+                  
+                  {/* NEW: Create Poster Button */}
                   <DropdownMenuItem 
-                    onSelect={handleLogout}
+                    onClick={() => window.open('https://tambolapos.netlify.app/', '_blank')}
                     className="cursor-pointer"
-                    disabled={authLoading}
                   >
+                    <ImageIcon className="w-4 h-4 mr-2" />
+                    Create Poster
+                  </DropdownMenuItem>
+                  
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={onUserLogout}>
                     <LogOut className="w-4 h-4 mr-2" />
                     Logout
                   </DropdownMenuItem>
