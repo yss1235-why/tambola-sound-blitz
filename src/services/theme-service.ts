@@ -30,10 +30,24 @@ class ThemeService {
      */
     async saveTheme(settings: ThemeSettings): Promise<boolean> {
         try {
-            await set(ref(database, THEME_PATH), {
-                ...settings,
+            // Firebase doesn't accept undefined values - filter them out
+            const cleanSettings: Record<string, unknown> = {
+                preset: settings.preset,
+                enabledForAll: settings.enabledForAll,
                 updatedAt: Date.now(),
-            });
+            };
+
+            // Only include custom if it exists
+            if (settings.custom) {
+                cleanSettings.custom = settings.custom;
+            }
+
+            // Include updatedBy if provided
+            if (settings.updatedBy) {
+                cleanSettings.updatedBy = settings.updatedBy;
+            }
+
+            await set(ref(database, THEME_PATH), cleanSettings);
             console.log('✅ Theme saved successfully');
             return true;
         } catch (error) {
