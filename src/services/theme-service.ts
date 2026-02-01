@@ -64,7 +64,13 @@ class ThemeService {
                 callback(DEFAULT_THEME_SETTINGS);
             }
         }, (error) => {
-            console.error('❌ Theme subscription error:', error);
+            // Permission denied is expected for unauthenticated users - use defaults silently
+            const isPermissionError = error?.message?.includes('permission_denied');
+            if (isPermissionError) {
+                console.log('ℹ️ Theme: Using defaults (not authenticated)');
+            } else {
+                console.error('❌ Theme subscription error:', error);
+            }
             callback(DEFAULT_THEME_SETTINGS);
         });
 
