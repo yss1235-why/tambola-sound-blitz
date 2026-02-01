@@ -221,7 +221,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 {/* NEW: Ticket Info Header */}
                 <div className="flex items-center justify-between p-3 border-b border-border">
                   <div className="flex items-center space-x-2">
-                    <span className="font-bold text-foreground">Ticket {ticketId}</span>
+                    <span className="font-bold text-green-900">Ticket {ticketId}</span>
                   </div>
                   <div className="text-right">
                     {ticket.isBooked ? (
