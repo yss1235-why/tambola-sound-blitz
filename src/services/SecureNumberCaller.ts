@@ -1,6 +1,6 @@
 // src/services/SecureNumberCaller.ts
 import { FirebaseMutex } from './FirebaseMutex';
-import { ref, get, runTransaction } from 'firebase/database';
+import { ref, get, runTransaction, onValue } from 'firebase/database';
 import { database } from '@/services/firebase-core';
 import { FEATURE_FLAGS } from './feature-flags';
 
@@ -64,6 +64,8 @@ export class SecureNumberCaller {
   private mutex: FirebaseMutex;
   private callInProgress = false;
   private syncPromise: Promise<void> | null = null;
+  private isConnected = false;
+  private connectionUnsubscribe: (() => void) | null = null;
 
   // Private constructor - use getInstance() instead
   private constructor(gameId: string) {
@@ -76,6 +78,36 @@ export class SecureNumberCaller {
     if (FEATURE_FLAGS.SYNC_LOCAL_STATE_ON_INIT) {
       this.syncPromise = this.syncFromFirebase();
     }
+
+    // FIX: Monitor connection status
+    this.monitorConnection();
+  }
+
+  // Monitor Firebase connection status
+  private monitorConnection(): void {
+    const connectedRef = ref(database, '.info/connected');
+    this.connectionUnsubscribe = onValue(connectedRef, (snap) => {
+      this.isConnected = snap.val() === true;
+      console.log(`🌐 Firebase connection: ${this.isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
+    });
+  }
+
+  // Wait for connection with timeout
+  private async waitForConnection(timeout: number = 5000): Promise<boolean> {
+    if (this.isConnected) return true;
+
+    return new Promise((resolve) => {
+      const startTime = Date.now();
+      const checkInterval = setInterval(() => {
+        if (this.isConnected) {
+          clearInterval(checkInterval);
+          resolve(true);
+        } else if (Date.now() - startTime > timeout) {
+          clearInterval(checkInterval);
+          resolve(false);
+        }
+      }, 100);
+    });
   }
 
   // BUG #3 FIX: Sync local calledNumbers from Firebase
@@ -102,30 +134,87 @@ export class SecureNumberCaller {
     }
   }
 
-  // Main number calling method with full race condition prevention
+  // Main number calling method with full race condition prevention and connection handling
   async callNextNumber(): Promise<NumberCallResult> {
-    // BUG #8 FIX: Move callInProgress check inside mutex for atomicity
-    // BUG #1 FIX: Renamed lock to 'number-call-' to avoid conflict
-    return await this.mutex.withLock(
-      `number-call-${this.gameId}`,
-      async () => {
-        if (this.callInProgress) {
-          throw new Error('Number call already in progress');
+    const MAX_RETRIES = 3;
+    const BASE_DELAY = 1000; // 1 second
+
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      // FIX: Check connection before attempting transaction
+      const isConnected = await this.waitForConnection(3000);
+      if (!isConnected) {
+        console.warn(`⚠️ No connection, attempt ${attempt}/${MAX_RETRIES}`);
+        if (attempt === MAX_RETRIES) {
+          return {
+            number: 0,
+            timestamp: Date.now(),
+            sequenceId: 0,
+            success: false,
+            error: 'No network connection. Please check your internet and try again.'
+          };
+        }
+        // Exponential backoff
+        await new Promise(r => setTimeout(r, BASE_DELAY * attempt));
+        continue;
+      }
+
+      try {
+        // BUG #8 FIX: Move callInProgress check inside mutex for atomicity
+        // BUG #1 FIX: Renamed lock to 'number-call-' to avoid conflict
+        return await this.mutex.withLock(
+          `number-call-${this.gameId}`,
+          async () => {
+            if (this.callInProgress) {
+              throw new Error('Number call already in progress');
+            }
+
+            this.callInProgress = true;
+            try {
+              return await this.executeSecureNumberCall();
+            } finally {
+              this.callInProgress = false;
+            }
+          },
+          {
+            timeout: 10000,
+            lockTTL: 15000,
+            maxRetries: 5
+          }
+        );
+      } catch (error: any) {
+        const isDisconnectError = error.message?.includes('disconnect') ||
+          error.message?.includes('connection') ||
+          error.message?.includes('network');
+
+        if (isDisconnectError && attempt < MAX_RETRIES) {
+          console.log(`🔄 Retry ${attempt + 1}/${MAX_RETRIES} after disconnect error...`);
+          // Exponential backoff
+          await new Promise(r => setTimeout(r, BASE_DELAY * attempt));
+          continue;
         }
 
-        this.callInProgress = true;
-        try {
-          return await this.executeSecureNumberCall();
-        } finally {
-          this.callInProgress = false;
-        }
-      },
-      {
-        timeout: 10000,
-        lockTTL: 15000,
-        maxRetries: 5
+        // Final failure or non-retryable error
+        console.error(`❌ Number call failed after ${attempt} attempts:`, error.message);
+        return {
+          number: 0,
+          timestamp: Date.now(),
+          sequenceId: 0,
+          success: false,
+          error: isDisconnectError
+            ? 'Connection lost. Please check your network and try again.'
+            : error.message || 'Unknown error'
+        };
       }
-    );
+    }
+
+    // Should never reach here, but just in case
+    return {
+      number: 0,
+      timestamp: Date.now(),
+      sequenceId: 0,
+      success: false,
+      error: 'Maximum retry attempts exceeded'
+    };
   }
 
   // Execute the actual number call with atomic Firebase operations
@@ -383,6 +472,11 @@ export class SecureNumberCaller {
   // Cleanup resources
   async cleanup(): Promise<void> {
     console.log(`🧹 Cleaning up SecureNumberCaller for game: ${this.gameId}`);
+    // Unsubscribe from connection listener
+    if (this.connectionUnsubscribe) {
+      this.connectionUnsubscribe();
+      this.connectionUnsubscribe = null;
+    }
     await this.mutex.cleanup();
     this.reset();
   }
