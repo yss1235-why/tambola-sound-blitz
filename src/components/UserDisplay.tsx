@@ -434,20 +434,20 @@ export const UserDisplay: React.FC = () => {
                     <div
                       className={`p-3 rounded-lg border-2 transition-all duration-300 ${prize.won
                         ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg cursor-pointer hover:shadow-xl'
-                        : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
+                        : 'bg-gradient-to-r from-muted to-muted/80 border-border'
                         }`}
                       onClick={() => prize.won && togglePrizeDetails(prize.id)}
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-foreground'}`}>
+                          <h3 className={`font-bold ${prize.won ? 'text-green-900' : 'text-foreground'}`}>
                             {prize.name}
                           </h3>
-                          <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-muted-foreground'}`}>
+                          <p className={`text-sm ${prize.won ? 'text-green-700' : 'text-muted-foreground'}`}>
                             {prize.pattern}
                           </p>
                           {prize.won && prize.winners && prize.winners.length > 0 && (
-                            <p className="text-sm font-medium text-green-700 mt-1">
+                            <p className="text-sm font-medium text-green-800 mt-1">
                               Won by: {prize.winners.map(w => w.name).join(', ')}
                             </p>
                           )}

@@ -821,10 +821,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   // ================== MAIN RENDER ==================
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-8">
         {/* Unified Header */}
-        <div className="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow-sm border">
+        <div className="flex justify-between items-center mb-6 p-4 bg-card rounded-lg shadow-sm border">
           <div className="flex items-center space-x-4">
             <span className="text-lg font-semibold text-foreground">Welcome, {user.name}</span>
             <Badge variant={subscriptionStatus.variant} className="text-xs">
