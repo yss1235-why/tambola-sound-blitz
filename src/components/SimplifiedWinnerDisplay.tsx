@@ -185,7 +185,7 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
                         {prize.winners && prize.winners.length > 0 && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
                             {prize.winners.map((winner, idx) => (
-                              <div key={idx} className="bg-white rounded p-1.5 border border-green-200">
+                              <div key={idx} className="bg-card rounded p-1.5 border border-green-200">
                                 <div className="flex items-center justify-center space-x-1">
                                   <User className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                                   <span className="font-medium text-foreground text-xs sm:text-sm truncate">
