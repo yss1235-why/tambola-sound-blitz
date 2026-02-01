@@ -7,12 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { 
-  Users, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Key, 
+import {
+  Users,
+  Plus,
+  Edit,
+  Trash2,
+  Key,
   Calendar,
   UserCheck,
   UserX,
@@ -20,11 +20,12 @@ import {
   User,
   Phone
 } from 'lucide-react';
-import { 
-  firebaseService, 
-  HostUser, 
-  AdminUser 
+import {
+  firebaseService,
+  HostUser,
+  AdminUser
 } from '@/services/firebase';
+import { ThemeConfigurator } from '@/components/admin/ThemeConfigurator'; // ✅ NEW: Theme config
 
 interface AdminDashboardProps {
   user: AdminUser;
@@ -91,12 +92,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   // ✅ FIXED: Load hosts on component mount with robust subscription cleanup
   useEffect(() => {
     loadHosts();
-    
+
     // ✅ FIXED: Clean up existing subscription first
     if (subscriptionRef.current) {
       subscriptionRef.current();
     }
-    
+
     // Subscribe to real-time hosts updates
     const unsubscribe = firebaseService.subscribeToHosts((updatedHosts) => {
       if (updatedHosts) {
@@ -181,7 +182,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
       setShowEditDialog(false);
       setSelectedHost(null);
-      
+
     } catch (error: any) {
       console.error('Update host error:', error);
       alert(error.message || 'Failed to update host');
@@ -214,11 +215,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     setIsLoading(true);
     try {
       await firebaseService.changeHostPassword(selectedHost.uid, newPassword);
-      
+
       setShowPasswordDialog(false);
       setSelectedHost(null);
       setNewPassword('');
-      
+
     } catch (error: any) {
       console.error('Change password error:', error);
       alert(error.message || 'Failed to change password');
@@ -355,6 +356,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           </Card>
         </div>
 
+        {/* ✅ NEW: Theme Configuration Section */}
+        <ThemeConfigurator adminUid={user.uid} />
+
         {/* Hosts Management */}
         <Card>
           <CardHeader>
@@ -411,7 +415,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                             </div>
                           </td>
                           <td className="p-3">
-                            <Badge 
+                            <Badge
                               variant={host.isActive ? "default" : "secondary"}
                               className="cursor-pointer"
                               onClick={() => handleToggleStatus(host)}

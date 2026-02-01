@@ -5,6 +5,7 @@ import { UserLandingPage } from '@/components/UserLandingPage';
 import { GameHost } from '@/components/GameHost';
 import { AdminDashboard } from '@/components/AdminDashboard';
 import { GameDataProvider } from '@/providers/GameDataProvider';
+import { ThemeProvider } from '@/providers/ThemeProvider'; // ✅ NEW: Theme support
 import { useAuth } from '@/hooks/useAuth'; // ✅ CHANGED: Use simplified auth hook
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
 import { AdminUser, HostUser } from '@/services/firebase';
@@ -14,14 +15,14 @@ import { DEFAULT_GESTURE_CONFIG } from '@/utils/gestureConfig';
 const Index = () => {
   // ✅ SIMPLIFIED: Use new auth hook (same interface, better implementation)
   const auth = useAuth();
-  
+
   // ✅ UNCHANGED: Games loading works the same
   const { data: allGames, loading: gamesLoading, error: gamesError } = useActiveGamesSubscription();
-  
+
   // ✅ UNCHANGED: Local state management
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [showAdminLoginViaGesture, setShowAdminLoginViaGesture] = useState(false);
-  
+
   // ✅ REMOVED: No need for manual auth initialization effects
   // The old useEffect for auto-initializing auth is no longer needed
   // Auth is always ready in the simplified version
@@ -30,19 +31,19 @@ const Index = () => {
   const handleUserLogin = useCallback(async (type: 'admin' | 'host', email: string, password: string) => {
     try {
       console.log(`🔐 Handling ${type} login from Index page`);
-      
+
       if (type === 'admin') {
         await auth.loginAdmin(email, password);
       } else {
         await auth.loginHost(email, password);
       }
-      
+
       // For hosts, set special identifier for their current game
       if (type === 'host') {
         console.log('🎮 Setting host current game view');
         setSelectedGameId('HOST_CURRENT');
       }
-      
+
       console.log(`✅ ${type} login handled successfully`);
       return true;
     } catch (error: any) {
@@ -79,17 +80,17 @@ const Index = () => {
     // No-op since auth is always ready, but keep for compatibility
     await auth.initializeAuth();
   }, [auth]);
- const handleGestureComplete = useCallback(() => {
-  console.log('🎯 Admin gesture detected, opening login dialog');
-  
-  // Clear any existing auth errors first
-  if (auth.error) {
-    auth.clearError();
-  }
-  
-  setShowAdminLoginViaGesture(true);
-}, [auth]);
-// ✅ NEW: Handle gesture state cleanup
+  const handleGestureComplete = useCallback(() => {
+    console.log('🎯 Admin gesture detected, opening login dialog');
+
+    // Clear any existing auth errors first
+    if (auth.error) {
+      auth.clearError();
+    }
+
+    setShowAdminLoginViaGesture(true);
+  }, [auth]);
+  // ✅ NEW: Handle gesture state cleanup
   useEffect(() => {
     // Reset gesture state when user successfully logs in
     if (auth.user && showAdminLoginViaGesture) {
@@ -111,27 +112,31 @@ const Index = () => {
       console.log('🎨 Rendering admin dashboard');
       return <AdminDashboard user={auth.user as AdminUser} />;
     }
-    
+
     // Show host dashboard if authenticated as host
     if (auth.user && auth.userRole === 'host') {
       console.log('🎨 Rendering host dashboard');
       return (
-        <GameDataProvider userId={auth.user.uid}>
-          <GameHost user={auth.user as HostUser} userRole={auth.userRole} />
-        </GameDataProvider>
+        <ThemeProvider>
+          <GameDataProvider userId={auth.user.uid}>
+            <GameHost user={auth.user as HostUser} userRole={auth.userRole} />
+          </GameDataProvider>
+        </ThemeProvider>
       );
     }
 
-    // Show public landing page
+    // Show public landing page (Player view with theme support)
     console.log('🎨 Rendering public landing page');
     return (
-      <UserLandingPage 
-        onGameSelection={handleGameSelection}
-        selectedGameId={selectedGameId}
-        preloadedGames={allGames || []}
-        gamesLoading={gamesLoading}
-        gamesError={gamesError}
-      />
+      <ThemeProvider>
+        <UserLandingPage
+          onGameSelection={handleGameSelection}
+          selectedGameId={selectedGameId}
+          preloadedGames={allGames || []}
+          gamesLoading={gamesLoading}
+          gamesError={gamesError}
+        />
+      </ThemeProvider>
     );
   };
 
@@ -150,14 +155,14 @@ const Index = () => {
   return (
     <div className="min-h-screen">
       {/* ✅ UNCHANGED: Header interface remains exactly the same */}
-      <Header 
+      <Header
         // Auth state - same interface as before
         currentUser={auth.user}
         userRole={auth.userRole}
         authLoading={auth.loading}
         authError={auth.error}
         authInitialized={auth.initialized}
-        
+
         // Auth actions - same interface as before
         onRequestLogin={handleRequestLogin}
         onUserLogin={handleUserLogin}
@@ -167,7 +172,7 @@ const Index = () => {
         forceShowAdminLogin={showAdminLoginViaGesture}
         onAdminLoginClose={handleAdminLoginClose}
       />
-      
+
       {/* ✅ UNCHANGED: Loading overlay logic */}
       {showAuthLoading && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 flex items-center justify-center">
@@ -182,7 +187,7 @@ const Index = () => {
 
       {/* ✅ UNCHANGED: Content rendering */}
       {renderContent()}
-      
+
       {/* ✅ UNCHANGED: Error display */}
       {auth.error && (
         <div className="fixed bottom-4 right-4 bg-red-50 border border-red-200 rounded-lg p-4 shadow-lg z-50">
@@ -200,7 +205,7 @@ const Index = () => {
           </div>
         </div>
       )}
-      
+
       {/* ✅ UPDATED: Better development indicators */}
       {process.env.NODE_ENV === 'development' && (
         <div className="fixed bottom-4 left-4 bg-black/80 text-white p-2 rounded text-xs z-50">
@@ -212,14 +217,14 @@ const Index = () => {
         </div>
       )}
       {/* ✅ NEW: Gesture Detection Component */}
-         <GestureDetector
-          onGestureComplete={handleGestureComplete}
-          enabled={!auth.user}
-          config={{
-            ...DEFAULT_GESTURE_CONFIG,
-            debugMode: process.env.NODE_ENV === 'development'
-          }}
-        />
+      <GestureDetector
+        onGestureComplete={handleGestureComplete}
+        enabled={!auth.user}
+        config={{
+          ...DEFAULT_GESTURE_CONFIG,
+          debugMode: process.env.NODE_ENV === 'development'
+        }}
+      />
     </div>
   );
 };
