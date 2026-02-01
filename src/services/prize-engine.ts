@@ -1,10 +1,11 @@
 // src/services/prize-engine.ts - FIXED with Traditional Logic
 
-import { 
+import {
   type TambolaTicket,
   type Prize,
   type TicketMetadata
 } from './firebase-core';
+import { FEATURE_FLAGS } from './feature-flags';
 
 // ================== UTILITY FUNCTIONS ==================
 
@@ -64,7 +65,7 @@ export const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => 
 export const getTicketCorners = (ticket: TambolaTicket): number[] => {
   const topRow = ticket.rows[0].filter(n => n > 0);
   const bottomRow = ticket.rows[2].filter(n => n > 0);
-  
+
   return [
     topRow[0],     // First top
     topRow[topRow.length - 1],     // Last top
@@ -80,7 +81,7 @@ export const getStarCorners = (ticket: TambolaTicket): number[] => {
   const corners = getTicketCorners(ticket);
   const middleRow = ticket.rows[1].filter(n => n > 0);
   const center = middleRow[Math.floor(middleRow.length / 2)]; // Center number (middle of middle row)
-  
+
   return [...corners, center];
 };
 
@@ -107,7 +108,7 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 2
     },
-     fullSheet: {
+    fullSheet: {
       id: 'fullSheet',
       name: 'Full Sheet',
       pattern: 'Complete 6-ticket set',
@@ -123,7 +124,7 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 4
     },
-      starCorner: {
+    starCorner: {
       id: 'starCorner',
       name: 'Star Corner',
       pattern: '4 corners + center',
@@ -131,7 +132,7 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 5
     },
-   
+
     corners: {
       id: 'corners',
       name: 'Corners',
@@ -164,8 +165,8 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 9
     },
-  
-   earlyFive: {
+
+    earlyFive: {
       id: 'earlyFive',
       name: 'Early Five',
       pattern: 'Any 5 numbers',
@@ -173,7 +174,7 @@ export const createPrizeConfiguration = (selectedPrizes: string[]): { [prizeId: 
       won: false,
       order: 10
     }
-    
+
   };
 
   const prizes: { [prizeId: string]: Prize } = {};
@@ -200,10 +201,10 @@ const validateHalfSheetTraditional = (
   const winners: { [playerName: string]: { ticketIds: string[]; setId: number; positions: number[] } } = {};
 
   // Group booked tickets by player and setId
-  const playerSets: { 
-    [playerName: string]: { 
-      [setId: number]: TambolaTicket[] 
-    } 
+  const playerSets: {
+    [playerName: string]: {
+      [setId: number]: TambolaTicket[]
+    }
   } = {};
 
   for (const ticket of Object.values(tickets)) {
@@ -222,7 +223,7 @@ const validateHalfSheetTraditional = (
   for (const [playerName, sets] of Object.entries(playerSets)) {
     for (const [setId, setTickets] of Object.entries(sets)) {
       const setIdNum = parseInt(setId);
-      
+
       // ✅ Check FIRST HALF [1,2,3] independently
       const firstHalfTickets = setTickets.filter(t => [1, 2, 3].includes(t.positionInSet));
       if (firstHalfTickets.length === 3) {
@@ -232,7 +233,7 @@ const validateHalfSheetTraditional = (
           const markedCount = allNumbers.filter(num => calledNumbers.includes(num)).length;
           return markedCount >= 2;
         });
-        
+
         if (allHave2Plus) {
           // Create unique key for multiple wins per player
           const winnerKey = `${playerName}_Set${setId}_First`;
@@ -243,7 +244,7 @@ const validateHalfSheetTraditional = (
           };
         }
       }
-      
+
       // ✅ Check SECOND HALF [4,5,6] independently
       const secondHalfTickets = setTickets.filter(t => [4, 5, 6].includes(t.positionInSet));
       if (secondHalfTickets.length === 3) {
@@ -253,7 +254,7 @@ const validateHalfSheetTraditional = (
           const markedCount = allNumbers.filter(num => calledNumbers.includes(num)).length;
           return markedCount >= 2;
         });
-        
+
         if (allHave2Plus) {
           // Create unique key for multiple wins per player
           const winnerKey = `${playerName}_Set${setId}_Second`;
@@ -282,10 +283,10 @@ const validateFullSheetTraditional = (
   const winners: { [playerName: string]: { ticketIds: string[]; setId: number } } = {};
 
   // Group booked tickets by player and setId
-  const playerSets: { 
-    [playerName: string]: { 
-      [setId: number]: TambolaTicket[] 
-    } 
+  const playerSets: {
+    [playerName: string]: {
+      [setId: number]: TambolaTicket[]
+    }
   } = {};
 
   for (const ticket of Object.values(tickets)) {
@@ -304,22 +305,22 @@ const validateFullSheetTraditional = (
   for (const [playerName, sets] of Object.entries(playerSets)) {
     for (const [setId, setTickets] of Object.entries(sets)) {
       const setIdNum = parseInt(setId);
-      
+
       // Check if player has all 6 positions [1,2,3,4,5,6]
       if (setTickets.length === 6) {
         const positions = setTickets.map(t => t.positionInSet).sort();
         const expectedPositions = [1, 2, 3, 4, 5, 6];
-        
+
         // Verify all positions are present
         const hasAllPositions = expectedPositions.every(pos => positions.includes(pos));
-        
+
         if (hasAllPositions) {
           // Verify each ticket has 2+ marked numbers
           const allHave2Plus = setTickets.every(t => {
             const markedCount = t.metadata?.allNumbers.filter(num => calledNumbers.includes(num)).length || 0;
             return markedCount >= 2;
           });
-          
+
           if (allHave2Plus) {
             winners[playerName] = {
               ticketIds: setTickets.map(t => t.ticketId),
@@ -346,7 +347,7 @@ const validateEarlyFive = (
   calledNumbers: number[]
 ): boolean => {
   try {
-    const markedCount = ticket.metadata?.allNumbers.filter(num => 
+    const markedCount = ticket.metadata?.allNumbers.filter(num =>
       calledNumbers.includes(num)
     ).length || 0;
     return markedCount >= 5;
@@ -374,7 +375,7 @@ const validateSecondFullHouse = (
     // Step 2: Current ticket must have all numbers marked
     const allNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
     const hasAllNumbers = allNumbers.every(num => calledNumbers.includes(num));
-    
+
     console.log(`🔍 Second Full House validation for ${ticket.ticketId}:`, {
       allNumbers: allNumbers.length,
       calledNumbers: calledNumbers.length,
@@ -390,28 +391,35 @@ const validateSecondFullHouse = (
     // Step 4: 🔧 FIXED - Handle missing/invalid winners list
     const fullHouseWinners = prizes.fullHouse.winners;
     if (!fullHouseWinners || !Array.isArray(fullHouseWinners)) {
-      console.warn(`⚠️ Full House won but winners list is invalid:`, { 
-        won: prizes.fullHouse.won, 
-        winners: fullHouseWinners 
+      console.warn(`⚠️ Full House won but winners list is invalid:`, {
+        won: prizes.fullHouse.won,
+        winners: fullHouseWinners
       });
-      // Conservative approach: allow Second Full House if data is corrupted
+
+      // Phase 2 fix: strict validation rejects corrupted data
+      if (FEATURE_FLAGS.USE_STRICT_SECOND_FULLHOUSE) {
+        console.error('❌ Rejecting Second Full House - corrupted winners data');
+        return false;
+      }
+
+      // Legacy behavior: allow Second Full House if data is corrupted
       console.log(`🛡️ Allowing Second Full House due to missing Full House winners data`);
       return true;
     }
 
     // Step 5: Check if this ticket already won Full House
     const alreadyWonFullHouse = fullHouseWinners.some(winner => winner.ticketId === ticket.ticketId);
-    
+
     if (alreadyWonFullHouse) {
       console.log(`⏸️ Second Full House excluded: Ticket ${ticket.ticketId} already won Full House`);
       return false;
     }
 
     // Step 6: Success!
-    console.log(`🏆 Second Full House winner found:`, { 
-      ticketId: ticket.ticketId, 
+    console.log(`🏆 Second Full House winner found:`, {
+      ticketId: ticket.ticketId,
       playerName: ticket.playerName,
-      allNumbers: allNumbers.length 
+      allNumbers: allNumbers.length
     });
     return true;
 
@@ -434,8 +442,8 @@ export const validateTicketsForPrizes = async (
   const winners: { [prizeId: string]: any } = {};
 
   for (const [prizeId, prize] of Object.entries(prizes)) {
-  console.log(`🔍 Prize Loop: ${prizeId}, won: ${prize.won}`);
-  if (prize.won) continue;
+    console.log(`🔍 Prize Loop: ${prizeId}, won: ${prize.won}`);
+    if (prize.won) continue;
 
     const prizeWinners: { name: string; ticketId: string; phone?: string }[] = [];
 
@@ -443,13 +451,23 @@ export const validateTicketsForPrizes = async (
     if (prizeId === 'halfSheet') {
       const halfSheetWinners = validateHalfSheetTraditional(tickets, calledNumbers);
       for (const [winnerKey, winData] of Object.entries(halfSheetWinners)) {
-        // Extract player name from winner key (format: "PlayerName_Set1_First")
-        const playerName = winnerKey.split('_')[0];
+        // Extract player name from winner key (format: "PlayerName_Set1_First" or "John_Smith_Set1_First")
+        let playerName: string;
+
+        if (FEATURE_FLAGS.USE_FIXED_NAME_PARSING) {
+          // FIXED: Split only on "_Set" to preserve names with underscores like "John_Smith"
+          const setIndex = winnerKey.indexOf('_Set');
+          playerName = setIndex > 0 ? winnerKey.substring(0, setIndex) : winnerKey.split('_')[0];
+        } else {
+          // Legacy behavior (buggy for names with underscores)
+          playerName = winnerKey.split('_')[0];
+        }
+
         const setInfo = winnerKey.includes('_First') ? 'First Half' : 'Second Half';
-        
+
         prizeWinners.push({
           name: `${playerName} (Set ${winData.setId} - ${setInfo})`,
-          ticketId: winData.ticketIds.join(','), 
+          ticketId: winData.ticketIds.join(','),
           phone: tickets[winData.ticketIds[0]]?.playerPhone
         });
       }
@@ -472,9 +490,9 @@ export const validateTicketsForPrizes = async (
         try {
           console.log(`🎯 Entering switch for: ${prizeId} (ticket: ${ticketId})`);
           switch (prizeId) {
-           case 'earlyFive':
-            hasWon = validateEarlyFive(ticket, calledNumbers);
-            break;
+            case 'earlyFive':
+              hasWon = validateEarlyFive(ticket, calledNumbers);
+              break;
 
             case 'fullHouse':
               const allNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
@@ -517,20 +535,20 @@ export const validateTicketsForPrizes = async (
           hasWon = false;
         }
 
-       if (hasWon) {
-  console.log(`✅ Adding ${prizeId} winner:`, {
-    name: ticket.playerName,
-    ticketId: ticket.ticketId,
-    phone: ticket.playerPhone
-  });
-  prizeWinners.push({
-    name: ticket.playerName,
-    ticketId: ticket.ticketId,
-    phone: ticket.playerPhone
-  });
-} else if (prizeId === 'secondFullHouse') {
-  console.log(`❌ Second Full House NOT won for ticket ${ticket.ticketId}`);
-}
+        if (hasWon) {
+          console.log(`✅ Adding ${prizeId} winner:`, {
+            name: ticket.playerName,
+            ticketId: ticket.ticketId,
+            phone: ticket.playerPhone
+          });
+          prizeWinners.push({
+            name: ticket.playerName,
+            ticketId: ticket.ticketId,
+            phone: ticket.playerPhone
+          });
+        } else if (prizeId === 'secondFullHouse') {
+          console.log(`❌ Second Full House NOT won for ticket ${ticket.ticketId}`);
+        }
       }
     }
 

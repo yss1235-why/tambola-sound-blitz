@@ -17,14 +17,14 @@ interface HostControlsContextValue {
   pauseGame: () => Promise<void>;
   resumeGame: () => Promise<void>;
   endGame: () => Promise<void>;
-  
+
   // Configuration
   updateSpeechRate: (scaleValue: number) => Promise<void>;
-  
+
   // Status (race condition free)
   isProcessing: boolean;
   countdownTime: number;
-  
+
   // State machine status
   gameState: string;
   isGameIdle: boolean;
@@ -35,30 +35,30 @@ interface HostControlsContextValue {
   canPauseGame: boolean;
   canResumeGame: boolean;
   canEndGame: boolean;
-  
+
   speechRate: number;
   speechRateScale: number;
-  
+
   // Audio completion handlers
   handleAudioComplete: () => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
   handleAudioStarted: (number: number) => void;
-  
- // Call interval configuration (now dynamic)
-callInterval: number;
-  
+
+  // Call interval configuration (now dynamic)
+  callInterval: number;
+
   // Firebase status
   firebasePaused: boolean;
-  
+
   // Preparation status
   isPreparingGame: boolean;
   preparationStatus: string;
   preparationProgress: number;
-  
+
   // Visual state management
   visualCalledNumbers: number[];
   setVisualCalledNumbers: React.Dispatch<React.SetStateAction<number[]>>;
-  
+
   // Audio system status
   isAudioReady: boolean;
   wasAutopaused: boolean;
@@ -77,10 +77,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   userId
 }) => {
   const { gameData } = useGameData();
-  
+
   // Resource management for cleanup
   const resourceManager = useGameResourceManager();
-  
+
   // Simple refs - only for timer management  
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -102,18 +102,18 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const [isPrizeAudioPlaying, setIsPrizeAudioPlaying] = React.useState(false);
   const [audioAnnouncingNumber, setAudioAnnouncingNumber] = React.useState<number | null>(null);
   // Calculate dynamic call interval based on speech rate
-const calculateCallInterval = useCallback((speechRate: number): number => {
-  // Base interval for normal speech (1.0 rate) 
-  const baseInterval = 1.0;
-  
-  // Inverse relationship: slower speech = longer interval, faster speech = shorter interval
-  const dynamicInterval = baseInterval / speechRate;
-  
-  // Clamp between reasonable bounds (0.5s to 2.0s)
-  return Math.max(0.5, Math.min(2.0, dynamicInterval));
-}, []);
+  const calculateCallInterval = useCallback((speechRate: number): number => {
+    // Base interval for normal speech (1.0 rate) 
+    const baseInterval = 1.0;
 
-const callInterval = calculateCallInterval(speechRate);
+    // Inverse relationship: slower speech = longer interval, faster speech = shorter interval
+    const dynamicInterval = baseInterval / speechRate;
+
+    // Clamp between reasonable bounds (0.5s to 2.0s)
+    return Math.max(0.5, Math.min(2.0, dynamicInterval));
+  }, []);
+
+  const callInterval = calculateCallInterval(speechRate);
   const [isPreparingGame, setIsPreparingGame] = React.useState(false);
   const [preparationStatus, setPreparationStatus] = React.useState<string>('');
   const [preparationProgress, setPreparationProgress] = React.useState(0);
@@ -122,7 +122,7 @@ const callInterval = calculateCallInterval(speechRate);
   const hasInitializedRef = React.useRef(false);
 
   // ================== TIMER CONTROL FUNCTIONS ==================
-  
+
   /**
    * Clear all timers - for cleanup
    */
@@ -147,10 +147,10 @@ const callInterval = calculateCallInterval(speechRate);
     isTimerActiveRef.current = false;
     isCallInProgressRef.current = false;
     isProcessingCompletion.current = false;
-    
+
     // Clear completion tracking
     audioCompletionId.current = null;
-    
+
     if (gameTimerRef.current) {
       clearTimeout(gameTimerRef.current);
       gameTimerRef.current = null;
@@ -160,16 +160,17 @@ const callInterval = calculateCallInterval(speechRate);
   // Secure number calling function for state machine
   const handleSecureNumberCall = useCallback(async (number: number) => {
     if (!gameData) return;
-    
+
     try {
       console.log(`🔢 State machine requesting number call: ${number}`);
-      
+
       if (!numberCallerRef.current) {
-        numberCallerRef.current = new SecureNumberCaller(gameData.gameId);
+        // BUG #2 FIX: Use singleton pattern
+        numberCallerRef.current = SecureNumberCaller.getInstance(gameData.gameId);
       }
-      
+
       const result = await numberCallerRef.current.callNextNumber();
-      
+
       if (result.success) {
         // Update visual state
         setVisualCalledNumbers(prev => {
@@ -179,7 +180,7 @@ const callInterval = calculateCallInterval(speechRate);
           return prev;
         });
       }
-      
+
       return result.success;
     } catch (error) {
       console.error('❌ Secure number call failed:', error);
@@ -192,13 +193,13 @@ const callInterval = calculateCallInterval(speechRate);
     console.log('🧹 State machine cleanup on game end');
     stopTimer();
     clearAllTimers();
-    
+
     // Cleanup secure number caller
     if (numberCallerRef.current) {
       numberCallerRef.current.cleanup();
       numberCallerRef.current = null;
     }
-    
+
     // Cleanup timer manager
     gameTimerManager.pauseAll();
   }, [stopTimer, clearAllTimers]);
@@ -215,7 +216,7 @@ const callInterval = calculateCallInterval(speechRate);
       setIsProcessing(false);
     }
   });
-  
+
   // Game state ref for timer coordination
   const gameStateRef = useRef({
     isActive: false,
@@ -226,7 +227,7 @@ const callInterval = calculateCallInterval(speechRate);
   /**
    * ✅ SIMPLIFIED: Handle audio completion - focus only on calling next number
    */
- const handleAudioComplete = useCallback(() => {
+  const handleAudioComplete = useCallback(() => {
     // Early exit if game is already over or component unmounted
     if (!gameData?.gameState?.isActive || gameData?.gameState?.gameOver) {
       console.log('🛑 Audio complete but game is over - ignoring callback');
@@ -236,49 +237,49 @@ const callInterval = calculateCallInterval(speechRate);
     // Generate unique completion ID for race prevention
     const completionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     audioCompletionId.current = completionId;
-    
+
     console.log(`🔊 Audio completion callback received (ID: ${completionId})`);
-    
+
     // Clear the announcing number since audio finished
     setAudioAnnouncingNumber(null);
-    
+
     // Prevent duplicate processing with immediate check
     if (isProcessingCompletion.current) {
       console.log('⚠️ Already processing a completion, ignoring');
       return;
     }
-    
+
     // Mark audio system as ready on first callback
     if (!isAudioReady) {
       setIsAudioReady(true);
       console.log('✅ Audio system now ready');
     }
-    
+
     isProcessingCompletion.current = true;
-    
+
     // Single setTimeout instead of nested ones
     setTimeout(() => {
       // Verify this completion is still valid and game is still active
-      if (audioCompletionId.current !== completionId || 
-          !gameData?.gameState?.isActive || 
-          gameData?.gameState?.gameOver || 
-          !isTimerActiveRef.current) {
+      if (audioCompletionId.current !== completionId ||
+        !gameData?.gameState?.isActive ||
+        gameData?.gameState?.gameOver ||
+        !isTimerActiveRef.current) {
         console.log('🚫 Completion invalid or game ended, stopping');
         isProcessingCompletion.current = false;
         return;
       }
-      
+
       // Reset flags
       isCallInProgressRef.current = false;
       isProcessingCompletion.current = false;
-      
+
       console.log('📞 Audio verified complete, scheduling next call');
-      
+
       // Use a single timeout for the next call - NO NESTED TIMEOUTS
       if (!isCallInProgressRef.current && isTimerActiveRef.current) {
         lastCallTimeRef.current = Date.now();
         isCallInProgressRef.current = true;
-        
+
         firebaseGame.callNextNumberAndContinue(gameData.gameId)
           .then(shouldContinue => {
             console.log(`🎮 Audio complete - next call result: ${shouldContinue}`);
@@ -297,7 +298,7 @@ const callInterval = calculateCallInterval(speechRate);
       }
     }, Math.max(300, callInterval * 1000)); // Use whichever is larger: 300ms or call interval
   }, [gameData, isAudioReady, callInterval, stopTimer]); // Removed resourceManager from dependencies
-  
+
   // Audio coordination
   const audioCoordination = useAudioGameCoordination({
     gameStateRef,
@@ -309,17 +310,17 @@ const callInterval = calculateCallInterval(speechRate);
 
   const startTimer = useCallback(() => {
     if (!gameData) return;
-    
+
     // Check if game is already over
     if (gameData.gameState?.gameOver) {
       console.log('🚫 Timer blocked - game is over');
       return;
     }
-    
+
     console.log('▶️ Starting centralized timer system');
-    
+
     stopTimer(); // Ensure no existing timer is running and clear tracking
-    
+
     // Reset all tracking refs
     isTimerActiveRef.current = true;
     isCallInProgressRef.current = false;
@@ -327,7 +328,7 @@ const callInterval = calculateCallInterval(speechRate);
     lastCompletedNumber.current = null;
     audioCompletionId.current = null;
     lastCallTimeRef.current = Date.now();
-    
+
     // Start immediately (no delay)
     console.log(`📞 Starting first number call immediately`);
 
@@ -337,7 +338,7 @@ const callInterval = calculateCallInterval(speechRate);
         console.log('⏰ Initial call but game inactive');
         return;
       }
-      
+
       // Check if game is already over
       if (gameData.gameState?.gameOver) {
         console.log('🚫 Number calling blocked - game is over');
@@ -345,36 +346,36 @@ const callInterval = calculateCallInterval(speechRate);
         isCallInProgressRef.current = false;
         return;
       }
-      
+
       // Safety check for initial call too
       if (isCallInProgressRef.current) {
         console.log('⚠️ Initial call blocked - already in progress');
         return;
       }
-      
+
       console.log('📞 Initial call - calling first number...');
       lastCallTimeRef.current = Date.now();
       isCallInProgressRef.current = true; // Mark call in progress
-      
-try {
-  // Use consistent firebase-game method
-  const shouldContinue = await firebaseGame.callNextNumberAndContinue(gameData.gameId);
-  
-  if (shouldContinue && isTimerActiveRef.current) {
-    console.log('✅ First number called successfully, waiting for audio...');
-    // Audio completion will schedule the next call
-  } else {
-    console.log('⏸️ Game should stop after first call');
-    isTimerActiveRef.current = false;
-    isCallInProgressRef.current = false;
-  }
-} catch (error) {
-  console.error('❌ Error in initial call:', error);
-  isTimerActiveRef.current = false;
-  isCallInProgressRef.current = false;
-}
+
+      try {
+        // Use consistent firebase-game method
+        const shouldContinue = await firebaseGame.callNextNumberAndContinue(gameData.gameId);
+
+        if (shouldContinue && isTimerActiveRef.current) {
+          console.log('✅ First number called successfully, waiting for audio...');
+          // Audio completion will schedule the next call
+        } else {
+          console.log('⏸️ Game should stop after first call');
+          isTimerActiveRef.current = false;
+          isCallInProgressRef.current = false;
+        }
+      } catch (error) {
+        console.error('❌ Error in initial call:', error);
+        isTimerActiveRef.current = false;
+        isCallInProgressRef.current = false;
+      }
     })();
-    
+
   }, [gameData, stopTimer]);
 
   // ================== COUNTDOWN RECOVERY LOGIC ==================
@@ -384,36 +385,36 @@ try {
    */
   const resumeCountdownTimer = useCallback((currentTimeLeft: number) => {
     if (countdownTimerRef.current || currentTimeLeft <= 0) return;
-    
+
     console.log(`🔄 Resuming countdown from ${currentTimeLeft}s`);
-    
+
     let timeLeft = currentTimeLeft;
     setCountdownTime(timeLeft);
-    
-   countdownTimerRef.current = setInterval(async () => {
+
+    countdownTimerRef.current = setInterval(async () => {
       timeLeft--;
       setCountdownTime(timeLeft);
-      
+
       // Update Firebase with retry logic
       try {
         await firebaseGame.updateCountdownTime(gameData!.gameId, timeLeft);
       } catch (error) {
         console.warn('⚠️ Countdown update failed:', error);
       }
-      
+
       if (timeLeft <= 0) {
         setCountdownTime(0);
         clearInterval(countdownTimerRef.current!);
         countdownTimerRef.current = null;
-        
+
         try {
           await firebaseGame.activateGameAfterCountdown(gameData!.gameId);
-          
+
           // Automatically set to paused state after countdown
-          setFirebasePaused(true); 
+          setFirebasePaused(true);
           setIsAudioReady(true);
           console.log('✅ Game activated but paused - host must click Resume to start');
-          
+
         } catch (error) {
           console.error('❌ Failed to activate game after countdown:', error);
         }
@@ -426,34 +427,34 @@ try {
   // Preparation method
   const prepareGame = useCallback(async (): Promise<boolean> => {
     if (!gameData) return false;
-    
+
     setIsPreparingGame(true);
     setPreparationStatus('Checking existing numbers...');
     setPreparationProgress(20);
-    
+
     try {
       const result = await firebaseGame.generateGameNumbers(gameData.gameId);
-      
+
       if (!result || !result.success) {
         throw new Error(result?.error || 'Game preparation failed');
       }
-      
+
       if (result.source === 'admin') {
         setPreparationStatus('Using admin-generated numbers');
       } else {
         setPreparationStatus('Host numbers generated successfully');
       }
       setPreparationProgress(80);
-      
+
       await new Promise(resolve => setTimeout(resolve, 800));
-      
+
       setPreparationStatus('Game ready to start');
       setPreparationProgress(100);
-      
+
       await new Promise(resolve => setTimeout(resolve, 500));
-      
+
       return true;
-      
+
     } catch (error: any) {
       console.error('❌ Game preparation failed:', error);
       setPreparationStatus(`Preparation failed: ${error.message}`);
@@ -466,47 +467,47 @@ try {
 
   const startGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
-    
+
     setIsProcessing(true);
     try {
       console.log(`🎮 Starting game preparation: ${gameData.gameId}`);
-      
+
       clearAllTimers();
-      
+
       const preparationSuccess = await prepareGame();
       if (!preparationSuccess) {
         throw new Error('Game preparation failed');
       }
-      
+
       console.log(`🎮 Starting countdown for: ${gameData.gameId}`);
-      
-     await firebaseGame.startGameWithCountdown(gameData.gameId);
-      
+
+      await firebaseGame.startGameWithCountdown(gameData.gameId);
+
       // Start countdown timer (UI + Firebase sync)
       let timeLeft = 10;
       setCountdownTime(timeLeft);
-      
+
       countdownTimerRef.current = setInterval(async () => {
         timeLeft--;
         setCountdownTime(timeLeft);
-        
+
         try {
-         await firebaseGame.updateCountdownTime(gameData.gameId, timeLeft);
+          await firebaseGame.updateCountdownTime(gameData.gameId, timeLeft);
         } catch (error) {
           console.error('Failed to update countdown in Firebase:', error);
         }
-        
+
         if (timeLeft <= 0) {
           clearInterval(countdownTimerRef.current!);
           countdownTimerRef.current = null;
-          
+
           try {
             await firebaseGame.activateGameAfterCountdown(gameData.gameId);
-            
-            setFirebasePaused(true); 
+
+            setFirebasePaused(true);
             setIsAudioReady(true);
             console.log('✅ Game activated but paused - host must click Resume to start');
-            
+
           } catch (error) {
             console.error('❌ Failed to activate game after countdown:', error);
           }
@@ -514,7 +515,7 @@ try {
       }, 1000);
 
       console.log(`✅ Game start initiated: ${gameData.gameId}`);
-      
+
     } catch (error: any) {
       console.error('❌ Start game error:', error);
       clearAllTimers();
@@ -543,20 +544,20 @@ try {
 
   const resumeGame = useCallback(async () => {
     if (!gameData) return;
-    
+
     setIsProcessing(true);
-    
+
     try {
       await firebaseGame.resumeGame(gameData.gameId);
       setFirebasePaused(false);
       setIsAudioReady(true);
       setWasAutopaused(false);
-      
+
       if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
         console.log('🔄 Restarting timer after manual resume');
         startTimer();
       }
-      
+
       console.log('✅ Game resumed successfully - audio system ready');
     } catch (error) {
       console.error('❌ Failed to resume game:', error);
@@ -567,17 +568,17 @@ try {
 
   const endGame = useCallback(async () => {
     if (!gameData || isProcessing) return;
-    
+
     setIsProcessing(true);
     try {
       console.log(`🏁 Ending game: ${gameData.gameId}`);
-      
+
       stopTimer();
-      
+
       await firebaseGame.endGame(gameData.gameId);
-      
+
       console.log(`✅ Game ended: ${gameData.gameId}`);
-      
+
     } catch (error: any) {
       console.error('❌ End game error:', error);
       throw new Error(error.message || 'Failed to end game');
@@ -587,20 +588,20 @@ try {
   }, [gameData, isProcessing, stopTimer]);
 
   const updateSpeechRate = useCallback(async (scaleValue: number) => {
- const actualRate = 1.0 + (scaleValue * 0.1);
-  setSpeechRateScale(scaleValue);
-  setSpeechRate(actualRate);
-  
-  // ✅ Save to Firebase for players to receive updated rate
-  if (gameData?.gameId) {
-    try {
-      await firebaseGame.updateSpeechRate(gameData.gameId, actualRate);
-      console.log(`🔊 Speech rate ${actualRate} saved to Firebase for game ${gameData.gameId}`);
-    } catch (error) {
-      console.error('❌ Failed to save speech rate to Firebase:', error);
+    const actualRate = 1.0 + (scaleValue * 0.1);
+    setSpeechRateScale(scaleValue);
+    setSpeechRate(actualRate);
+
+    // ✅ Save to Firebase for players to receive updated rate
+    if (gameData?.gameId) {
+      try {
+        await firebaseGame.updateSpeechRate(gameData.gameId, actualRate);
+        console.log(`🔊 Speech rate ${actualRate} saved to Firebase for game ${gameData.gameId}`);
+      } catch (error) {
+        console.error('❌ Failed to save speech rate to Firebase:', error);
+      }
     }
-  }
-}, [gameData?.gameId]);
+  }, [gameData?.gameId]);
 
   // Handle prize audio completion
   const handlePrizeAudioComplete = useCallback((prizeId: string) => {
@@ -609,14 +610,14 @@ try {
       setIsPrizeAudioPlaying(true);
       return;
     }
-    
+
     console.log(`🏆 Prize audio complete for: ${prizeId}`);
     setIsPrizeAudioPlaying(false);
-    
+
     setTimeout(() => {
       if (gameData && gameData.gameState.calledNumbers.length > visualCalledNumbers.length) {
         const lastAnnouncedNumber = gameData.gameState.calledNumbers[gameData.gameState.calledNumbers.length - 1];
-        
+
         setVisualCalledNumbers(prev => {
           const newNumbers = [...prev];
           if (!newNumbers.includes(lastAnnouncedNumber)) {
@@ -633,7 +634,7 @@ try {
   const handleAudioStarted = useCallback((number: number) => {
     console.log(`🎤 Audio started for number ${number}`);
     setAudioAnnouncingNumber(number);
-    
+
     setTimeout(() => {
       if (!isPrizeAudioPlaying) {
         setVisualCalledNumbers(prev => {
@@ -664,17 +665,17 @@ try {
     if (gameData?.gameId && !hasInitializedRef.current) {
       hasInitializedRef.current = true;
       const isActiveGame = gameData.gameState.isActive && !gameData.gameState.gameOver;
-      const isPausedGame = !gameData.gameState.isActive && !gameData.gameState.gameOver && 
-                          gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0;
-      
+      const isPausedGame = !gameData.gameState.isActive && !gameData.gameState.gameOver &&
+        gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0;
+
       if (isActiveGame || isPausedGame) {
         console.log(`🔄 Page refreshed during ${isActiveGame ? 'active' : 'paused'} game - implementing safety measures`);
-        
+
         setFirebasePaused(true);
         setWasAutopaused(true);
         setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
         setIsAudioReady(false);
-        
+
         if (isActiveGame) {
           firebaseGame.pauseGame(gameData.gameId)
             .then(() => console.log('✅ Game auto-paused on refresh for safety'))
@@ -682,7 +683,7 @@ try {
         } else {
           console.log('✅ Game was already paused - maintaining pause state after refresh');
         }
-        
+
       } else {
         setVisualCalledNumbers(gameData?.gameState?.calledNumbers || []);
         setIsAudioReady(false);
@@ -695,10 +696,11 @@ try {
   // Initialize secure number caller when game data changes
   useEffect(() => {
     if (gameData?.gameId && !numberCallerRef.current) {
-      numberCallerRef.current = new SecureNumberCaller(gameData.gameId);
-      console.log('🔢 Secure number caller initialized');
+      // BUG #2 FIX: Use singleton pattern
+      numberCallerRef.current = SecureNumberCaller.getInstance(gameData.gameId);
+      console.log('🔢 Secure number caller initialized (singleton)');
     }
-    
+
     const gameStateRef = {
       current: {
         isActive: gameData?.gameState?.isActive || false,
@@ -707,7 +709,7 @@ try {
       }
     };
     gameTimerManager.setGameStateRef(gameStateRef);
-    
+
   }, [gameData?.gameId]);
 
   // Cleanup
@@ -715,12 +717,12 @@ try {
     return () => {
       console.log(`🧹 Cleaning up HostControlsProvider`);
       clearAllTimers();
-      
+
       if (numberCallerRef.current) {
         numberCallerRef.current.cleanup();
         numberCallerRef.current = null;
       }
-      
+
       gameTimerManager.pauseAll();
     };
   }, [clearAllTimers]);
@@ -728,15 +730,15 @@ try {
   // Handle screen lock/unlock and browser tab visibility
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && 
-          gameData?.gameState?.isActive && 
-          !gameData?.gameState?.gameOver &&
-          !gameData?.gameState?.isCountdown &&
-          !firebasePaused &&
-          isAudioReady) {
-        
+      if (document.visibilityState === 'visible' &&
+        gameData?.gameState?.isActive &&
+        !gameData?.gameState?.gameOver &&
+        !gameData?.gameState?.isCountdown &&
+        !firebasePaused &&
+        isAudioReady) {
+
         console.log('🔄 Screen became visible - checking timer state');
-        
+
         if (!isTimerActiveRef.current) {
           console.log('🔄 Restarting timer after screen unlock');
           lastCallTimeRef.current = Date.now();
@@ -746,22 +748,22 @@ try {
     };
 
     const handleOnlineStatus = () => {
-      if (navigator.onLine && 
-          gameData?.gameState?.isActive && 
-          !gameData?.gameState?.gameOver &&
-          !isTimerActiveRef.current &&
-          !firebasePaused &&
-          isAudioReady) {
-        
+      if (navigator.onLine &&
+        gameData?.gameState?.isActive &&
+        !gameData?.gameState?.gameOver &&
+        !isTimerActiveRef.current &&
+        !firebasePaused &&
+        isAudioReady) {
+
         console.log('🔄 Network reconnected - checking timer state');
         lastCallTimeRef.current = Date.now();
         startTimer();
       }
     };
-      
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnlineStatus);
-    
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnlineStatus);
@@ -778,16 +780,16 @@ try {
 
   // Auto-resume when host returns to active game
   useEffect(() => {
-    if (gameData?.gameState?.isActive && 
-        !gameData?.gameState?.gameOver && 
-        !gameData?.gameState?.isCountdown &&
-        !isTimerActiveRef.current && 
-        !isProcessing &&
-        !firebasePaused &&
-        isAudioReady) {
-      
+    if (gameData?.gameState?.isActive &&
+      !gameData?.gameState?.gameOver &&
+      !gameData?.gameState?.isCountdown &&
+      !isTimerActiveRef.current &&
+      !isProcessing &&
+      !firebasePaused &&
+      isAudioReady) {
+
       console.log(`🔄 Host returned to active game - auto-resuming timer (audio ready)`);
-      
+
       setTimeout(() => {
         if (!isTimerActiveRef.current && !isCallInProgressRef.current) {
           lastCallTimeRef.current = Date.now();
@@ -800,24 +802,24 @@ try {
   // Firebase recovery detection
   useEffect(() => {
     if (!gameData?.gameId) return;
-    
+
     const recoveryRef = ref(database, `games/${gameData.gameId}/firebaseRecovered`);
     const unsubscribe = onValue(recoveryRef, async (snapshot) => {
       if (snapshot.val() === true) {
         console.log('🎉 Firebase recovery detected - marking for manual resume');
-        
+
         await update(ref(database, `games/${gameData.gameId}`), {
           firebaseRecovered: null,
           firebaseRecoveredAt: null
         });
-        
+
         if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
           console.log('✅ Firebase recovered - timer can be manually resumed');
           setFirebasePaused(false);
         }
       }
     });
-    
+
     return () => off(recoveryRef, 'value', unsubscribe);
   }, [gameData?.gameId, gameData?.gameState?.isActive, gameData?.gameState?.gameOver]);
 
@@ -825,7 +827,7 @@ try {
   useEffect(() => {
     if (gameData?.gameState.isCountdown && !countdownTimerRef.current && !isProcessing) {
       const currentCountdown = gameData.gameState.countdownTime || 0;
-      
+
       if (currentCountdown > 0) {
         console.log(`🚨 Detected lost countdown timer - auto-resuming from ${currentCountdown}s`);
         resumeCountdownTimer(currentCountdown);
@@ -849,10 +851,10 @@ try {
     pauseGame,
     resumeGame,
     endGame,
-    updateSpeechRate, 
+    updateSpeechRate,
     isProcessing,
     countdownTime,
-    
+
     // State machine status
     gameState: stateMachine.state as string,
     isGameIdle: stateMachine.isIdle,
@@ -863,9 +865,9 @@ try {
     canPauseGame: stateMachine.canPause(),
     canResumeGame: stateMachine.canResume(),
     canEndGame: stateMachine.canEnd(),
-    
-    speechRate, 
-    speechRateScale, 
+
+    speechRate,
+    speechRateScale,
     handleAudioComplete,
     handlePrizeAudioComplete,
     handleAudioStarted,

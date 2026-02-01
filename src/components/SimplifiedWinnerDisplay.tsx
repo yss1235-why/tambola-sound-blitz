@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Trophy, User, Play, CheckCircle } from 'lucide-react';
 import { GameData } from '@/services/firebase';
+import { audioCoordinator } from '@/services/AudioCoordinator';
 
 interface SimplifiedWinnerDisplayProps {
   gameData: GameData;
@@ -89,21 +90,19 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
     // Pick a random message
     const randomMessage = funMessages[Math.floor(Math.random() * funMessages.length)];
 
-    // Play after 2 second delay
+    // AUDIO-001 FIX: Use audioCoordinator instead of direct speechSynthesis
+    // This prevents killing other queued audio and ensures proper sequencing
     const timer = setTimeout(() => {
-      if (window.speechSynthesis) {
-        // Cancel any ongoing speech
-        window.speechSynthesis.cancel();
+      console.log('🎯 Queueing Game Over audio via audioCoordinator:', randomMessage);
 
-        // Create and play the announcement
-        const utterance = new SpeechSynthesisUtterance(randomMessage);
-        utterance.rate = 0.95; // Slightly slower for clarity
-        utterance.pitch = 1.15; // Higher pitch for excitement
-        utterance.volume = 1.0; // Full volume
-
-        console.log('🎯 Playing Game Over audio:', randomMessage);
-        window.speechSynthesis.speak(utterance);
-      }
+      // Queue the game over audio through the coordinator
+      // Note: audioCoordinator.playGameOverAudio uses a fixed message,
+      // so we log the fun message but let the coordinator handle audio
+      audioCoordinator.playGameOverAudio(() => {
+        console.log('✅ SimplifiedWinnerDisplay: Game over audio completed');
+      }).catch(error => {
+        console.error('❌ SimplifiedWinnerDisplay: Game over audio failed:', error);
+      });
     }, 2000); // 2 second delay
 
     // Cleanup function

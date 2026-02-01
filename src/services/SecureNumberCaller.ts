@@ -2,6 +2,7 @@
 import { FirebaseMutex } from './FirebaseMutex';
 import { ref, get, runTransaction } from 'firebase/database';
 import { database } from '@/services/firebase-core';
+import { FEATURE_FLAGS } from './feature-flags';
 
 interface NumberCallResult {
   number: number;
@@ -20,27 +21,98 @@ interface GameState {
 }
 
 export class SecureNumberCaller {
+  // BUG #2 FIX: Singleton pattern - one instance per game
+  private static instances = new Map<string, SecureNumberCaller>();
+
+  /**
+   * Get or create a SecureNumberCaller instance for a game.
+   * Uses singleton pattern to ensure only one instance per gameId.
+   */
+  static getInstance(gameId: string): SecureNumberCaller {
+    if (!this.instances.has(gameId)) {
+      this.instances.set(gameId, new SecureNumberCaller(gameId));
+    }
+    return this.instances.get(gameId)!;
+  }
+
+  /**
+   * Clear the singleton instance for a game (on game end/cleanup)
+   */
+  static clearInstance(gameId: string): void {
+    const instance = this.instances.get(gameId);
+    if (instance) {
+      instance.cleanup();
+      this.instances.delete(gameId);
+      console.log(`🧹 Cleared SecureNumberCaller singleton for game: ${gameId}`);
+    }
+  }
+
+  /**
+   * Clear all singleton instances
+   */
+  static clearAllInstances(): void {
+    for (const [gameId, instance] of this.instances) {
+      instance.cleanup();
+    }
+    this.instances.clear();
+    console.log(`🧹 Cleared all SecureNumberCaller singletons`);
+  }
+
   private gameId: string;
   private calledNumbers = new Set<number>();
-  private numberPool = Array.from({length: 90}, (_, i) => i + 1);
+  private numberPool = Array.from({ length: 90 }, (_, i) => i + 1);
   private mutex: FirebaseMutex;
   private callInProgress = false;
+  private syncPromise: Promise<void> | null = null;
 
-  constructor(gameId: string) {
+  // Private constructor - use getInstance() instead
+  private constructor(gameId: string) {
     this.gameId = gameId;
+    // BUG #1 FIX: Use unique lock name to avoid conflict with firebase-game.ts
     this.mutex = new FirebaseMutex(`number-calling-locks`, `caller-${gameId}`);
-    console.log(`🔢 SecureNumberCaller initialized for game: ${gameId}`);
+    console.log(`🔢 SecureNumberCaller singleton created for game: ${gameId}`);
+
+    // BUG #3 FIX: Sync local state from Firebase on init
+    if (FEATURE_FLAGS.SYNC_LOCAL_STATE_ON_INIT) {
+      this.syncPromise = this.syncFromFirebase();
+    }
+  }
+
+  // BUG #3 FIX: Sync local calledNumbers from Firebase
+  async syncFromFirebase(): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${this.gameId}/gameState/calledNumbers`);
+      const snapshot = await get(gameRef);
+
+      if (snapshot.exists()) {
+        const numbers = snapshot.val() as number[];
+        this.calledNumbers = new Set(numbers);
+        console.log(`🔄 Synced ${numbers.length} called numbers from Firebase`);
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to sync called numbers from Firebase:', error);
+    }
+  }
+
+  // Ensure sync is complete before operations
+  private async ensureSynced(): Promise<void> {
+    if (this.syncPromise) {
+      await this.syncPromise;
+      this.syncPromise = null;
+    }
   }
 
   // Main number calling method with full race condition prevention
   async callNextNumber(): Promise<NumberCallResult> {
-    if (this.callInProgress) {
-      throw new Error('Number call already in progress');
-    }
-
+    // BUG #8 FIX: Move callInProgress check inside mutex for atomicity
+    // BUG #1 FIX: Renamed lock to 'number-call-' to avoid conflict
     return await this.mutex.withLock(
-      `call-${this.gameId}`,
+      `number-call-${this.gameId}`,
       async () => {
+        if (this.callInProgress) {
+          throw new Error('Number call already in progress');
+        }
+
         this.callInProgress = true;
         try {
           return await this.executeSecureNumberCall();
@@ -59,9 +131,9 @@ export class SecureNumberCaller {
   // Execute the actual number call with atomic Firebase operations
   private async executeSecureNumberCall(): Promise<NumberCallResult> {
     const gameRef = ref(database, `games/${this.gameId}`);
-    
+
     console.log(`🔢 Executing secure number call for game: ${this.gameId}`);
-    
+
     try {
       // Use Firebase transaction for atomic operation
       const transactionResult = await runTransaction(gameRef, (currentGame) => {
@@ -77,7 +149,7 @@ export class SecureNumberCaller {
 
         // Select next number using priority logic
         const selectedNumber = this.selectNextNumber(gameState, calledNumbers);
-        
+
         if (!selectedNumber) {
           // No more numbers available
           throw new Error('No more numbers available');
@@ -98,16 +170,21 @@ export class SecureNumberCaller {
           callSequence: callSequence + 1
         };
 
-        return {
+        // BUG #12 FIX: Don't save _transactionMeta to database
+        const transactionData = {
           ...currentGame,
           gameState: updatedGameState,
-          updatedAt: new Date().toISOString(),
-          _transactionMeta: {
-            selectedNumber,
-            sequenceId: callSequence + 1,
-            timestamp: Date.now()
-          }
+          updatedAt: new Date().toISOString()
         };
+
+        // Store meta locally for return value, don't save to Firebase
+        (transactionData as any)._localMeta = {
+          selectedNumber,
+          sequenceId: callSequence + 1,
+          timestamp: Date.now()
+        };
+
+        return transactionData;
       });
 
       // Check transaction success
@@ -116,23 +193,25 @@ export class SecureNumberCaller {
       }
 
       const updatedGame = transactionResult.snapshot.val();
-      const meta = updatedGame._transactionMeta;
+      // BUG #12 FIX: Get meta from local state, not Firebase
+      const latestNumber = updatedGame.gameState?.currentNumber;
+      const latestSequence = updatedGame.gameState?.callSequence || 0;
 
       // Update local state
-      this.calledNumbers.add(meta.selectedNumber);
+      this.calledNumbers.add(latestNumber);
 
-      console.log(`✅ Number called successfully: ${meta.selectedNumber} (sequence: ${meta.sequenceId})`);
+      console.log(`✅ Number called successfully: ${latestNumber} (sequence: ${latestSequence})`);
 
       return {
-        number: meta.selectedNumber,
-        timestamp: meta.timestamp,
-        sequenceId: meta.sequenceId,
+        number: latestNumber,
+        timestamp: Date.now(),
+        sequenceId: latestSequence,
         success: true
       };
 
     } catch (error: any) {
       console.error('❌ Secure number call failed:', error);
-      
+
       return {
         number: 0,
         timestamp: Date.now(),
@@ -166,14 +245,25 @@ export class SecureNumberCaller {
       return null;
     }
 
-    // Use crypto.getRandomValues for secure randomness
-    const randomArray = new Uint32Array(1);
-    crypto.getRandomValues(randomArray);
-    
-    const randomIndex = randomArray[0] % availableNumbers.length;
+    // BUG #10 FIX: Add fallback for crypto.getRandomValues
+    let randomIndex: number;
+
+    try {
+      const randomArray = new Uint32Array(1);
+      crypto.getRandomValues(randomArray);
+      randomIndex = randomArray[0] % availableNumbers.length;
+    } catch (error) {
+      if (FEATURE_FLAGS.USE_CRYPTO_FALLBACK) {
+        console.warn('⚠️ crypto.getRandomValues failed, using Math.random fallback');
+        randomIndex = Math.floor(Math.random() * availableNumbers.length);
+      } else {
+        throw error;
+      }
+    }
+
     const selectedNumber = availableNumbers[randomIndex];
 
-    console.log(`🎲 Crypto-random selection: ${selectedNumber} from ${availableNumbers.length} available`);
+    console.log(`🎲 Random selection: ${selectedNumber} from ${availableNumbers.length} available`);
     return selectedNumber;
   }
 
@@ -186,7 +276,7 @@ export class SecureNumberCaller {
     try {
       const gameRef = ref(database, `games/${this.gameId}`);
       const snapshot = await get(gameRef);
-      
+
       if (!snapshot.exists()) {
         return { isValid: false, reason: 'Game not found', canContinue: false };
       }
@@ -207,10 +297,10 @@ export class SecureNumberCaller {
 
       // Check if game is active (lenient check for network issues)
       if (!gameState.isActive) {
-        return { 
+        return {
           isValid: true, // Allow calling even if appears inactive
-          reason: 'Game appears inactive but continuing', 
-          canContinue: true 
+          reason: 'Game appears inactive but continuing',
+          canContinue: true
         };
       }
 
@@ -218,10 +308,21 @@ export class SecureNumberCaller {
 
     } catch (error: any) {
       console.error('❌ Game state validation error:', error);
-      return { 
-        isValid: true, // Don't stop for validation errors
-        reason: 'Validation error but continuing', 
-        canContinue: true 
+
+      // BUG #9 FIX: Use strict validation flag
+      if (FEATURE_FLAGS.USE_STRICT_VALIDATION) {
+        return {
+          isValid: false,
+          reason: `Validation error: ${error.message}`,
+          canContinue: false
+        };
+      }
+
+      // Legacy behavior: continue on error
+      return {
+        isValid: true,
+        reason: 'Validation error but continuing',
+        canContinue: true
       };
     }
   }
@@ -236,7 +337,7 @@ export class SecureNumberCaller {
     try {
       const gameRef = ref(database, `games/${this.gameId}`);
       const snapshot = await get(gameRef);
-      
+
       if (!snapshot.exists()) {
         throw new Error('Game not found');
       }

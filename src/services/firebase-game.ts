@@ -1,34 +1,35 @@
 // src/services/firebase-game.ts - COMPLETE: Original Methods + Option A Enhancements
 
-import { 
-  ref, 
-  set, 
-  get, 
-  push, 
-  update, 
-  remove, 
+import {
+  ref,
+  set,
+  get,
+  push,
+  update,
+  remove,
   query,
   orderByChild,
   equalTo,
-  onValue, 
+  onValue,
   off,
   runTransaction
 } from 'firebase/database';
 import { FirebaseMutex, numberCallingMutex } from '@/services/FirebaseMutex';
 import { SecureNumberCaller } from '@/services/SecureNumberCaller';
-import { database, removeUndefinedValues } from './firebase-core'; 
-import { 
-  validateTicketsForPrizes, 
+import { database, removeUndefinedValues } from './firebase-core';
+import {
+  validateTicketsForPrizes,
   createPrizeConfiguration,
   computeTicketMetadata,
   getTicketCorners,
   getStarCorners
 } from './prize-engine';
-import type { 
-  GameData, 
-  TambolaTicket, 
-  Prize, 
-  GameState, 
+import { FEATURE_FLAGS } from './feature-flags';
+import type {
+  GameData,
+  TambolaTicket,
+  Prize,
+  GameState,
   HostSettings,
   CreateGameConfig,
   TicketMetadata,
@@ -52,11 +53,45 @@ class FirebaseGameService {
   private numberCallers: Map<string, SecureNumberCaller> = new Map();
   private gameMutex = new FirebaseMutex('game-operations');
 
+  // BUG #6 FIX: Recover games stuck in finalizing/limbo state
+  async recoverLimboGame(gameId: string): Promise<boolean> {
+    if (!FEATURE_FLAGS.USE_LIMBO_RECOVERY) {
+      return false;
+    }
+
+    try {
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) return false;
+
+      const gameState = gameData.gameState;
+
+      // Check if game is in limbo (finalizing but not ended, and past scheduled time)
+      if (gameState.finalizing && !gameState.gameOver && gameState.scheduledEndAt) {
+        const scheduledEnd = new Date(gameState.scheduledEndAt);
+        const now = new Date();
+
+        // If scheduled end time has passed (with 10 second buffer), recover
+        if (now.getTime() > scheduledEnd.getTime() + 10000) {
+          console.log(`🔄 Recovering limbo game: ${gameId} (was scheduled to end at ${gameState.scheduledEndAt})`);
+
+          await this.endGame(gameId);
+          console.log(`✅ Limbo game recovered and ended: ${gameId}`);
+          return true;
+        }
+      }
+
+      return false;
+    } catch (error) {
+      console.error(`❌ Error recovering limbo game ${gameId}:`, error);
+      return false;
+    }
+  }
+
   // ================== TRANSACTION UTILITIES ==================
 
-async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
+  async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Promise<void> {
     const mutexKey = `transaction-${path}`;
-    
+
     // Prevent concurrent transactions on same path
     return await this.gameMutex.withLock(
       mutexKey,
@@ -64,117 +99,117 @@ async safeTransactionUpdate(path: string, updates: any, retries: number = 3): Pr
         for (let attempt = 1; attempt <= retries; attempt++) {
           try {
             console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
-            
+
             await runTransaction(ref(database, path), (currentData) => {
               if (currentData === null) {
                 return updates;
               }
-              
+
               // Deep merge to prevent overwriting
               return this.deepMerge(currentData, updates);
             });
-        
+
             console.log(`✅ Transaction successful for path: ${path}`);
             return;
-            
+
           } catch (error: any) {
             console.error(`❌ Transaction attempt ${attempt} failed for ${path}:`, error);
-            
+
             if (attempt === retries) {
               throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
             }
-            
+
             // Wait before retry (exponential backoff)
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
           }
         }
       }
-    ); 
+    );
   }
 
   // ================== GAME OPERATIONS ==================
 
- async createGame(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
-  try {
-    console.log(`🎮 Creating game for host: ${hostId} with database protection`);
-    
-    // STEP 1: Check for existing active games (non-atomic check first)
-    const existingActiveGame = await this.getHostCurrentGame(hostId);
-    if (existingActiveGame && !existingActiveGame.gameState.gameOver) {
-      throw new Error(`Host already has an active game: ${existingActiveGame.gameId}. Please complete or delete it first.`);
-    }
-    
-    // STEP 2: Atomic lock to prevent concurrent creation
-    const lockRef = ref(database, `hostLocks/${hostId}`);
-    
-    return await runTransaction(lockRef, (currentLock) => {
-      // If lock exists and is recent (within 30 seconds), reject
-      if (currentLock !== null) {
-        const lockAge = Date.now() - currentLock;
-        if (lockAge < 30000) { // 30 seconds
-          throw new Error('Host is already creating a game. Please wait.');
-        }
-        // If lock is old, we can override it (maybe previous creation failed)
+  async createGame(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
+    try {
+      console.log(`🎮 Creating game for host: ${hostId} with database protection`);
+
+      // STEP 1: Check for existing active games (non-atomic check first)
+      const existingActiveGame = await this.getHostCurrentGame(hostId);
+      if (existingActiveGame && !existingActiveGame.gameState.gameOver) {
+        throw new Error(`Host already has an active game: ${existingActiveGame.gameId}. Please complete or delete it first.`);
       }
-      
-      // Set new lock with current timestamp
-      return Date.now();
-      
-    }).then(async (transactionResult) => {
-      if (!transactionResult.committed) {
-        throw new Error('Failed to acquire creation lock');
-      }
-      
-      console.log('✅ Creation lock acquired, proceeding with game creation');
-      
-      try {
-        // STEP 3: Double-check no active game exists (inside lock)
-        const doubleCheckGame = await this.getHostCurrentGame(hostId);
-        if (doubleCheckGame && !doubleCheckGame.gameState.gameOver) {
-          throw new Error('Host created a game while we were acquiring lock');
+
+      // STEP 2: Atomic lock to prevent concurrent creation
+      const lockRef = ref(database, `hostLocks/${hostId}`);
+
+      return await runTransaction(lockRef, (currentLock) => {
+        // If lock exists and is recent (within 30 seconds), reject
+        if (currentLock !== null) {
+          const lockAge = Date.now() - currentLock;
+          if (lockAge < 30000) { // 30 seconds
+            throw new Error('Host is already creating a game. Please wait.');
+          }
+          // If lock is old, we can override it (maybe previous creation failed)
         }
-        
-        // STEP 4: Proceed with actual game creation
-        const gameData = await this.createGameInternal(config, hostId, ticketSetId, selectedPrizes);
-        
-        console.log(`✅ Game created successfully: ${gameData.gameId}`);
-        return gameData;
-        
-      } finally {
-        // STEP 5: Always clear the lock (success or failure)
+
+        // Set new lock with current timestamp
+        return Date.now();
+
+      }).then(async (transactionResult) => {
+        if (!transactionResult.committed) {
+          throw new Error('Failed to acquire creation lock');
+        }
+
+        console.log('✅ Creation lock acquired, proceeding with game creation');
+
         try {
-          await remove(lockRef);
-          console.log('✅ Creation lock released');
-        } catch (lockError) {
-          console.error('⚠️ Failed to release creation lock:', lockError);
+          // STEP 3: Double-check no active game exists (inside lock)
+          const doubleCheckGame = await this.getHostCurrentGame(hostId);
+          if (doubleCheckGame && !doubleCheckGame.gameState.gameOver) {
+            throw new Error('Host created a game while we were acquiring lock');
+          }
+
+          // STEP 4: Proceed with actual game creation
+          const gameData = await this.createGameInternal(config, hostId, ticketSetId, selectedPrizes);
+
+          console.log(`✅ Game created successfully: ${gameData.gameId}`);
+          return gameData;
+
+        } finally {
+          // STEP 5: Always clear the lock (success or failure)
+          try {
+            await remove(lockRef);
+            console.log('✅ Creation lock released');
+          } catch (lockError) {
+            console.error('⚠️ Failed to release creation lock:', lockError);
+          }
         }
-      }
-    });
-    
-  } catch (error: any) {
-    console.error('❌ Error creating game with protection:', error);
-    throw new Error(error.message || 'Failed to create game');
-  }
-}
-// HELPER: The actual game creation logic (separated for clarity)
-private async createGameInternal(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
-  const gameId = push(ref(database, 'games')).key;
-  if (!gameId) {
-    throw new Error('Failed to generate game ID');
-  }
+      });
 
-  const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
- const prizes = createPrizeConfiguration(selectedPrizes);
+    } catch (error: any) {
+      console.error('❌ Error creating game with protection:', error);
+      throw new Error(error.message || 'Failed to create game');
+    }
+  }
+  // HELPER: The actual game creation logic (separated for clarity)
+  private async createGameInternal(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
+    const gameId = push(ref(database, 'games')).key;
+    if (!gameId) {
+      throw new Error('Failed to generate game ID');
+    }
 
-  const gameData: GameData = {
-    gameId,
-    name: config.name,
-    hostId,
-    hostPhone: config.hostPhone,
-    createdAt: new Date().toISOString(),
-    maxTickets: config.maxTickets,
-    ticketPrice: config.ticketPrice,
-    gameState: {
+    const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
+    const prizes = createPrizeConfiguration(selectedPrizes);
+
+    const gameData: GameData = {
+      gameId,
+      name: config.name,
+      hostId,
+      hostPhone: config.hostPhone,
+      createdAt: new Date().toISOString(),
+      maxTickets: config.maxTickets,
+      ticketPrice: config.ticketPrice,
+      gameState: {
         isActive: false,
         isCountdown: false,
         countdownTime: 0,
@@ -183,16 +218,16 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
         currentNumber: null,
         speechRate: 1.0
       },
-    tickets,
-    prizes,
-    updatedAt: new Date().toISOString()
-  };
+      tickets,
+      prizes,
+      updatedAt: new Date().toISOString()
+    };
 
-  const newGameRef = ref(database, `games/${gameId}`);
-  await set(newGameRef, removeUndefinedValues(gameData));
-  
-  return gameData;
-}
+    const newGameRef = ref(database, `games/${gameId}`);
+    await set(newGameRef, removeUndefinedValues(gameData));
+
+    return gameData;
+  }
   async deleteGame(gameId: string): Promise<void> {
     try {
       await remove(ref(database, `games/${gameId}`));
@@ -217,13 +252,13 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     try {
       const gamesRef = query(ref(database, 'games'), orderByChild('hostId'), equalTo(hostId));
       const gamesSnapshot = await get(gamesRef);
-      
+
       if (!gamesSnapshot.exists()) {
         return null;
       }
 
       const games = Object.values(gamesSnapshot.val()) as GameData[];
-      const activeGame = games.find(game => 
+      const activeGame = games.find(game =>
         game.gameState && !game.gameState.gameOver
       );
 
@@ -242,7 +277,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       }
 
       const allGames = Object.values(gamesSnapshot.val()) as GameData[];
-      return allGames.filter(game => 
+      return allGames.filter(game =>
         game.gameState && !game.gameState.gameOver
       );
     } catch (error) {
@@ -267,35 +302,35 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
         if (updates.maxTickets !== undefined) {
           const bookedCount = Object.values(currentGame.tickets || {})
             .filter((ticket: any) => ticket.isBooked).length;
-          
+
           if (updates.maxTickets < bookedCount) {
             throw new Error(
               `Cannot set max tickets (${updates.maxTickets}) below current bookings (${bookedCount}). ` +
               `Please increase the number or cancel some bookings.`
             );
           }
-          
+
           if (updates.maxTickets < 1 || updates.maxTickets > 600) {
             throw new Error('Max tickets must be between 1 and 600');
           }
         }
-        
+
         if (updates.hostPhone !== undefined) {
           if (!updates.hostPhone.trim()) {
             throw new Error('Host phone number cannot be empty');
           }
         }
-        
+
         let finalUpdates: any = { ...updates };
-        
+
         if (updates.selectedPrizes) {
           console.log(`🏆 Processing prize changes for game: ${gameId}`);
-          
-         const newPrizes = createPrizeConfiguration(updates.selectedPrizes);
-          
+
+          const newPrizes = createPrizeConfiguration(updates.selectedPrizes);
+
           Object.keys(currentGame.prizes || {}).forEach(prizeId => {
             const currentPrize = currentGame.prizes[prizeId];
-            
+
             if (currentPrize.won && newPrizes[prizeId]) {
               newPrizes[prizeId] = {
                 ...newPrizes[prizeId],
@@ -307,15 +342,15 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
               console.log(`✅ Preserved winner data for prize: ${prizeId}`);
             }
           });
-          
+
           finalUpdates.prizes = newPrizes;
           delete finalUpdates.selectedPrizes;
         }
-        
+
         finalUpdates.updatedAt = new Date().toISOString();
-        
+
         return { ...currentGame, ...finalUpdates };
-        
+
       } catch (error: any) {
         console.error(`❌ Error updating live game settings for ${gameId}:`, error);
         throw error;
@@ -331,28 +366,28 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
   }): Promise<void> {
     try {
       console.log(`💾 Updating host template for: ${hostId}`, templateSettings);
-      
+
       if (templateSettings.maxTickets !== undefined) {
         if (templateSettings.maxTickets < 1 || templateSettings.maxTickets > 600) {
           throw new Error('Template max tickets must be between 1 and 600');
         }
       }
-      
+
       if (templateSettings.hostPhone !== undefined) {
         if (!templateSettings.hostPhone.trim()) {
           throw new Error('Template phone number cannot be empty');
         }
       }
-      
+
       const updates = {
         ...removeUndefinedValues(templateSettings),
         updatedAt: new Date().toISOString()
       };
-      
+
       await this.safeTransactionUpdate(`hostSettings/${hostId}`, updates);
-      
+
       console.log(`✅ Host template updated successfully for: ${hostId}`);
-      
+
     } catch (error: any) {
       console.error(`❌ Error updating host template for ${hostId}:`, error);
       throw new Error(error.message || 'Failed to update host template');
@@ -367,14 +402,14 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
   }): Promise<void> {
     try {
       console.log(`🔄 Updating game and template for game: ${gameId}, host: ${hostId}`);
-      
+
       // Update live game settings
       await this.updateLiveGameSettings(gameId, {
         maxTickets: settings.maxTickets,
         hostPhone: settings.hostPhone,
         selectedPrizes: settings.selectedPrizes
       });
-      
+
       // Update host template
       await this.updateHostTemplate(hostId, {
         hostPhone: settings.hostPhone,
@@ -382,9 +417,9 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
         selectedTicketSet: settings.selectedTicketSet,
         selectedPrizes: settings.selectedPrizes
       });
-      
+
       console.log(`✅ Game and template updated successfully`);
-      
+
     } catch (error: any) {
       console.error(`❌ Error updating game and template:`, error);
       throw error;
@@ -396,17 +431,17 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
   async loadTicketsFromSet(ticketSetId: string, maxTickets: number): Promise<{ [ticketId: string]: TambolaTicket }> {
     try {
       console.log(`📁 Loading tickets from set ${ticketSetId}, maxTickets: ${maxTickets}`);
-      
+
       if (!['1', '2'].includes(ticketSetId)) {
         throw new Error(`Invalid ticket set ID: ${ticketSetId}. Must be "1" or "2".`);
       }
-      
+
       if (!maxTickets || maxTickets < 1 || maxTickets > 600) {
         throw new Error(`Invalid maxTickets: ${maxTickets}. Must be between 1 and 600.`);
       }
 
       const response = await fetch(`/data/${ticketSetId}.json`);
-      
+
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error(`Ticket set file not found: ${ticketSetId}.json`);
@@ -415,11 +450,11 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       }
 
       const rawData: TicketRowData[] = await response.json();
-      
+
       if (!Array.isArray(rawData)) {
         throw new Error(`Invalid ticket data format: Expected array, got ${typeof rawData}`);
       }
-      
+
       if (rawData.length === 0) {
         throw new Error(`Empty ticket set: ${ticketSetId}.json contains no data`);
       }
@@ -427,14 +462,14 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       console.log(`📊 Loaded ${rawData.length} ticket rows from set ${ticketSetId}`);
 
       const filteredData = rawData.filter(row => row.ticketId >= 1 && row.ticketId <= maxTickets);
-      
+
       if (filteredData.length === 0) {
         throw new Error(`No valid tickets found in range 1-${maxTickets} for set ${ticketSetId}`);
       }
 
       const uniqueTicketIds = new Set(filteredData.map(row => row.ticketId));
       const availableTickets = uniqueTicketIds.size;
-      
+
       if (availableTickets < maxTickets) {
         throw new Error(`Insufficient tickets in set ${ticketSetId}: Found ${availableTickets}, requested ${maxTickets}`);
       }
@@ -442,13 +477,13 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       console.log(`🎯 Filtered to ${filteredData.length} rows covering ${availableTickets} tickets`);
 
       const ticketGroups = new Map<number, TicketRowData[]>();
-      
+
       for (const row of filteredData) {
         if (!row.ticketId || !row.rowId || !Array.isArray(row.numbers)) {
           console.warn(`⚠️ Invalid row structure:`, row);
           continue;
         }
-        
+
         if (row.numbers.length !== 9) {
           console.warn(`⚠️ Invalid row length for ticket ${row.ticketId} row ${row.rowId}: expected 9, got ${row.numbers.length}`);
           continue;
@@ -461,7 +496,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       }
 
       const tickets: { [ticketId: string]: TambolaTicket } = {};
-      
+
       for (const [ticketId, rows] of ticketGroups) {
         if (rows.length !== 3) {
           console.warn(`⚠️ Ticket ${ticketId} has ${rows.length} rows, expected 3. Skipping.`);
@@ -469,10 +504,10 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
         }
 
         rows.sort((a, b) => a.rowId - b.rowId);
-        
+
         const expectedRowIds = [1, 2, 3];
         const actualRowIds = rows.map(r => r.rowId);
-        
+
         if (!expectedRowIds.every((id, index) => actualRowIds[index] === id)) {
           console.warn(`⚠️ Ticket ${ticketId} has invalid row IDs: expected [1,2,3], got [${actualRowIds.join(',')}]. Skipping.`);
           continue;
@@ -495,16 +530,16 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       }
 
       const createdTicketCount = Object.keys(tickets).length;
-      
+
       if (createdTicketCount < maxTickets) {
         throw new Error(`Failed to create enough valid tickets: created ${createdTicketCount}, requested ${maxTickets}. Check ticket data integrity.`);
       }
 
       console.log(`✅ Successfully created ${createdTicketCount} tickets from set ${ticketSetId}`);
       console.log(`🎫 Ticket IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${createdTicketCount > 5 ? '...' : ''}`);
-      
+
       return tickets;
-      
+
     } catch (error: any) {
       console.error('❌ Error loading tickets from set:', error);
       throw new Error(error.message || 'Failed to load tickets from set');
@@ -514,19 +549,19 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
   async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
     try {
       console.log(`📈 Expanding game ${gameId} tickets to ${newMaxTickets} from set ${ticketSetId}`);
-      
+
       const currentGameData = await this.getGameData(gameId);
       if (!currentGameData) {
         throw new Error(`Game ${gameId} not found for ticket expansion`);
       }
-      
+
       const currentMaxTickets = currentGameData.maxTickets;
       const currentTickets = currentGameData.tickets || {};
-      
+
       if (newMaxTickets <= currentMaxTickets) {
         throw new Error(`Can only expand tickets. Current: ${currentMaxTickets}, Requested: ${newMaxTickets}. To reduce tickets, create a new game.`);
       }
-      
+
       if (newMaxTickets > 600) {
         throw new Error(`Maximum ticket limit is 600. Requested: ${newMaxTickets}`);
       }
@@ -537,7 +572,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       console.log(`🎫 Preserving ${bookedTickets.length} existing bookings`);
 
       const allTicketsForSet = await this.loadTicketsFromSet(ticketSetId, newMaxTickets);
-      
+
       for (const [ticketId, existingTicket] of Object.entries(currentTickets)) {
         if (existingTicket.isBooked && allTicketsForSet[ticketId]) {
           allTicketsForSet[ticketId] = {
@@ -558,11 +593,11 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
       };
 
       await this.safeTransactionUpdate(`games/${gameId}`, updates);
-      
+
       console.log(`✅ Successfully expanded game ${gameId} from ${currentMaxTickets} to ${newMaxTickets} tickets`);
       console.log(`📋 Total tickets now: ${newMaxTickets}`);
       console.log(`👥 Existing bookings preserved: ${bookedTickets.length}`);
-      
+
     } catch (error: any) {
       console.error('❌ Error expanding game tickets:', error);
       throw new Error(error.message || 'Failed to expand game tickets');
@@ -628,7 +663,7 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
 
- async resumeGame(gameId: string): Promise<void> {
+  async resumeGame(gameId: string): Promise<void> {
     try {
       await update(ref(database, `games/${gameId}/gameState`), { isActive: true });
       console.log(`▶️ Game ${gameId} resumed`);
@@ -647,20 +682,20 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
     }
   }
 
- async endGame(gameId: string): Promise<void> {
+  async endGame(gameId: string): Promise<void> {
     try {
       console.log(`🏁 Ending game with cleanup: ${gameId}`);
-      
+
       return await this.gameMutex.withLock(
         `end-${gameId}`,
         async () => {
           const gameRef = ref(database, `games/${gameId}`);
-          
+
           await runTransaction(gameRef, (currentGame) => {
             if (!currentGame) {
               throw new Error('Game not found');
             }
-            
+
             return {
               ...currentGame,
               gameState: {
@@ -672,62 +707,62 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
               }
             };
           });
-          
+
           // Clean up number caller
           const numberCaller = this.numberCallers.get(gameId);
           if (numberCaller) {
             await numberCaller.cleanup();
             this.numberCallers.delete(gameId);
           }
-          
+
           console.log(`✅ Game ended and cleaned up: ${gameId}`);
         },
         { timeout: 15000, lockTTL: 20000 }
       );
-      
+
     } catch (error: any) {
       console.error('❌ Failed to end game:', error);
       throw new Error(error.message || 'Failed to end game');
     }
   }
 
- async callNextNumber(gameId: string): Promise<number | null> {
-  try {
-    const gameData = await this.getGameData(gameId);
-    if (!gameData) throw new Error('Game not found');
+  async callNextNumber(gameId: string): Promise<number | null> {
+    try {
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) throw new Error('Game not found');
 
-    const calledNumbers = gameData.gameState.calledNumbers || [];
-    let newNumber: number;
+      const calledNumbers = gameData.gameState.calledNumbers || [];
+      let newNumber: number;
 
-    // Use only pre-generated sequence
-    if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
-      newNumber = gameData.sessionCache[calledNumbers.length];
-      console.log(`🎯 Using pre-generated number ${newNumber} (position ${calledNumbers.length + 1})`);
-    } else {
-      console.error('❌ No pre-generated sequence available - ending game');
-      await this.endGame(gameId);
-      return null;
+      // Use only pre-generated sequence
+      if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
+        newNumber = gameData.sessionCache[calledNumbers.length];
+        console.log(`🎯 Using pre-generated number ${newNumber} (position ${calledNumbers.length + 1})`);
+      } else {
+        console.error('❌ No pre-generated sequence available - ending game');
+        await this.endGame(gameId);
+        return null;
+      }
+
+      const updates = {
+        calledNumbers: [...calledNumbers, newNumber],
+        currentNumber: newNumber
+      };
+
+      await update(ref(database, `games/${gameId}/gameState`), updates);
+      console.log(`📢 Called pre-generated number ${newNumber} for game ${gameId}`);
+
+      return newNumber;
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to call next number');
     }
-
-    const updates = {
-      calledNumbers: [...calledNumbers, newNumber],
-      currentNumber: newNumber
-    };
-
-    await update(ref(database, `games/${gameId}/gameState`), updates);
-    console.log(`📢 Called pre-generated number ${newNumber} for game ${gameId}`);
-    
-    return newNumber;
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to call next number');
   }
-}
 
- async processNumberCall(gameId: string, number: number): Promise<void> {
-  console.log('🚫 BLOCKED: Legacy processNumberCall in firebase-game.ts called');
-  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
-  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
-}
+  async processNumberCall(gameId: string, number: number): Promise<void> {
+    console.log('🚫 BLOCKED: Legacy processNumberCall in firebase-game.ts called');
+    console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
+    throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
+  }
 
   async announceWinners(gameId: string, winners: any): Promise<void> {
     try {
@@ -751,10 +786,10 @@ private async createGameInternal(config: CreateGameConfig, hostId: string, ticke
    * @param gameId - Game to call number for
    * @returns boolean - true if game should continue, false if game should stop
    */
-async callNextNumberAndContinue(gameId: string): Promise<boolean> {
+  async callNextNumberAndContinue(gameId: string): Promise<boolean> {
     try {
       console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
-      
+
       // Use mutex to prevent concurrent calls
       return await this.gameMutex.withLock(
         `call-${gameId}`,
@@ -765,86 +800,105 @@ async callNextNumberAndContinue(gameId: string): Promise<boolean> {
             console.log(`🚫 Cannot call number: ${canCall.reason}`);
             return false;
           }
-          
-          // Step 2: Get or create secure number caller
+
+          // Step 2: Get or create secure number caller (BUG #2 FIX: use singleton)
           let numberCaller = this.numberCallers.get(gameId);
           if (!numberCaller) {
-            numberCaller = new SecureNumberCaller(gameId);
+            numberCaller = SecureNumberCaller.getInstance(gameId);
             this.numberCallers.set(gameId, numberCaller);
           }
-          
+
           // Step 3: Use secure number calling
           const result = await numberCaller.callNextNumber();
-          
+
           if (!result.success) {
             console.log(`❌ Secure number calling failed: ${result.error}`);
             return false;
           }
-          
+
           console.log(`✅ Number ${result.number} called successfully via secure caller`);
-          
+
           // Step 4: Process prizes after successful call
           const prizeResult = await this.processPrizesAfterNumberCall(gameId, result.number);
-          
+
           // Step 5: Check if game should continue (check both numbers AND prizes)
-              const gameData = await this.getGameData(gameId);
-              if (!gameData) return false;
-              
-              const stats = await numberCaller.getGameStatistics();
-              const numbersRemaining = stats.remainingNumbers > 0;
-              // 🔧 FIX: Use the actual prize updates, not empty object
-              const allPrizesWon = this.checkAllPrizesWon(gameData.prizes, prizeResult?.prizeUpdates || {});
-              
-              const shouldContinue = numbersRemaining && !allPrizesWon;
-              
-              console.log(`📊 Game continuation check:`, {
-                numbersRemaining,
-                allPrizesWon,
-                shouldContinue,
-                totalCalled: stats.totalCalled
-              });
+          const gameData = await this.getGameData(gameId);
+          if (!gameData) return false;
 
-// Check if game should end with simple timeout approach
-const isLastNumber = stats.totalCalled >= 90;
-const shouldEndGame = allPrizesWon || isLastNumber;
+          const stats = await numberCaller.getGameStatistics();
+          const numbersRemaining = stats.remainingNumbers > 0;
 
-if (shouldEndGame && !gameData.gameState.gameOver) {
-  console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
-  
-  // Stop ghost numbers with a strict signal, but don't end game yet
-  const gameRef = ref(database, `games/${gameId}`);
-  await update(gameRef, {
-    'gameState/isActive': false,
-    'gameState/finalizing': true, // New signal: stops numbers but doesn't trigger UI cleanup
-    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...',
-    'lastWinnerAt': new Date().toISOString(),
-    'updatedAt': new Date().toISOString()
-  });
-  console.log(`✅ Game finalizing - no more ghost numbers possible`);
-  
-  // Give audio 6 seconds to finish, then actually end the game
-  console.log(`🎵 Giving audio 6 seconds to finish...`);
-  setTimeout(async () => {
-    try {
-      await this.endGame(gameId);
-      console.log(`✅ Game ended successfully after audio delay`);
-    } catch (error) {
-      console.error(`❌ Error ending game after timeout:`, error);
-    }
-  }, 5500);
-  
-  return false; // Stop calling more numbers
-}
-          
-console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
-return shouldContinue;
+          // BUG #7 FIX: Merge pending prize updates before checking
+          let allPrizesWon: boolean;
+          if (FEATURE_FLAGS.USE_MERGED_PRIZE_CHECK && prizeResult?.prizeUpdates) {
+            // Create merged prizes object
+            const mergedPrizes = { ...gameData.prizes };
+            for (const [prizeId, updates] of Object.entries(prizeResult.prizeUpdates)) {
+              if (updates && typeof updates === 'object') {
+                mergedPrizes[prizeId] = { ...mergedPrizes[prizeId], ...updates };
+              }
+            }
+            allPrizesWon = this.checkAllPrizesWon(mergedPrizes, {});
+          } else {
+            // Legacy behavior
+            allPrizesWon = this.checkAllPrizesWon(gameData.prizes, prizeResult?.prizeUpdates || {});
+          }
+
+          const shouldContinue = numbersRemaining && !allPrizesWon;
+
+          console.log(`📊 Game continuation check:`, {
+            numbersRemaining,
+            allPrizesWon,
+            shouldContinue,
+            totalCalled: stats.totalCalled
+          });
+
+          // Check if game should end
+          const isLastNumber = stats.totalCalled >= 90;
+          const shouldEndGame = allPrizesWon || isLastNumber;
+
+          if (shouldEndGame && !gameData.gameState.gameOver) {
+            console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+
+            const gameRef = ref(database, `games/${gameId}`);
+            const now = new Date();
+            const endTime = new Date(now.getTime() + 6000); // 6 seconds from now
+
+            // BUG #6 FIX: Record scheduled end time for limbo recovery
+            await update(gameRef, {
+              'gameState/isActive': false,
+              'gameState/finalizing': true,
+              'gameState/scheduledEndAt': endTime.toISOString(), // For recovery
+              'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...',
+              'lastWinnerAt': now.toISOString(),
+              'updatedAt': now.toISOString()
+            });
+            console.log(`✅ Game finalizing - scheduled end at ${endTime.toISOString()}`);
+
+            // BUG #5: setTimeout is unreliable if browser closes
+            // With scheduledEndAt, other clients can recover games stuck in limbo
+            console.log(`🎵 Giving audio 6 seconds to finish...`);
+            setTimeout(async () => {
+              try {
+                await this.endGame(gameId);
+                console.log(`✅ Game ended successfully after audio delay`);
+              } catch (error) {
+                console.error(`❌ Error ending game after timeout:`, error);
+              }
+            }, 5500);
+
+            return false; // Stop calling more numbers
+          }
+
+          console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
+          return shouldContinue;
         },
         {
           timeout: 15000,
           lockTTL: 20000
         }
       );
-      
+
     } catch (error: any) {
       console.error('❌ Firebase-game: Number calling error:', error);
       return false;
@@ -854,34 +908,34 @@ return shouldContinue;
   /**
    * Process prizes after a number is called
    */
- private async processPrizesAfterNumberCall(gameId: string, calledNumber: number): Promise<any> {
+  private async processPrizesAfterNumberCall(gameId: string, calledNumber: number): Promise<any> {
     try {
       const gameData = await this.getGameData(gameId);
       if (!gameData) return;
-      
+
       // Use existing prize validation logic
       const prizeResult = await this.processNumberForPrizes(
         gameData,
         calledNumber,
         gameData.gameState.calledNumbers || []
       );
-      
+
       if (prizeResult.hasWinners) {
         const prizeUpdates = {
           ...prizeResult.prizeUpdates,
           lastWinnerAnnouncement: prizeResult.announcements.join(' '),
           lastWinnerAt: new Date().toISOString()
         };
-        
+
         const gameRef = ref(database, `games/${gameId}`);
         await update(gameRef, prizeUpdates);
-        
+
         console.log(`🏆 Prize updates applied for number ${calledNumber}`);
         return prizeResult; // Return the prize result for game ending logic
       }
-      
+
       return null; // No winners
-   } catch (error: any) {
+    } catch (error: any) {
       console.error('❌ Error processing prizes:', error);
       return null;
     }
@@ -893,7 +947,7 @@ return shouldContinue;
   async generateGameNumbers(gameId: string): Promise<NumberGenerationResult> {
     try {
       console.log(`🎯 Starting number generation for game: ${gameId}`);
-      
+
       const gameData = await this.getGameData(gameId);
       if (!gameData) {
         throw new Error('Game not found');
@@ -902,7 +956,7 @@ return shouldContinue;
       // Step 1: Check if admin has already generated numbers
       if (gameData.sessionCache && gameData.sessionMeta?.source === 'admin') {
         console.log(`🔒 Admin numbers detected - validating existing sequence`);
-        
+
         const validation = await this.validateExistingSequence(gameData);
         if (validation.isValid) {
           return {
@@ -920,7 +974,7 @@ return shouldContinue;
       // Step 2: Check if host has already generated numbers
       if (gameData.sessionCache && gameData.sessionMeta?.source === 'host') {
         console.log(`🏠 Host numbers detected - validating existing sequence`);
-        
+
         const validation = await this.validateExistingSequence(gameData);
         if (validation.isValid) {
           return {
@@ -959,40 +1013,40 @@ return shouldContinue;
     issues: string[];
   }> {
     const issues: string[] = [];
-    
+
     try {
       // Check if sessionCache exists and has correct length
       if (!gameData.sessionCache || gameData.sessionCache.length !== 90) {
         issues.push(`Sequence length is ${gameData.sessionCache?.length || 0}, expected 90`);
       }
-      
+
       // Check for duplicates
       if (gameData.sessionCache) {
         const uniqueNumbers = new Set(gameData.sessionCache);
         if (uniqueNumbers.size !== gameData.sessionCache.length) {
           issues.push('Duplicate numbers found in sequence');
         }
-        
+
         // Check if all numbers 1-90 are present
         for (let i = 1; i <= 90; i++) {
           if (!gameData.sessionCache.includes(i)) {
             issues.push(`Missing number: ${i}`);
           }
         }
-        
+
         // Check for invalid numbers (outside 1-90 range)
         const invalidNumbers = gameData.sessionCache.filter(num => num < 1 || num > 90);
         if (invalidNumbers.length > 0) {
           issues.push(`Invalid numbers found: ${invalidNumbers.join(', ')}`);
         }
       }
-      
+
       console.log(`✅ Validation complete. Issues found: ${issues.length}`);
       return {
         isValid: issues.length === 0,
         issues
       };
-      
+
     } catch (error: any) {
       console.error('❌ Validation error:', error);
       return {
@@ -1008,31 +1062,31 @@ return shouldContinue;
   private async repairSequence(gameData: GameData): Promise<NumberGenerationResult> {
     try {
       console.log(`🔧 Starting sequence repair for game: ${gameData.gameId}`);
-      
+
       let numbers = [...(gameData.sessionCache || [])];
-      
+
       // Fix number sequence
       if (numbers.length !== 90) {
         console.log(`🔧 Fixing sequence length: ${numbers.length} → 90`);
-        
+
         // Get all numbers that should be present
         const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
         const existingNumbers = new Set(numbers.filter(num => num >= 1 && num <= 90));
         const missingNumbers = allNumbers.filter(num => !existingNumbers.has(num));
-        
+
         // Remove duplicates and invalid numbers
         numbers = Array.from(existingNumbers);
-        
+
         // Add missing numbers in random positions
         missingNumbers.forEach(num => {
           const randomIndex = Math.floor(Math.random() * (numbers.length + 1));
           numbers.splice(randomIndex, 0, num);
         });
-        
+
         // Ensure exactly 90 numbers
         numbers = numbers.slice(0, 90);
       }
-      
+
       // Create repaired metadata
       const sessionMeta: SessionMetadata = {
         created: new Date().toISOString(),
@@ -1040,16 +1094,16 @@ return shouldContinue;
         validated: true,
         totalNumbers: 90
       };
-      
+
       await this.saveGameNumbers(gameData.gameId, numbers, sessionMeta);
-      
+
       console.log(`✅ Sequence repaired successfully`);
       return {
         success: true,
         numbers,
         source: sessionMeta.source
       };
-      
+
     } catch (error: any) {
       console.error('❌ Sequence repair failed:', error);
       return {
@@ -1061,16 +1115,16 @@ return shouldContinue;
     }
   }
 
- /**
-   * Generate new host sequence (only during game creation)
-   */
+  /**
+    * Generate new host sequence (only during game creation)
+    */
   private async generateHostSequence(gameId: string): Promise<NumberGenerationResult> {
     try {
       console.log(`🎲 Generating new host sequence for game: ${gameId}`);
-      
+
       // Generate shuffled sequence of numbers 1-90 (only during initial setup)
       const numbers = this.shuffleArray(Array.from({ length: 90 }, (_, i) => i + 1));
-      
+
       // Create simple metadata
       const sessionMeta: SessionMetadata = {
         created: new Date().toISOString(),
@@ -1078,17 +1132,17 @@ return shouldContinue;
         validated: true,
         totalNumbers: 90
       };
-      
+
       // Save to Firebase
       await this.saveGameNumbers(gameId, numbers, sessionMeta);
-      
+
       console.log(`✅ Host sequence generated successfully`);
       return {
         success: true,
         numbers,
         source: 'host'
       };
-      
+
     } catch (error: any) {
       console.error('❌ Host sequence generation failed:', error);
       return {
@@ -1104,8 +1158,8 @@ return shouldContinue;
    * Save generated numbers to Firebase
    */
   private async saveGameNumbers(
-    gameId: string, 
-    numbers: number[], 
+    gameId: string,
+    numbers: number[],
     sessionMeta: SessionMetadata
   ): Promise<void> {
     try {
@@ -1113,10 +1167,10 @@ return shouldContinue;
         sessionCache: numbers,
         sessionMeta: sessionMeta
       };
-      
+
       await update(ref(database, `games/${gameId}`), updates);
       console.log(`✅ Game numbers saved to Firebase: ${gameId}`);
-      
+
     } catch (error: any) {
       console.error('❌ Failed to save game numbers:', error);
       throw new Error(`Failed to save game numbers: ${error.message}`);
@@ -1137,50 +1191,50 @@ return shouldContinue;
   /**
    * Validate if game can accept number calls
    */
- private async validateGameForCalling(gameId: string): Promise<{
+  private async validateGameForCalling(gameId: string): Promise<{
     isValid: boolean;
     reason?: string;
   }> {
     try {
       const gameData = await this.getGameData(gameId);
-      
+
       if (!gameData) {
         // Don't stop for missing game data - might be network issue
         console.log('⚠️ Game data not found - treating as temporary issue');
         return { isValid: true };
       }
-      
+
       // STRICT: Always stop for gameOver (no forgiveness)
       // STRICT: Always stop for gameOver or finalizing (no forgiveness)
       if (gameData.gameState.gameOver) {
         console.log('🛑 Game is over - strictly stopping all number calls');
         return { isValid: false, reason: 'Game has ended' };
       }
-      
+
       if (gameData.gameState.finalizing) {
         console.log('🛑 Game is finalizing - strictly stopping all number calls');
         return { isValid: false, reason: 'Game is finalizing' };
       }
-      
+
       // STRICT: Always stop if all numbers called
       const calledNumbers = gameData.gameState.calledNumbers || [];
       if (calledNumbers.length >= 90) {
         console.log('🛑 All 90 numbers called - strictly stopping');
         return { isValid: false, reason: 'All numbers have been called' };
       }
-      
+
       // FORGIVING: Allow calling even if game appears inactive or in countdown
       // These might be temporary states due to network issues
       if (!gameData.gameState.isActive) {
         console.log('⚠️ Game appears inactive - but continuing anyway (network forgiveness)');
       }
-      
+
       if (gameData.gameState.isCountdown) {
         console.log('⚠️ Game appears in countdown - but continuing anyway (network forgiveness)');
       }
-      
+
       return { isValid: true };
-      
+
     } catch (error: any) {
       // Don't stop for validation errors - treat as temporary
       console.log(`⚠️ Validation error - treating as temporary: ${error.message}`);
@@ -1188,16 +1242,16 @@ return shouldContinue;
     }
   }
 
-/**
-   * DEPRECATED: Old number calling method - use callNextNumberAndContinue instead
-   */
+  /**
+     * DEPRECATED: Old number calling method - use callNextNumberAndContinue instead
+     */
   private async processCompleteNumberCall(gameId: string): Promise<{
-  success: boolean;
-  gameEnded: boolean;
-  hasMoreNumbers: boolean;
-  number?: number;
-  winners?: any;
-}> {
+    success: boolean;
+    gameEnded: boolean;
+    hasMoreNumbers: boolean;
+    number?: number;
+    winners?: any;
+  }> {
     console.warn('🚫 DEPRECATED: processCompleteNumberCall called - use callNextNumberAndContinue instead');
     return {
       success: false,
@@ -1210,141 +1264,141 @@ return shouldContinue;
    * LEGACY: Old complete number calling method - replaced by secure caller
    */
   private async processCompleteNumberCallLegacy(gameId: string): Promise<{
-  success: boolean;
-  gameEnded: boolean;
-  hasMoreNumbers: boolean;
-  number?: number;
-  winners?: any;
-}> {
-  try {
-    console.log(`📞 Processing complete number call for game: ${gameId}`);
-    
-    // Use Firebase transaction for atomic operation
-    const gameRef = ref(database, `games/${gameId}`);
-    
-    const transactionResult = await runTransaction(gameRef, (currentGame) => {
-      if (!currentGame) {
-        throw new Error('Game not found');
-      }
-      
-      const calledNumbers = currentGame.gameState.calledNumbers || [];
-      console.log(`🔄 Transaction: Current called numbers length: ${calledNumbers.length}`);
-      
-      // Select next number
-      let selectedNumber: number;
-      
-     // Check for pre-generated sequence (REQUIRED)
-// Use only pre-generated sequence
-if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
-  selectedNumber = currentGame.sessionCache[calledNumbers.length];
-  console.log(`🎯 Transaction: Using pre-generated number ${selectedNumber} (position ${calledNumbers.length + 1})`);
-} else {
-  console.error('❌ No pre-generated sequence available - ending game');
-  throw new Error('Game requires pre-generated sequence but none available');
-}
-      // Update game state atomically
-      const updatedCalledNumbers = [...calledNumbers, selectedNumber];
-      
-      return {
-        ...currentGame,
-        gameState: {
-          ...currentGame.gameState,
-          calledNumbers: updatedCalledNumbers,
-          currentNumber: selectedNumber,
-          updatedAt: new Date().toISOString()
-        },
-        _transactionMeta: {
-          selectedNumber,
-          updatedCalledNumbers
+    success: boolean;
+    gameEnded: boolean;
+    hasMoreNumbers: boolean;
+    number?: number;
+    winners?: any;
+  }> {
+    try {
+      console.log(`📞 Processing complete number call for game: ${gameId}`);
+
+      // Use Firebase transaction for atomic operation
+      const gameRef = ref(database, `games/${gameId}`);
+
+      const transactionResult = await runTransaction(gameRef, (currentGame) => {
+        if (!currentGame) {
+          throw new Error('Game not found');
         }
-      };
-    });
-    
-    // Check if transaction was aborted or failed
-  // Check if transaction was aborted or failed
-    // Check if transaction was aborted or failed
-    if (!transactionResult.committed) {
-      console.log(`❌ Firebase transaction failed - connection issue`);
-      throw new Error('Firebase transaction failed - connection lost');
-    }
-    
-    const updatedGame = transactionResult.snapshot.val();
-    
-    // Handle case where no numbers were available
-    if (updatedGame.gameState.pendingGameEnd && !updatedGame._transactionMeta) {
-      console.log(`🏁 No more numbers available - game should end after current state`);
+
+        const calledNumbers = currentGame.gameState.calledNumbers || [];
+        console.log(`🔄 Transaction: Current called numbers length: ${calledNumbers.length}`);
+
+        // Select next number
+        let selectedNumber: number;
+
+        // Check for pre-generated sequence (REQUIRED)
+        // Use only pre-generated sequence
+        if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
+          selectedNumber = currentGame.sessionCache[calledNumbers.length];
+          console.log(`🎯 Transaction: Using pre-generated number ${selectedNumber} (position ${calledNumbers.length + 1})`);
+        } else {
+          console.error('❌ No pre-generated sequence available - ending game');
+          throw new Error('Game requires pre-generated sequence but none available');
+        }
+        // Update game state atomically
+        const updatedCalledNumbers = [...calledNumbers, selectedNumber];
+
+        return {
+          ...currentGame,
+          gameState: {
+            ...currentGame.gameState,
+            calledNumbers: updatedCalledNumbers,
+            currentNumber: selectedNumber,
+            updatedAt: new Date().toISOString()
+          },
+          _transactionMeta: {
+            selectedNumber,
+            updatedCalledNumbers
+          }
+        };
+      });
+
+      // Check if transaction was aborted or failed
+      // Check if transaction was aborted or failed
+      // Check if transaction was aborted or failed
+      if (!transactionResult.committed) {
+        console.log(`❌ Firebase transaction failed - connection issue`);
+        throw new Error('Firebase transaction failed - connection lost');
+      }
+
+      const updatedGame = transactionResult.snapshot.val();
+
+      // Handle case where no numbers were available
+      if (updatedGame.gameState.pendingGameEnd && !updatedGame._transactionMeta) {
+        console.log(`🏁 No more numbers available - game should end after current state`);
+        return {
+          success: true,
+          gameEnded: true,
+          hasMoreNumbers: false
+        };
+      }
+
+      const selectedNumber = updatedGame._transactionMeta.selectedNumber;
+      const updatedCalledNumbers = updatedGame._transactionMeta.updatedCalledNumbers;
+
+      console.log(`✅ Transaction committed: Number ${selectedNumber} called successfully`);
+
+      // Process prizes (outside transaction for performance)
+      const prizeResult = await this.processNumberForPrizes(
+        updatedGame,
+        selectedNumber,
+        updatedCalledNumbers
+      );
+
+      // Update prizes if any winners (separate update to avoid conflicts)
+      if (prizeResult.hasWinners) {
+        const prizeUpdates: any = {
+          ...prizeResult.prizeUpdates,
+          lastWinnerAnnouncement: prizeResult.announcements.join(' '),
+          lastWinnerAt: new Date().toISOString()
+        };
+
+        await update(gameRef, prizeUpdates);
+        console.log(`🏆 Prize updates applied for number ${selectedNumber}`);
+      }
+
+      // Check if game should end
+      const allPrizesWon = this.checkAllPrizesWon(updatedGame.prizes, prizeResult.prizeUpdates);
+      const isLastNumber = updatedCalledNumbers.length >= 90;
+      const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
+
+      console.log(`🔍 Game end check:`, {
+        allPrizesWon,
+        isLastNumber,
+        currentGameOver: updatedGame.gameState.gameOver,
+        shouldEndGame,
+        numbersCalledCount: updatedCalledNumbers.length
+      });
+      if (shouldEndGame && !updatedGame.gameState.gameOver) {
+        console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
+
+        // Set pending game end - let AudioCoordinator handle the rest
+        await update(gameRef, {
+          'gameState/pendingGameEnd': true,
+          'gameState/isActive': false,
+          'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game will end after audio!' : 'All numbers called! Game will end after audio!',
+          'lastWinnerAt': new Date().toISOString(),
+          'updatedAt': new Date().toISOString()
+        });
+        console.log(`⏳ Game ending queued - letting AudioCoordinator finish sequence`);
+      }
+
+
+
       return {
         success: true,
-        gameEnded: true,
-        hasMoreNumbers: false
+        gameEnded: shouldEndGame,
+        hasMoreNumbers: updatedCalledNumbers.length < 90 && !shouldEndGame,
+        number: selectedNumber,
+        winners: prizeResult.hasWinners ? prizeResult.winners : undefined
       };
-    }
-    
-    const selectedNumber = updatedGame._transactionMeta.selectedNumber;
-    const updatedCalledNumbers = updatedGame._transactionMeta.updatedCalledNumbers;
-    
-    console.log(`✅ Transaction committed: Number ${selectedNumber} called successfully`);
-    
-    // Process prizes (outside transaction for performance)
-    const prizeResult = await this.processNumberForPrizes(
-      updatedGame,
-      selectedNumber,
-      updatedCalledNumbers
-    );
-    
-    // Update prizes if any winners (separate update to avoid conflicts)
-    if (prizeResult.hasWinners) {
-      const prizeUpdates: any = {
-        ...prizeResult.prizeUpdates,
-        lastWinnerAnnouncement: prizeResult.announcements.join(' '),
-        lastWinnerAt: new Date().toISOString()
-      };
-      
-      await update(gameRef, prizeUpdates);
-      console.log(`🏆 Prize updates applied for number ${selectedNumber}`);
-    }
-    
-    // Check if game should end
-    const allPrizesWon = this.checkAllPrizesWon(updatedGame.prizes, prizeResult.prizeUpdates);
-    const isLastNumber = updatedCalledNumbers.length >= 90;
-   const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
 
-console.log(`🔍 Game end check:`, {
-  allPrizesWon,
-  isLastNumber,
-  currentGameOver: updatedGame.gameState.gameOver,
-  shouldEndGame,
-  numbersCalledCount: updatedCalledNumbers.length
-});
- if (shouldEndGame && !updatedGame.gameState.gameOver) {
-  console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
-  
-  // Set pending game end - let AudioCoordinator handle the rest
-  await update(gameRef, {
-    'gameState/pendingGameEnd': true,
-    'gameState/isActive': false,
-    'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game will end after audio!' : 'All numbers called! Game will end after audio!',
-    'lastWinnerAt': new Date().toISOString(),
-    'updatedAt': new Date().toISOString()
-  });
-  console.log(`⏳ Game ending queued - letting AudioCoordinator finish sequence`);
-}
-  
-  
-    
-    return {
-      success: true,
-      gameEnded: shouldEndGame,
-      hasMoreNumbers: updatedCalledNumbers.length < 90 && !shouldEndGame,
-      number: selectedNumber,
-      winners: prizeResult.hasWinners ? prizeResult.winners : undefined
-    };
-        
-      } catch (error: any) {
-        console.error('❌ Error in processCompleteNumberCall transaction:', error);
-        throw error;
-      }
+    } catch (error: any) {
+      console.error('❌ Error in processCompleteNumberCall transaction:', error);
+      throw error;
     }
+  }
   /**
    * Process number for all prize detection
    */
@@ -1357,87 +1411,87 @@ console.log(`🔍 Game end check:`, {
     const announcements: string[] = [];
     const prizeUpdates: any = {};
     let allWinners: any = {};
-    
- // Get unwon prizes (special handling for secondFullHouse)
-const unwonPrizes = Object.fromEntries(
-  Object.entries(gameData.prizes).filter(([prizeId, prize]: [string, any]) => {
-    // 🔧 ALWAYS include Full House (needed for Second Full House validation)
-    if (prizeId === 'fullHouse') {
-      return true;
-    }
-    // Normal prizes: only check if not won
-    if (prizeId !== 'secondFullHouse') {
-      return !prize.won;
-    }
-    // secondFullHouse: check if it's not won AND fullHouse is won
-    return !prize.won && gameData.prizes.fullHouse?.won;
-  })
-);
 
-if (Object.keys(unwonPrizes).length === 0) {
-  return {
-    hasWinners: false,
-    winners: {},
-    prizeUpdates: {},
-    announcements: []
-  };
-}
-    
+    // Get unwon prizes (special handling for secondFullHouse)
+    const unwonPrizes = Object.fromEntries(
+      Object.entries(gameData.prizes).filter(([prizeId, prize]: [string, any]) => {
+        // 🔧 ALWAYS include Full House (needed for Second Full House validation)
+        if (prizeId === 'fullHouse') {
+          return true;
+        }
+        // Normal prizes: only check if not won
+        if (prizeId !== 'secondFullHouse') {
+          return !prize.won;
+        }
+        // secondFullHouse: check if it's not won AND fullHouse is won
+        return !prize.won && gameData.prizes.fullHouse?.won;
+      })
+    );
+
+    if (Object.keys(unwonPrizes).length === 0) {
+      return {
+        hasWinners: false,
+        winners: {},
+        prizeUpdates: {},
+        announcements: []
+      };
+    }
+
     // Validate tickets for prizes
     const validationResult = await validateTicketsForPrizes(
       gameData.tickets || {},
       calledNumbers,
       unwonPrizes
     );
-    
+
     // Process each prize that has winners
-for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
-  const prizeData = prizeWinners as any;
-  
-  // ✅ FIX: Ensure all required prize properties are properly set
-  const prizeUpdate = {
-    ...gameData.prizes[prizeId],
-    won: true,
-    winners: prizeData.winners || [],
-    winningNumber: number,
-    wonAt: new Date().toISOString()
-  };
-  
-  // ✅ FIX: Ensure critical properties exist for display components
-  if (!prizeUpdate.id) {
-    prizeUpdate.id = prizeId;
-  }
-  if (!prizeUpdate.name) {
-    prizeUpdate.name = prizeData.prizeName || gameData.prizes[prizeId]?.name || prizeId;
-  }
-  if (!prizeUpdate.order) {
-    prizeUpdate.order = gameData.prizes[prizeId]?.order || 999;
-  }
-  if (!prizeUpdate.pattern) {
-    prizeUpdate.pattern = gameData.prizes[prizeId]?.pattern || 'Winning pattern';
-  }
-  
-  prizeUpdates[`prizes/${prizeId}`] = prizeUpdate;
-  allWinners[prizeId] = prizeData;
-  
-  const winnersText = prizeData.winners
-    .map((w: any) => `${w.name} (T${w.ticketId})`)
-    .join(', ');
-  announcements.push(`${prizeData.prizeName} won by ${winnersText}!`);
-  
-  // ✅ FIX: Add debug logging for Second Full House
-  if (prizeId === 'secondFullHouse') {
-    console.log(`🔧 Second Full House prize update:`, {
-      prizeId,
-      won: prizeUpdate.won,
-      winnersCount: prizeData.winners?.length || 0,
-      hasName: !!prizeUpdate.name,
-      hasOrder: !!prizeUpdate.order,
-      prizeUpdate
-    });
-  }
-}
-    
+    for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) {
+      const prizeData = prizeWinners as any;
+
+      // ✅ FIX: Ensure all required prize properties are properly set
+      const prizeUpdate = {
+        ...gameData.prizes[prizeId],
+        won: true,
+        winners: prizeData.winners || [],
+        winningNumber: number,
+        wonAt: new Date().toISOString()
+      };
+
+      // ✅ FIX: Ensure critical properties exist for display components
+      if (!prizeUpdate.id) {
+        prizeUpdate.id = prizeId;
+      }
+      if (!prizeUpdate.name) {
+        prizeUpdate.name = prizeData.prizeName || gameData.prizes[prizeId]?.name || prizeId;
+      }
+      if (!prizeUpdate.order) {
+        prizeUpdate.order = gameData.prizes[prizeId]?.order || 999;
+      }
+      if (!prizeUpdate.pattern) {
+        prizeUpdate.pattern = gameData.prizes[prizeId]?.pattern || 'Winning pattern';
+      }
+
+      prizeUpdates[`prizes/${prizeId}`] = prizeUpdate;
+      allWinners[prizeId] = prizeData;
+
+      const winnersText = prizeData.winners
+        .map((w: any) => `${w.name} (T${w.ticketId})`)
+        .join(', ');
+      announcements.push(`${prizeData.prizeName} won by ${winnersText}!`);
+
+      // ✅ FIX: Add debug logging for Second Full House
+      if (prizeId === 'secondFullHouse') {
+        console.log(`🔧 Second Full House prize update:`, {
+          prizeId,
+          won: prizeUpdate.won,
+          winnersCount: prizeData.winners?.length || 0,
+          hasName: !!prizeUpdate.name,
+          hasOrder: !!prizeUpdate.order,
+          prizeUpdate
+        });
+      }
+    }
+
     return {
       hasWinners: Object.keys(allWinners).length > 0,
       winners: allWinners,
@@ -1452,60 +1506,60 @@ for (const [prizeId, prizeWinners] of Object.entries(validationResult.winners)) 
   /**
  * Check if all ACTIVE/CONFIGURED prizes are won
  */
-private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
-  console.log(`🔍 Starting prize completion check...`);
-  console.log(`📊 Current prizes:`, Object.keys(currentPrizes || {}));
-  console.log(`📊 Prize updates:`, Object.keys(prizeUpdates || {}));
-  
-  const allPrizes = { ...currentPrizes };
-  
-  // Apply updates more robustly
-  if (prizeUpdates && typeof prizeUpdates === 'object') {
-    for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
-      if (updatePath.startsWith('prizes/')) {
-        const prizeId = updatePath.replace('prizes/', '');
-        allPrizes[prizeId] = { ...allPrizes[prizeId], ...updateData };
-        console.log(`🔄 Applied update for prize ${prizeId}:`, updateData);
+  private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
+    console.log(`🔍 Starting prize completion check...`);
+    console.log(`📊 Current prizes:`, Object.keys(currentPrizes || {}));
+    console.log(`📊 Prize updates:`, Object.keys(prizeUpdates || {}));
+
+    const allPrizes = { ...currentPrizes };
+
+    // Apply updates more robustly
+    if (prizeUpdates && typeof prizeUpdates === 'object') {
+      for (const [updatePath, updateData] of Object.entries(prizeUpdates)) {
+        if (updatePath.startsWith('prizes/')) {
+          const prizeId = updatePath.replace('prizes/', '');
+          allPrizes[prizeId] = { ...allPrizes[prizeId], ...updateData };
+          console.log(`🔄 Applied update for prize ${prizeId}:`, updateData);
+        }
       }
     }
+
+    // Get all configured prizes (regardless of won status for filtering)
+    const allConfiguredPrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
+      const isValid = prize &&
+        prize.name &&
+        typeof prize.won === 'boolean' &&
+        prize.name !== '';
+
+      console.log(`🎯 Prize ${prizeId}: valid=${isValid}, name="${prize?.name}", won=${prize?.won}`);
+      return isValid;
+    });
+
+    console.log(`📋 Total configured prizes: ${allConfiguredPrizes.length}`);
+
+    // If no prizes configured, don't end based on prize logic
+    if (allConfiguredPrizes.length === 0) {
+      console.log(`⚠️ No configured prizes found - game will not end based on prize completion`);
+      return false;
+    }
+
+    // Check if ALL configured prizes are won
+    const wonPrizes = allConfiguredPrizes.filter(([prizeId, prize]) => prize.won === true);
+    const allPrizesWon = wonPrizes.length === allConfiguredPrizes.length;
+
+    console.log(`🏆 Prizes won: ${wonPrizes.length}/${allConfiguredPrizes.length}`);
+    console.log(`🏁 All prizes completed: ${allPrizesWon}`);
+
+    // List each prize status for debugging
+    allConfiguredPrizes.forEach(([prizeId, prize]) => {
+      console.log(`   📌 ${prizeId} (${prize.name}): ${prize.won ? 'WON' : 'NOT WON'}`);
+    });
+
+    return allPrizesWon;
   }
-  
-  // Get all configured prizes (regardless of won status for filtering)
-  const allConfiguredPrizes = Object.entries(allPrizes).filter(([prizeId, prize]: [string, any]) => {
-    const isValid = prize && 
-                   prize.name && 
-                   typeof prize.won === 'boolean' &&
-                   prize.name !== '';
-    
-    console.log(`🎯 Prize ${prizeId}: valid=${isValid}, name="${prize?.name}", won=${prize?.won}`);
-    return isValid;
-  });
-  
-  console.log(`📋 Total configured prizes: ${allConfiguredPrizes.length}`);
-  
-  // If no prizes configured, don't end based on prize logic
-  if (allConfiguredPrizes.length === 0) {
-    console.log(`⚠️ No configured prizes found - game will not end based on prize completion`);
-    return false;
-  }
-  
-  // Check if ALL configured prizes are won
-  const wonPrizes = allConfiguredPrizes.filter(([prizeId, prize]) => prize.won === true);
-  const allPrizesWon = wonPrizes.length === allConfiguredPrizes.length;
-  
-  console.log(`🏆 Prizes won: ${wonPrizes.length}/${allConfiguredPrizes.length}`);
-  console.log(`🏁 All prizes completed: ${allPrizesWon}`);
-  
-  // List each prize status for debugging
-  allConfiguredPrizes.forEach(([prizeId, prize]) => {
-    console.log(`   📌 ${prizeId} (${prize.name}): ${prize.won ? 'WON' : 'NOT WON'}`);
-  });
-  
-  return allPrizesWon;
-}
- /**
-   * Start game with countdown setup
-   */
+  /**
+    * Start game with countdown setup
+    */
   async startGameWithCountdown(gameId: string): Promise<void> {
     try {
       const gameRef = ref(database, `games/${gameId}`);
@@ -1517,9 +1571,9 @@ private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
         'gameState/gameOver': false,
         'updatedAt': new Date().toISOString()
       });
-      
+
       console.log(`✅ Game countdown started: ${gameId}`);
-      
+
       // ✅ FIX: Server-side safety timeout
       setTimeout(async () => {
         try {
@@ -1532,32 +1586,32 @@ private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
           console.error('❌ Countdown timeout safety check failed:', error);
         }
       }, 15000); // 15 second safety timeout
-      
+
     } catch (error: any) {
       throw new Error(`Failed to start countdown: ${error.message}`);
     }
   }
-/**
- * Update countdown time in real-time for all users
- */
-async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
-  try {
-    const gameRef = ref(database, `games/${gameId}`);
-    await update(gameRef, {
-      'gameState/countdownTime': timeLeft,
-      'updatedAt': new Date().toISOString()
-    });
-    
-    console.log(`✅ Countdown updated: ${timeLeft}s remaining for game ${gameId}`);
-  } catch (error: any) {
-    console.error('❌ Failed to update countdown time:', error);
-    throw new Error(`Failed to update countdown: ${error.message}`);
-  }
-}
+  /**
+   * Update countdown time in real-time for all users
+   */
+  async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
+    try {
+      const gameRef = ref(database, `games/${gameId}`);
+      await update(gameRef, {
+        'gameState/countdownTime': timeLeft,
+        'updatedAt': new Date().toISOString()
+      });
 
-/**
- * Activate game after countdown
- */
+      console.log(`✅ Countdown updated: ${timeLeft}s remaining for game ${gameId}`);
+    } catch (error: any) {
+      console.error('❌ Failed to update countdown time:', error);
+      throw new Error(`Failed to update countdown: ${error.message}`);
+    }
+  }
+
+  /**
+   * Activate game after countdown
+   */
   async activateGameAfterCountdown(gameId: string): Promise<void> {
     try {
       const gameRef = ref(database, `games/${gameId}`);
@@ -1567,7 +1621,7 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
         'gameState/countdownTime': 0,
         'updatedAt': new Date().toISOString()
       });
-      
+
       console.log(`✅ Game activated after countdown: ${gameId}`);
     } catch (error: any) {
       throw new Error(`Failed to activate game: ${error.message}`);
@@ -1579,20 +1633,20 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
   async completePendingGameEnd(gameId: string): Promise<void> {
     try {
       console.log(`🏁 Completing pending game end for ${gameId}`);
-      
+
       const gameRef = ref(database, `games/${gameId}`);
-      
+
       await runTransaction(gameRef, (currentGame) => {
         if (!currentGame) {
           throw new Error('Game not found');
         }
-        
+
         // Only end if there's a pending game end
         if (!currentGame.gameState?.pendingGameEnd) {
           console.log('No pending game end - skipping');
           return currentGame;
         }
-        
+
         return {
           ...currentGame,
           gameState: {
@@ -1606,16 +1660,16 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
           lastWinnerAnnouncement: 'Game Over! All audio completed! 🎉'
         };
       });
-      
+
       // Clean up number caller
       const numberCaller = this.numberCallers.get(gameId);
       if (numberCaller) {
         await numberCaller.cleanup();
         this.numberCallers.delete(gameId);
       }
-      
+
       console.log(`✅ Game ${gameId} ended successfully after audio completion`);
-      
+
     } catch (error: any) {
       console.error('❌ Failed to complete pending game end:', error);
       throw new Error(error.message || 'Failed to complete pending game end');
@@ -1628,14 +1682,14 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
   async finalizeGameEnd(gameId: string): Promise<void> {
     try {
       console.log(`🏁 Finalizing game end for ${gameId}`);
-      
+
       const gameRef = ref(database, `games/${gameId}`);
-      
+
       await runTransaction(gameRef, (currentGame) => {
         if (!currentGame) {
           throw new Error('Game not found');
         }
-        
+
         return {
           ...currentGame,
           gameState: {
@@ -1648,9 +1702,9 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
           }
         };
       });
-      
+
       console.log(`✅ Game ${gameId} ended successfully after audio completion`);
-      
+
     } catch (error: any) {
       console.error('❌ Failed to finalize game end:', error);
       throw new Error(error.message || 'Failed to finalize game end');
@@ -1684,14 +1738,14 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
         'lastWinnerAt': new Date().toISOString(),
         'updatedAt': new Date().toISOString()
       });
-      
+
       console.log(`🚨 Game ended due to error: ${gameId}`);
     } catch (endError) {
       console.error('❌ Failed to end game after error:', endError);
     }
   }
-// ================== FIREBASE RETRY MECHANISM ==================
-  
+  // ================== FIREBASE RETRY MECHANISM ==================
+
   /**
    * Start retrying Firebase connection in background
    */
@@ -1701,44 +1755,44 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
       console.log('🔄 Firebase retry already active for game:', gameId);
       return;
     }
-    
+
     this.firebaseRetryActive.set(gameId, true);
     console.log('🔄 Starting Firebase retry mechanism for game:', gameId);
-    
+
     // Clear any existing interval
     const existingInterval = this.firebaseRetryIntervals.get(gameId);
     if (existingInterval) {
       clearInterval(existingInterval);
     }
-    
+
     // Retry every 3 seconds
     const retryInterval = setInterval(async () => {
       try {
         console.log('🔄 Attempting Firebase connection test...');
-        
+
         // Test Firebase with a simple read
         const testRef = ref(database, `games/${gameId}/gameState/isActive`);
         await get(testRef);
-        
+
         console.log('✅ Firebase connection restored!');
-        
+
         // Update game state to signal recovery
         await update(ref(database, `games/${gameId}`), {
           firebaseRecovered: true,
           firebaseRecoveredAt: new Date().toISOString()
         });
-        
+
         // Stop retry mechanism
         this.stopFirebaseRetry(gameId);
-        
+
       } catch (error) {
         console.log('❌ Firebase still unavailable, will retry in 3 seconds...');
       }
     }, 3000);
-    
+
     this.firebaseRetryIntervals.set(gameId, retryInterval);
   }
-  
+
   /**
    * Stop Firebase retry mechanism
    */
@@ -1748,7 +1802,7 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
       clearInterval(interval);
       this.firebaseRetryIntervals.delete(gameId);
     }
-   this.firebaseRetryActive.set(gameId, false);
+    this.firebaseRetryActive.set(gameId, false);
     console.log('🛑 Stopped Firebase retry mechanism for game:', gameId);
   }
 
@@ -1758,13 +1812,13 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
   private deepMerge(target: any, source: any): any {
     if (source === null || source === undefined) return target;
     if (target === null || target === undefined) return source;
-    
+
     if (typeof source !== 'object' || typeof target !== 'object') {
       return source;
     }
-    
+
     const result = { ...target };
-    
+
     for (const key in source) {
       if (source.hasOwnProperty(key)) {
         if (typeof source[key] === 'object' && !Array.isArray(source[key]) && source[key] !== null) {
@@ -1774,18 +1828,18 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
         }
       }
     }
-    
+
     return result;
   }
 
   // ================== GAME OPERATIONS ==================
   // ================== SINGLETON EXPORT ==================
-/**
-   * Cleanup all resources
-   */
+  /**
+     * Cleanup all resources
+     */
   async cleanup(): Promise<void> {
     console.log('🧹 Cleaning up FirebaseGameService');
-    
+
     // Cleanup all number callers
     for (const [gameId, caller] of this.numberCallers) {
       try {
@@ -1795,14 +1849,14 @@ async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
       }
     }
     this.numberCallers.clear();
-    
+
     // Clear retry intervals
     for (const [gameId, interval] of this.firebaseRetryIntervals) {
       clearInterval(interval);
     }
     this.firebaseRetryIntervals.clear();
     this.firebaseRetryActive.clear();
-    
+
     // Cleanup mutex
     await this.gameMutex.cleanup();
   }
