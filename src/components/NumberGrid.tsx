@@ -1,4 +1,4 @@
-// src/components/NumberGrid.tsx - CLEANED: Only display, no manual clicking
+// src/components/NumberGrid.tsx - THEMED: Uses CSS variables for complete theme support
 import React from 'react';
 
 interface NumberGridProps {
@@ -8,9 +8,9 @@ interface NumberGridProps {
   isCallingNumber?: boolean; // Show calling state
 }
 
-export const NumberGrid: React.FC<NumberGridProps> = ({ 
-  calledNumbers, 
-  currentNumber, 
+export const NumberGrid: React.FC<NumberGridProps> = ({
+  calledNumbers,
+  currentNumber,
   isHost = false,
   isCallingNumber = false
 }) => {
@@ -19,32 +19,36 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
   const getNumberStyle = (number: number) => {
     const isCalled = calledNumbers.includes(number);
     const isCurrent = currentNumber === number;
-    
-    let baseClass = 'number-cell transition-all duration-300 flex items-center justify-center rounded-xl font-bold text-sm border-2';
-    
+
+    // Base class uses CSS .number-cell from index.css with theme variables
+    let baseClass = 'number-cell';
+
     if (isCurrent) {
-      return `${baseClass} current bg-gradient-to-br from-yellow-400 to-yellow-600 text-white shadow-xl transform scale-110 ring-4 ring-yellow-300 ring-opacity-50 animate-pulse`;
+      // Uses CSS .number-cell.current with theme's --game-current color
+      return `${baseClass} current`;
     }
-    
+
     if (isCalled) {
-      return `${baseClass} called bg-gradient-to-br from-emerald-400 to-emerald-500 text-white shadow-lg border-emerald-400`;
+      // Uses CSS .number-cell.called with theme's --game-called color
+      return `${baseClass} called`;
     }
-    
-    return `${baseClass} bg-gradient-to-br from-slate-100 to-slate-200 text-slate-800 border-slate-300 hover:border-slate-400 hover:from-slate-200 hover:to-slate-300`;
+
+    // Default uncalled state uses theme's --game-cell color
+    return baseClass;
   };
 
   const getNumberDisplayClass = (number: number) => {
     const isCalled = calledNumbers.includes(number);
     const isCurrent = currentNumber === number;
-    
+
     if (isCurrent) {
       return 'text-2xl font-black';
     }
-    
+
     if (isCalled) {
       return 'text-lg font-bold';
     }
-    
+
     return 'text-base font-semibold';
   };
 
@@ -56,19 +60,19 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
 
   return (
     <div className="w-full max-w-4xl mx-auto p-4">
-      {/* Header - Simple legend for all users */}
+      {/* Header - Legend with theme colors */}
       <div className="mb-4 text-center">
-        <div className="flex justify-center space-x-4 text-sm text-gray-600">
+        <div className="flex justify-center space-x-4 text-sm text-muted-foreground">
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-br from-slate-100 to-slate-200 border border-slate-300 rounded"></div>
+            <div className="w-4 h-4 rounded border-2 border-border" style={{ background: 'hsl(var(--game-cell))' }}></div>
             <span>Not Called</span>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-br from-emerald-400 to-emerald-500 rounded"></div>
+            <div className="w-4 h-4 rounded" style={{ background: 'hsl(var(--game-called))' }}></div>
             <span>Called</span>
           </div>
           <div className="flex items-center space-x-2">
-            <div className="w-4 h-4 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded"></div>
+            <div className="w-4 h-4 rounded" style={{ background: 'hsl(var(--game-current))' }}></div>
             <span>Current</span>
           </div>
         </div>
@@ -94,11 +98,11 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
         ))}
       </div>
 
-      {/* Show calling state for hosts */}
+      {/* Show calling state for hosts - themed */}
       {isHost && isCallingNumber && (
-        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-center justify-center space-x-2 text-yellow-800">
-            <div className="w-4 h-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin"></div>
+        <div className="mt-4 p-3 bg-accent border border-border rounded-lg">
+          <div className="flex items-center justify-center space-x-2 text-accent-foreground">
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div>
             <p className="text-sm font-medium">
               Calling number automatically... Please wait.
             </p>
@@ -106,26 +110,25 @@ export const NumberGrid: React.FC<NumberGridProps> = ({
         </div>
       )}
 
-      {/* Game Progress Indicator */}
-      <div className="mt-4 bg-gray-50 rounded-lg p-3">
-        <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+      {/* Game Progress Indicator - themed */}
+      <div className="mt-4 bg-muted rounded-lg p-3">
+        <div className="flex items-center justify-between text-sm text-muted-foreground mb-2">
           <span>Game Progress</span>
           <span>{calledNumbers.length}/90 numbers called</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
-          <div 
-            className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
-            style={{ width: `${(calledNumbers.length / 90) * 100}%` }}
+        <div className="w-full bg-secondary rounded-full h-2">
+          <div
+            className="h-2 rounded-full transition-all duration-300"
+            style={{
+              width: `${(calledNumbers.length / 90) * 100}%`,
+              background: 'linear-gradient(to right, hsl(var(--primary)), hsl(var(--accent)))'
+            }}
           ></div>
         </div>
-        <div className="text-xs text-gray-500 mt-1 text-center">
+        <div className="text-xs text-muted-foreground mt-1 text-center">
           {90 - calledNumbers.length} numbers remaining
         </div>
       </div>
-
-      {/* ❌ REMOVED: All manual clicking functionality */}
-      {/* ❌ REMOVED: onNumberClick handlers */}
-      {/* ❌ REMOVED: Manual calling UI elements */}
     </div>
   );
 };
