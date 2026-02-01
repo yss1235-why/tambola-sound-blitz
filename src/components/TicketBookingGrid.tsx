@@ -12,16 +12,16 @@ interface TicketBookingGridProps {
   onGameStart: () => void;
 }
 
-export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({ 
-  tickets, 
-  gameData, 
-  onBookTicket, 
-  onGameStart 
+export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
+  tickets,
+  gameData,
+  onBookTicket,
+  onGameStart
 }) => {
   const [hostPhone, setHostPhone] = useState<string>('');
   const [isLoadingHost, setIsLoadingHost] = useState(true);
   const [realTimeGameData, setRealTimeGameData] = useState<GameData>(gameData);
-   const [viewMode, setViewMode] = useState<'all' | 'available'>('all');
+  const [viewMode, setViewMode] = useState<'all' | 'available'>('all');
 
   // ✅ FIXED: Add subscription ref for cleanup
   const subscriptionRef = useRef<(() => void) | null>(null);
@@ -29,7 +29,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
   // ✅ FIXED: Setup real-time subscription to detect game state changes
   useEffect(() => {
     console.log('🔔 TicketBooking: Setting up real-time subscription for game:', gameData.gameId);
-    
+
     // Clean up existing subscription
     if (subscriptionRef.current) {
       subscriptionRef.current();
@@ -47,10 +47,10 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
         setRealTimeGameData(updatedGameData);
 
         // ✅ FIXED: Auto-switch to game view when host starts the game
-        const hasGameStarted = (updatedGameData.gameState.calledNumbers?.length || 0) > 0 || 
-                              updatedGameData.gameState.isActive || 
-                              updatedGameData.gameState.isCountdown ||
-                              updatedGameData.gameState.gameOver;
+        const hasGameStarted = (updatedGameData.gameState.calledNumbers?.length || 0) > 0 ||
+          updatedGameData.gameState.isActive ||
+          updatedGameData.gameState.isCountdown ||
+          updatedGameData.gameState.gameOver;
 
         if (hasGameStarted) {
           console.log('🎮 TicketBooking: Auto-switching to game view - host started the game!');
@@ -113,7 +113,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
   const totalCount = Math.min(realTimeGameData.maxTickets, Object.keys(realTimeGameData.tickets || {}).length);
   const availableCount = totalCount - bookedCount;
 
- // Get only the tickets up to maxTickets limit
+  // Get only the tickets up to maxTickets limit
   const allTickets = Object.entries(realTimeGameData.tickets || {})
     .slice(0, realTimeGameData.maxTickets)
     .reduce((acc, [ticketId, ticket]) => {
@@ -122,27 +122,27 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
     }, {} as { [key: string]: TambolaTicket });
 
   // Filter tickets based on view mode
-  const availableTickets = viewMode === 'available' 
+  const availableTickets = viewMode === 'available'
     ? Object.entries(allTickets)
-        .filter(([_, ticket]) => !ticket.isBooked)
-        .reduce((acc, [ticketId, ticket]) => {
-          acc[ticketId] = ticket;
-          return acc;
-        }, {} as { [key: string]: TambolaTicket })
+      .filter(([_, ticket]) => !ticket.isBooked)
+      .reduce((acc, [ticketId, ticket]) => {
+        acc[ticketId] = ticket;
+        return acc;
+      }, {} as { [key: string]: TambolaTicket })
     : allTickets;
   // ✅ FIXED: Check real-time game state
   if (realTimeGameData.gameState.isActive || realTimeGameData.gameState.isCountdown) {
     // Game is starting/started - this view should switch automatically
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
-        <Card className="max-w-md w-full bg-white/90 backdrop-blur-sm border-2 border-orange-200">
+      <div className="min-h-screen bg-background p-4 flex items-center justify-center">
+        <Card className="max-w-md w-full bg-card/90 backdrop-blur-sm border-2 border-border">
           <CardContent className="p-8 text-center">
-            <Clock className="w-16 h-16 mx-auto mb-4 text-orange-500 animate-pulse" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">Game Starting!</h2>
-            <p className="text-gray-600 mb-4">
+            <Clock className="w-16 h-16 mx-auto mb-4 text-primary animate-pulse" />
+            <h2 className="text-2xl font-bold text-foreground mb-2">Game Starting!</h2>
+            <p className="text-muted-foreground mb-4">
               The host has started the game. Switching to game view...
             </p>
-            <div className="w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
           </CardContent>
         </Card>
       </div>
@@ -152,47 +152,47 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
   return (
     <div className="space-y-6">
       {/* Game Info Section */}
-      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+      <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl text-gray-800">
+          <CardTitle className="text-3xl text-foreground">
             {realTimeGameData.name}
           </CardTitle>
           <div className="flex justify-center items-center space-x-8 mt-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">{bookedCount}</div>
-              <div className="text-sm text-gray-600">Tickets Booked</div>
+              <div className="text-sm text-muted-foreground">Tickets Booked</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">{availableCount}</div>
-              <div className="text-sm text-gray-600">Available</div>
+              <div className="text-sm text-muted-foreground">Available</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">{totalCount}</div>
-              <div className="text-sm text-gray-600">Max Tickets</div>
+              <div className="text-sm text-muted-foreground">Max Tickets</div>
             </div>
           </div>
           {/* ✅ FIXED: Real-time status indicator */}
-         
+
         </CardHeader>
       </Card>
 
       {/* Tickets Grid */}
       {/* Tickets Grid */}
-      <Card className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-orange-200">
+      <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
         <CardHeader>
-          <CardTitle className="text-2xl text-gray-800 text-center">
+          <CardTitle className="text-2xl text-foreground text-center">
             {viewMode === 'all' ? 'All Tickets' : 'Available Tickets Only'}
           </CardTitle>
-          
+
           {/* View Mode Toggle */}
           <div className="flex justify-center mt-4 gap-2">
             <Button
               onClick={() => setViewMode('all')}
               variant={viewMode === 'all' ? 'default' : 'outline'}
               size="sm"
-              className={viewMode === 'all' 
-                ? 'bg-orange-500 hover:bg-orange-600 text-white' 
-                : 'text-gray-600 hover:text-gray-800'}
+              className={viewMode === 'all'
+                ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'}
             >
               🎫 All Tickets ({Object.keys(allTickets).length})
             </Button>
@@ -200,61 +200,58 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
               onClick={() => setViewMode('available')}
               variant={viewMode === 'available' ? 'default' : 'outline'}
               size="sm"
-              className={viewMode === 'available' 
-                ? 'bg-green-500 hover:bg-green-600 text-white' 
-                : 'text-gray-600 hover:text-gray-800'}
+              className={viewMode === 'available'
+                ? 'bg-green-500 hover:bg-green-600 text-white'
+                : 'text-muted-foreground hover:text-foreground'}
             >
               ✅ Available Only ({Object.values(allTickets).filter(t => !t.isBooked).length})
             </Button>
           </div>
         </CardHeader>
         <CardContent className="p-2 md:p-6">
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6">
-  {Object.entries(availableTickets).map(([ticketId, ticket]) => (
-    <div
-      key={ticketId}
-      className={`relative rounded border-2 transition-all duration-200 ${
-        ticket.isBooked 
-          ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md' 
-          : 'bg-white border-orange-200 hover:border-orange-400 hover:shadow-lg cursor-pointer'
-      }`}
-    >
-      {/* NEW: Ticket Info Header */}
-      <div className="flex items-center justify-between p-3 border-b border-gray-200">
-        <div className="flex items-center space-x-2">
-          <span className="font-bold text-gray-800">Ticket {ticketId}</span>
-        </div>
-        <div className="text-right">
-          {ticket.isBooked ? (
-            <span className="text-sm text-gray-600">{ticket.playerName}</span>
-          ) : (
-            <span className="text-sm text-green-600 font-medium">Available</span>
-          )}
-        </div>
-      </div>
-
-{/* ✅ FIXED: Ticket Grid with Safety Checks */}
-<div className="p-1 md:p-2">
-                  {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
-                {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
-                  <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-0 md:p-1 md:border border-yellow-500 rounded">
-                    {ticket.rows.flat().map((number, index) => (
-                      <div
-                        key={index}
-                        className={`h-8 w-8 flex items-center justify-center font-bold rounded border-2 text-black text-sm md:text-sm ${
-                      
-                          number === 0 
-                            ? 'bg-white border-yellow-500' 
-                            : 'bg-white border-yellow-500'
-                        }`}
-                      >
-                        {number === 0 ? '' : number}
-                      </div>
-                    ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-6">
+            {Object.entries(availableTickets).map(([ticketId, ticket]) => (
+              <div
+                key={ticketId}
+                className={`relative rounded border-2 transition-all duration-200 ${ticket.isBooked
+                    ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md'
+                    : 'bg-card border-border hover:border-primary hover:shadow-lg cursor-pointer'
+                  }`}
+              >
+                {/* NEW: Ticket Info Header */}
+                <div className="flex items-center justify-between p-3 border-b border-border">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-bold text-foreground">Ticket {ticketId}</span>
                   </div>
+                  <div className="text-right">
+                    {ticket.isBooked ? (
+                      <span className="text-sm text-muted-foreground">{ticket.playerName}</span>
+                    ) : (
+                      <span className="text-sm text-green-600 font-medium">Available</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* ✅ FIXED: Ticket Grid with Safety Checks */}
+                <div className="p-1 md:p-2">
+                  {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
+                  {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
+                    <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-0 md:p-1 md:border border-yellow-500 rounded">
+                      {ticket.rows.flat().map((number, index) => (
+                        <div
+                          key={index}
+                          className={`h-8 w-8 flex items-center justify-center font-bold rounded border-2 text-black text-sm md:text-sm ${number === 0
+                              ? 'bg-white border-yellow-500'
+                              : 'bg-white border-yellow-500'
+                            }`}
+                        >
+                          {number === 0 ? '' : number}
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     /* ✅ FIXED: Show loading state if ticket data is incomplete */
-                   <div className="grid grid-cols-9 gap-1 mb-2">
+                    <div className="grid grid-cols-9 gap-1 mb-2">
                       <div className="col-span-9 text-center py-2">
 
                         <div className="flex items-center justify-center space-x-2">
@@ -271,52 +268,52 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   )}
 
                   {/* Booking Status / Button */}
-                    <div className="py-1 px-3 rounded-b bg-gray-50">
-                      {ticket.isBooked ? (
-                         <div className="text-center">
-                          {/* Phone number removed */}
-                        </div>
-                         
-                      ) : (
+                  <div className="py-1 px-3 rounded-b bg-muted">
+                    {ticket.isBooked ? (
+                      <div className="text-center">
+                        {/* Phone number removed */}
+                      </div>
+
+                    ) : (
                       <Button
                         onClick={() => handleBookTicket(ticketId)}
                         disabled={!hostPhone || isLoadingHost || !ticket.rows}
                         size="sm"
-                        className="bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600 w-full h-6 text-xs disabled:opacity-50"
+                        className="bg-primary hover:bg-primary/90 text-primary-foreground w-full h-6 text-xs disabled:opacity-50"
                       >
                         <Phone className="w-3 h-3 mr-1" />
-                        {isLoadingHost ? 'Loading...' : 
-                         !ticket.rows ? 'Loading...' : 
-                         'Book'}
+                        {isLoadingHost ? 'Loading...' :
+                          !ticket.rows ? 'Loading...' :
+                            'Book'}
                       </Button>
                     )}
                   </div>
                 </div>
               </div>
             ))}
-         </div>
+          </div>
 
           {/* Empty State for Available Only mode */}
           {viewMode === 'available' && Object.keys(availableTickets).length === 0 && (
             <div className="text-center py-12">
               <div className="text-6xl mb-4">🎟️</div>
-              <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              <h3 className="text-xl font-semibold text-foreground mb-2">
                 All Tickets Have Been Booked!
               </h3>
-              <p className="text-gray-600 mb-4">
+              <p className="text-muted-foreground mb-4">
                 There are no available tickets at the moment.
               </p>
               <Button
                 onClick={() => setViewMode('all')}
                 variant="outline"
                 size="sm"
-                className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                className="text-primary border-primary hover:bg-muted"
               >
                 View All Tickets
               </Button>
             </div>
           )}
-         
+
         </CardContent>
       </Card>
     </div>
