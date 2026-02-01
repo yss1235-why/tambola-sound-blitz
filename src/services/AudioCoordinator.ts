@@ -192,11 +192,34 @@ export class AudioCoordinator {
   }
 
   private async executeNumberAudioWebSpeech(number: number, speechRate: number = 0.9): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!('speechSynthesis' in window)) {
         reject(new Error('Speech synthesis not supported'));
         return;
       }
+
+      // AUDIO-FIX: Wait for voices to load (critical on some browsers)
+      let voices = speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        console.log('⏳ Waiting for voices to load...');
+        await new Promise<void>((voiceResolve) => {
+          const maxWait = setTimeout(() => voiceResolve(), 2000);
+          speechSynthesis.onvoiceschanged = () => {
+            clearTimeout(maxWait);
+            voiceResolve();
+          };
+        });
+        voices = speechSynthesis.getVoices();
+      }
+
+      if (voices.length === 0) {
+        console.warn('⚠️ No voices available, resolving silently');
+        resolve();
+        return;
+      }
+
+      // AUDIO-FIX: Cancel any stuck speech before starting
+      speechSynthesis.cancel();
 
       const traditionalCalls: { [key: number]: string } = {
         1: "Kelly's Eye, number one",
@@ -376,11 +399,29 @@ export class AudioCoordinator {
   }
 
   private async executePrizeAudioWebSpeech(prizeId: string, playerName: string, speechRate: number = 0.8): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!('speechSynthesis' in window)) {
         reject(new Error('Speech synthesis not supported'));
         return;
       }
+
+      // AUDIO-FIX: Wait for voices to load
+      let voices = speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        await new Promise<void>((voiceResolve) => {
+          const maxWait = setTimeout(() => voiceResolve(), 2000);
+          speechSynthesis.onvoiceschanged = () => {
+            clearTimeout(maxWait);
+            voiceResolve();
+          };
+        });
+        voices = speechSynthesis.getVoices();
+      }
+      if (voices.length === 0) {
+        resolve();
+        return;
+      }
+      speechSynthesis.cancel();
 
       const prizeNames: { [key: string]: string } = {
         'earlyFive': 'Early Five',
@@ -461,11 +502,29 @@ export class AudioCoordinator {
   }
 
   private async executeGameOverAudioWebSpeech(speechRate: number = 0.8): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (!('speechSynthesis' in window)) {
         reject(new Error('Speech synthesis not supported'));
         return;
       }
+
+      // AUDIO-FIX: Wait for voices to load
+      let voices = speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        await new Promise<void>((voiceResolve) => {
+          const maxWait = setTimeout(() => voiceResolve(), 2000);
+          speechSynthesis.onvoiceschanged = () => {
+            clearTimeout(maxWait);
+            voiceResolve();
+          };
+        });
+        voices = speechSynthesis.getVoices();
+      }
+      if (voices.length === 0) {
+        resolve();
+        return;
+      }
+      speechSynthesis.cancel();
 
       const text = 'Game Over! Thank you for playing!';
 
