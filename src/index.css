@@ -42,6 +42,19 @@
     --game-countdown: 45 93% 47%;
     --game-paused: 258 90% 66%;
     --game-ended: 0 84% 60%;
+    
+    /* Body gradient (overridden by theme) */
+    --body-gradient-from: 210 40% 96%;
+    --body-gradient-via: 210 20% 94%;
+    --body-gradient-to: 215 28% 90%;
+    
+    /* Game element colors (overridden by theme) */
+    --game-called: 142 76% 36%;
+    --game-called-foreground: 0 0% 100%;
+    --game-current: 346.8 77.2% 49.8%;
+    --game-current-foreground: 0 0% 100%;
+    --game-cell: 240 4.8% 95.9%;
+    --game-cell-foreground: 240 10% 3.9%;
   }
 }
 
@@ -50,36 +63,59 @@
     @apply border-border;
   }
 
+  /* Body uses theme gradient variables */
   body {
-    @apply bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 text-gray-800 min-h-screen;
+    background: linear-gradient(
+      to bottom right,
+      hsl(var(--body-gradient-from)),
+      hsl(var(--body-gradient-via)),
+      hsl(var(--body-gradient-to))
+    );
+    color: hsl(var(--foreground));
+    min-height: 100vh;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    transition: background 0.3s ease, color 0.3s ease;
   }
 }
 
 @layer components {
   .tambola-card {
-    @apply bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl border border-slate-200 p-6;
+    background: hsl(var(--card) / 0.9);
+    color: hsl(var(--card-foreground));
+    @apply backdrop-blur-sm rounded-2xl shadow-xl border border-border p-6;
   }
   
+  /* Number grid uses theme colors */
   .number-grid {
-    @apply grid grid-cols-10 gap-2 p-6 bg-gradient-to-br from-white to-slate-50 rounded-2xl shadow-lg border border-slate-200;
+    background: linear-gradient(to bottom right, hsl(var(--card)), hsl(var(--card) / 0.8));
+    border-color: hsl(var(--border));
+    @apply grid grid-cols-10 gap-2 p-6 rounded-2xl shadow-lg border;
   }
   
+  /* Number cells use theme variables */
   .number-cell {
+    background: linear-gradient(to bottom right, hsl(var(--game-cell)), hsl(var(--game-cell) / 0.8));
+    color: hsl(var(--game-cell-foreground));
+    border-color: hsl(var(--border));
     @apply aspect-square flex items-center justify-center rounded-xl font-bold text-sm
            transition-all duration-300 cursor-pointer hover:scale-105
-           bg-gradient-to-br from-slate-100 to-slate-200 text-slate-800
-           border-2 border-slate-300 hover:border-slate-400;
+           border-2 hover:border-primary;
   }
   
+  /* Called numbers use theme game-called color */
   .number-cell.called {
-    @apply bg-gradient-to-br from-emerald-400 to-emerald-500 text-white
-           shadow-lg transform scale-105 border-emerald-400;
+    background: linear-gradient(to bottom right, hsl(var(--game-called)), hsl(var(--game-called) / 0.9));
+    color: hsl(var(--game-called-foreground));
+    border-color: hsl(var(--game-called));
+    @apply shadow-lg transform scale-105;
   }
   
+  /* Current number uses theme game-current color */
   .number-cell.current {
-    @apply animate-number-call ring-4 ring-yellow-400 ring-opacity-75 
-           bg-gradient-to-br from-yellow-400 to-yellow-500 text-white;
+    background: linear-gradient(to bottom right, hsl(var(--game-current)), hsl(var(--game-current) / 0.9));
+    color: hsl(var(--game-current-foreground));
+    @apply animate-number-call ring-4 ring-opacity-75;
+    --tw-ring-color: hsl(var(--game-current) / 0.75);
   }
 
   /* Enhanced number cell styles for host control */

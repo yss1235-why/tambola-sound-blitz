@@ -113,23 +113,54 @@ class ThemeService {
     }
 
     /**
-     * Apply theme colors to CSS variables
+     * Apply ALL theme colors to CSS variables for complete transformation
      */
     applyThemeToDocument(colors: ThemeColors): void {
         const root = document.documentElement;
 
+        // Core colors
         root.style.setProperty('--primary', colors.primary);
+        root.style.setProperty('--primary-foreground', colors.primaryForeground);
         root.style.setProperty('--secondary', colors.secondary);
+        root.style.setProperty('--secondary-foreground', colors.secondaryForeground);
         root.style.setProperty('--background', colors.background);
-        root.style.setProperty('--accent', colors.accent);
         root.style.setProperty('--foreground', colors.foreground);
 
-        // Also update derived colors for consistency
-        root.style.setProperty('--ring', colors.primary);
-        root.style.setProperty('--card', colors.background);
-        root.style.setProperty('--popover', colors.background);
+        // Accent and muted
+        root.style.setProperty('--accent', colors.accent);
+        root.style.setProperty('--accent-foreground', colors.accentForeground);
+        root.style.setProperty('--muted', colors.muted);
+        root.style.setProperty('--muted-foreground', colors.mutedForeground);
 
-        console.log('🎨 Theme applied:', colors);
+        // Cards and containers
+        root.style.setProperty('--card', colors.card);
+        root.style.setProperty('--card-foreground', colors.cardForeground);
+        root.style.setProperty('--popover', colors.card);
+        root.style.setProperty('--popover-foreground', colors.cardForeground);
+
+        // Borders and inputs
+        root.style.setProperty('--border', colors.border);
+        root.style.setProperty('--input', colors.input);
+        root.style.setProperty('--ring', colors.ring);
+
+        // Game-specific colors (custom properties)
+        root.style.setProperty('--game-called', colors.gameCalled);
+        root.style.setProperty('--game-called-foreground', colors.gameCalledForeground);
+        root.style.setProperty('--game-current', colors.gameCurrent);
+        root.style.setProperty('--game-current-foreground', colors.gameCurrentForeground);
+        root.style.setProperty('--game-cell', colors.gameCell);
+        root.style.setProperty('--game-cell-foreground', colors.gameCellForeground);
+
+        // Body gradient
+        root.style.setProperty('--body-gradient-from', colors.bodyGradientFrom);
+        root.style.setProperty('--body-gradient-via', colors.bodyGradientVia);
+        root.style.setProperty('--body-gradient-to', colors.bodyGradientTo);
+
+        console.log('🎨 Complete theme applied:', {
+            preset: colors.primary,
+            background: colors.background,
+            gameCalled: colors.gameCalled
+        });
     }
 
     /**
