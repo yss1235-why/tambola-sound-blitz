@@ -214,8 +214,8 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
               <div
                 key={ticketId}
                 className={`relative rounded border-2 transition-all duration-200 ${ticket.isBooked
-                    ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md'
-                    : 'bg-card border-border hover:border-primary hover:shadow-lg cursor-pointer'
+                  ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md'
+                  : 'bg-card border-border hover:border-primary hover:shadow-lg cursor-pointer'
                   }`}
               >
                 {/* NEW: Ticket Info Header */}
@@ -225,7 +225,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   </div>
                   <div className="text-right">
                     {ticket.isBooked ? (
-                      <span className="text-sm text-muted-foreground">{ticket.playerName}</span>
+                      <span className="text-sm text-green-800">{ticket.playerName}</span>
                     ) : (
                       <span className="text-sm text-green-600 font-medium">Available</span>
                     )}
@@ -233,16 +233,16 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 </div>
 
                 {/* ✅ FIXED: Ticket Grid with Safety Checks */}
-                <div className="p-1 md:p-2">
+                <div className="p-3 md:p-4">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                   {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
-                    <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-0 md:p-1 md:border border-yellow-500 rounded">
+                    <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-2 border border-yellow-500 rounded">
                       {ticket.rows.flat().map((number, index) => (
                         <div
                           key={index}
                           className={`h-8 w-8 flex items-center justify-center font-bold rounded border-2 text-black text-sm md:text-sm ${number === 0
-                              ? 'bg-white border-yellow-500'
-                              : 'bg-white border-yellow-500'
+                            ? 'bg-white border-yellow-500'
+                            : 'bg-white border-yellow-500'
                             }`}
                         >
                           {number === 0 ? '' : number}
