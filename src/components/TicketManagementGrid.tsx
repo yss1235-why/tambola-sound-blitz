@@ -218,9 +218,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     const baseClasses = "aspect-square flex items-center justify-center border-2 rounded-lg cursor-pointer transition-all duration-200";
 
     if (ticket.isBooked) {
-      return `${baseClasses} border-green-500 bg-green-200 text-black`;
+      return `${baseClasses} border-green-500 bg-green-200 text-green-900`;
     } else if (selectedTickets.includes(ticket.ticketId)) {
-      return `${baseClasses} border-blue-500 bg-blue-200 text-black`;
+      return `${baseClasses} border-blue-500 bg-blue-200 text-blue-900`;
     } else {
       return `${baseClasses} border-border bg-card text-foreground hover:border-primary/50`;
     }
@@ -394,8 +394,8 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       {selectedTickets.length > 0 && (
         <div
           className={`fixed z-50 bg-card border border-border rounded-lg shadow-xl p-3 transition-all duration-300 ${isScrolledDown
-              ? 'bottom-4 left-1/2 transform -translate-x-1/2'
-              : 'bottom-4 left-4'
+            ? 'bottom-4 left-1/2 transform -translate-x-1/2'
+            : 'bottom-4 left-4'
             }`}
           style={{
             maxWidth: '500px'
@@ -413,7 +413,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
               placeholder="Name *"
               value={bookingForm.playerName}
               onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
+              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-background text-foreground placeholder:text-muted-foreground"
               required
             />
 
@@ -423,7 +423,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
               placeholder="Phone"
               value={bookingForm.playerPhone}
               onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
+              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-background text-foreground placeholder:text-muted-foreground"
             />
 
             {/* Book button */}
@@ -456,24 +456,24 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="playerName" className="text-white font-medium">Player Name *</Label>
+              <Label htmlFor="playerName" className="text-foreground font-medium">Player Name *</Label>
               <Input
                 id="playerName"
                 value={bookingForm.playerName}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
                 placeholder="Enter player name"
-                className="text-white placeholder:text-white"
+                className="text-foreground placeholder:text-muted-foreground"
                 required
               />
             </div>
             <div>
-              <Label htmlFor="playerPhone" className="text-white font-medium">Phone Number</Label>
+              <Label htmlFor="playerPhone" className="text-foreground font-medium">Phone Number</Label>
               <Input
                 id="playerPhone"
                 value={bookingForm.playerPhone}
                 onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
                 placeholder="Enter phone number (optional)"
-                className="text-white placeholder:text-white"
+                className="text-foreground placeholder:text-muted-foreground"
               />
             </div>
             <div className="bg-muted p-3 rounded">

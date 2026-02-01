@@ -221,13 +221,13 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 {/* NEW: Ticket Info Header */}
                 <div className="flex items-center justify-between p-3 border-b border-border">
                   <div className="flex items-center space-x-2">
-                    <span className="font-bold text-green-900">Ticket {ticketId}</span>
+                    <span className="font-bold text-foreground">Ticket {ticketId}</span>
                   </div>
                   <div className="text-right">
                     {ticket.isBooked ? (
-                      <span className="text-sm text-green-800">{ticket.playerName}</span>
+                      <span className="text-sm text-primary">{ticket.playerName}</span>
                     ) : (
-                      <span className="text-sm text-green-600 font-medium">Available</span>
+                      <span className="text-sm text-muted-foreground font-medium">Available</span>
                     )}
                   </div>
                 </div>
@@ -240,7 +240,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                       {ticket.rows.flat().map((number, index) => (
                         <div
                           key={index}
-                          className={`h-8 w-8 flex items-center justify-center font-bold rounded border-2 text-amber-900 text-sm md:text-sm ${number === 0
+                          className={`h-8 w-8 flex items-center justify-center font-bold rounded border-2 text-foreground text-sm md:text-sm ${number === 0
                             ? 'bg-white border-yellow-500'
                             : 'bg-white border-yellow-500'
                             }`}
