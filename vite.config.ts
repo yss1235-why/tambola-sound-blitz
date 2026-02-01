@@ -25,32 +25,35 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         // Manual chunking for better caching and reduced initial load
+        // FIXED: Avoid circular dependencies by being specific about what goes where
         manualChunks(id) {
           // Firebase SDK - large, rarely changes
-          if (id.includes('firebase')) {
+          if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) {
             return 'firebase';
           }
           // Charts - only needed on specific pages
-          if (id.includes('recharts') || id.includes('d3-')) {
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) {
             return 'charts';
           }
           // Radix UI primitives - shared UI components
-          if (id.includes('@radix-ui')) {
+          if (id.includes('node_modules/@radix-ui')) {
             return 'radix-ui';
           }
-          // Core vendor bundle - React, router, etc.
-          if (id.includes('node_modules')) {
-            // Keep lucide-react with main since icons are used everywhere
-            if (id.includes('lucide-react')) {
-              return 'icons';
-            }
-            // React and related
-            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
-              return 'react-vendor';
-            }
-            // Other node_modules
-            return 'vendor';
+          // Lucide icons
+          if (id.includes('node_modules/lucide-react')) {
+            return 'icons';
           }
+          // Core React packages ONLY (be specific to avoid cycles)
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react-router') ||
+            id.includes('node_modules/scheduler/')
+          ) {
+            return 'react-vendor';
+          }
+          // Let everything else bundle naturally (no explicit 'vendor' chunk)
+          // This prevents circular dependencies
         }
       }
     }
