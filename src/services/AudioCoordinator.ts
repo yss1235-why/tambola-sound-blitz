@@ -1,6 +1,7 @@
 // src/services/AudioCoordinator.ts
 import { edgeTTSService } from './EdgeTTSService';
 import { FEATURE_FLAGS } from './feature-flags';
+import { smartVoiceSelector } from './SmartVoiceSelector';
 interface AudioTask {
   id: string;
   type: 'number' | 'prize' | 'gameOver';
@@ -291,10 +292,16 @@ export class AudioCoordinator {
       };
 
       const text = traditionalCalls[number] || `Number ${number}`;
-      const utterance = new SpeechSynthesisUtterance(text);
 
-      utterance.rate = speechRate;
-      utterance.volume = 1.0;
+      // Use SmartVoiceSelector for better voice quality if enabled
+      const utterance = FEATURE_FLAGS.USE_SMART_VOICE_SELECTION
+        ? smartVoiceSelector.createTunedUtterance(text, 'number')
+        : new SpeechSynthesisUtterance(text);
+
+      if (!FEATURE_FLAGS.USE_SMART_VOICE_SELECTION) {
+        utterance.rate = speechRate;
+        utterance.volume = 1.0;
+      }
 
       let completed = false;
       let fallbackTimeoutId: NodeJS.Timeout;
@@ -391,9 +398,15 @@ export class AudioCoordinator {
       const prizeName = prizeNames[prizeId] || prizeId;
       const text = `Congratulations! ${prizeName} won by ${playerName}!`;
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = speechRate;
-      utterance.volume = 1.0;
+      // Use SmartVoiceSelector for better voice quality if enabled
+      const utterance = FEATURE_FLAGS.USE_SMART_VOICE_SELECTION
+        ? smartVoiceSelector.createTunedUtterance(text, 'prize')
+        : new SpeechSynthesisUtterance(text);
+
+      if (!FEATURE_FLAGS.USE_SMART_VOICE_SELECTION) {
+        utterance.rate = speechRate;
+        utterance.volume = 1.0;
+      }
 
       let completed = false;
       const cleanup = () => {
@@ -454,9 +467,17 @@ export class AudioCoordinator {
         return;
       }
 
-      const utterance = new SpeechSynthesisUtterance('Game Over! Thank you for playing!');
-      utterance.rate = speechRate;
-      utterance.volume = 1.0;
+      const text = 'Game Over! Thank you for playing!';
+
+      // Use SmartVoiceSelector for better voice quality if enabled
+      const utterance = FEATURE_FLAGS.USE_SMART_VOICE_SELECTION
+        ? smartVoiceSelector.createTunedUtterance(text, 'gameOver')
+        : new SpeechSynthesisUtterance(text);
+
+      if (!FEATURE_FLAGS.USE_SMART_VOICE_SELECTION) {
+        utterance.rate = speechRate;
+        utterance.volume = 1.0;
+      }
 
       let completed = false;
       utterance.onend = () => {

@@ -35,7 +35,8 @@ export const FEATURE_FLAGS = {
     USE_RELIABLE_GAME_ENDING: false,         // Replace setTimeout with Firebase-triggered ending
 
     // ========== AUDIO ENHANCEMENTS ==========
-    USE_EDGE_TTS: true,                       // Use Microsoft Edge neural TTS (Michelle voice)
+    USE_EDGE_TTS: false,                      // DISABLED: Microsoft blocks browser access (requires Node.js)
+    USE_SMART_VOICE_SELECTION: true,          // Use best available browser voice with tuning
 }
 
 /**
