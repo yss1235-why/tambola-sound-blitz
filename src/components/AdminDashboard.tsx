@@ -311,8 +311,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Total Hosts</p>
-                  <p className="text-2xl font-bold text-gray-900">{hosts.length}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Total Hosts</p>
+                  <p className="text-2xl font-bold text-foreground">{hosts.length}</p>
                 </div>
                 <Users className="w-8 h-8 text-blue-600" />
               </div>
@@ -323,7 +323,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Active Hosts</p>
+                  <p className="text-sm font-medium text-muted-foreground">Active Hosts</p>
                   <p className="text-2xl font-bold text-green-600">{activeHosts}</p>
                 </div>
                 <UserCheck className="w-8 h-8 text-green-600" />
@@ -335,10 +335,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Inactive Hosts</p>
-                  <p className="text-2xl font-bold text-gray-600">{hosts.length - activeHosts}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Inactive Hosts</p>
+                  <p className="text-2xl font-bold text-muted-foreground">{hosts.length - activeHosts}</p>
                 </div>
-                <UserX className="w-8 h-8 text-gray-600" />
+                <UserX className="w-8 h-8 text-muted-foreground" />
               </div>
             </CardContent>
           </Card>
@@ -347,7 +347,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Expired</p>
+                  <p className="text-sm font-medium text-muted-foreground">Expired</p>
                   <p className="text-2xl font-bold text-red-600">{expiredHosts}</p>
                 </div>
                 <Calendar className="w-8 h-8 text-red-600" />
@@ -370,7 +370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           <CardContent>
             {hosts.length === 0 ? (
               <div className="text-center py-8">
-                <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                 <p className="text-gray-600">No hosts created yet</p>
                 <Button
                   onClick={() => setShowCreateDialog(true)}

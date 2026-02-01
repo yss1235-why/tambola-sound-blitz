@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge'; 
+import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { HostDisplay } from './HostDisplay';
@@ -13,7 +13,7 @@ import { TicketManagementGrid } from './TicketManagementGrid';
 import { AudioManager } from './AudioManager';
 import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay';
 import { useHostControls } from '@/providers/HostControlsProvider';
-import { 
+import {
   Plus,
   AlertCircle,
   RefreshCw,
@@ -30,8 +30,8 @@ import {
   Crown,
   Timer
 } from 'lucide-react';
-import { 
-  firebaseService, 
+import {
+  firebaseService,
   HostUser,
   GameData
 } from '@/services/firebase';
@@ -87,7 +87,7 @@ const TICKET_SETS = [
 
 // Available prizes with difficulty indicators
 const AVAILABLE_PRIZES: GamePrize[] = [
-{
+  {
     id: 'fullHouse',
     name: 'Full House',
     pattern: '',
@@ -95,7 +95,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 1,
     difficulty: ''
   },
-   {
+  {
     id: 'secondFullHouse',
     name: 'Second Full House',
     pattern: '',
@@ -103,7 +103,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 2,
     difficulty: ''
   },
- {
+  {
     id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
     name: 'Full Sheet',
     pattern: '',
@@ -111,7 +111,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 3,
     difficulty: ''
   },
- {
+  {
     id: 'halfSheet',
     name: 'Half Sheet',
     pattern: '',
@@ -119,7 +119,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 4,
     difficulty: ''
   },
- {
+  {
     id: 'starCorner',
     name: 'Star Corner',
     pattern: '',
@@ -127,7 +127,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 5,
     difficulty: ''
   },
- {
+  {
     id: 'corners',
     name: 'Four Corners',
     pattern: '',
@@ -135,7 +135,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 6,
     difficulty: ''
   },
- {
+  {
     id: 'topLine',
     name: 'Top Line',
     pattern: '',
@@ -151,7 +151,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 8,
     difficulty: ''
   },
- {
+  {
     id: 'bottomLine',
     name: 'Bottom Line',
     pattern: '',
@@ -159,8 +159,8 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 9,
     difficulty: ''
   },
- 
- 
+
+
   {
     id: 'earlyFive',
     name: 'Early Five',
@@ -169,7 +169,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     order: 10,
     difficulty: ''
   }
-  
+
 ];
 
 // Helper component to connect AudioManager with HostControls
@@ -180,13 +180,13 @@ const AudioManagerForHost: React.FC<{
   forceEnable: boolean;
   gameState: any;
 }> = ({ currentNumber, prizes, forceEnable, gameState }) => {
-  const { 
-    handleAudioComplete, 
-    handlePrizeAudioComplete, 
+  const {
+    handleAudioComplete,
+    handlePrizeAudioComplete,
     handleAudioStarted,
-    speechRate 
+    speechRate
   } = useHostControls();
-  
+
   return (
     <AudioManager
       currentNumber={currentNumber}
@@ -212,14 +212,14 @@ const AudioManagerForPlayer: React.FC<{
       prizes={prizes}
       gameState={gameState}
       forceEnable={false}
-      // NO host callbacks - players cannot control game timing
+    // NO host callbacks - players cannot control game timing
     />
   );
 };
 export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   const { gameData, currentPhase, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
-  
+
   // ================== SAFETY AND VALIDATION UTILITIES ==================
 
   /**
@@ -230,7 +230,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     errors: string[];
   } => {
     const errors: string[] = [];
-    
+
     const maxTickets = parseInt(formData.maxTickets);
     if (isNaN(maxTickets) || maxTickets < 1) {
       errors.push('Max tickets must be a valid number (minimum 1)');
@@ -238,27 +238,27 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     if (maxTickets > 600) {
       errors.push('Max tickets cannot exceed 600');
     }
-    
+
     const bookedCount = Object.values(gameData.tickets || {})
       .filter(ticket => ticket.isBooked).length;
     if (maxTickets < bookedCount) {
       errors.push(`Cannot set max tickets (${maxTickets}) below current bookings (${bookedCount})`);
     }
-    
+
     // ✅ NEW: Validate ticket reduction (expansion-only approach)
     const currentMaxTickets = gameData.maxTickets;
     if (maxTickets < currentMaxTickets) {
       errors.push(`Cannot reduce tickets from ${currentMaxTickets} to ${maxTickets}. You can only increase the ticket count. To reduce tickets, create a new game instead.`);
     }
-    
+
     if (!formData.hostPhone?.trim()) {
       errors.push('Host phone number is required');
     }
-    
+
     if (!formData.selectedPrizes || formData.selectedPrizes.length === 0) {
       errors.push('At least one prize must be selected');
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors
@@ -275,20 +275,20 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     if (gameData.gameState.isActive) {
       return { canUpdate: false, reason: 'Game is currently active' };
     }
-    
+
     if (gameData.gameState.isCountdown) {
       return { canUpdate: false, reason: 'Game is starting (countdown active)' };
     }
-    
+
     if (gameData.gameState.gameOver) {
       return { canUpdate: false, reason: 'Game has already ended' };
     }
-    
+
     const numbersCalledCount = gameData.gameState.calledNumbers?.length || 0;
     if (numbersCalledCount > 0) {
       return { canUpdate: false, reason: 'Numbers have already been called' };
     }
-    
+
     return { canUpdate: true };
   };
 
@@ -301,7 +301,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   ) => {
     const timestamp = new Date().toISOString();
     const gameId = gameData?.gameId || 'unknown';
-    
+
     switch (phase) {
       case 'start':
         console.log(`🔧 [${timestamp}] Starting settings update for game: ${gameId}`);
@@ -325,7 +325,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   };
 
   // ================== STATE MANAGEMENT ==================
-  
+
   const [operation, setOperation] = useState<OperationState>({
     type: null,
     inProgress: false,
@@ -334,20 +334,20 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   const [editMode, setEditMode] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [createGameForm, setCreateGameForm] = useState<CreateGameForm>({
-  hostPhone: '',
-  maxTickets: '100',
-  selectedTicketSet: '1',
-  selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fullHouse']
-});
-const [isCreatingGame, setIsCreatingGame] = useState(false);
-const [gameCreationError, setGameCreationError] = useState<string | null>(null);
+    hostPhone: '',
+    maxTickets: '100',
+    selectedTicketSet: '1',
+    selectedPrizes: ['quickFive', 'topLine', 'middleLine', 'bottomLine', 'fullHouse']
+  });
+  const [isCreatingGame, setIsCreatingGame] = useState(false);
+  const [gameCreationError, setGameCreationError] = useState<string | null>(null);
 
   // Component-level state for winner display management
   const [uiState, setUIState] = useState<UIState>('calculated');
   const [cachedWinnerData, setCachedWinnerData] = useState<GameData | null>(null);
 
   // ================== SUBSCRIPTION VALIDATION ==================
-  
+
   const isSubscriptionValid = React.useCallback(() => {
     const now = new Date();
     const endDate = new Date(user.subscriptionEndDate);
@@ -358,19 +358,19 @@ const [gameCreationError, setGameCreationError] = useState<string | null>(null);
     const now = new Date();
     const endDate = new Date(user.subscriptionEndDate);
     const daysLeft = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (!user.isActive) {
       return { message: 'Account is inactive', variant: 'destructive' as const };
     }
-    
+
     if (daysLeft <= 0) {
       return { message: 'Subscription expired', variant: 'destructive' as const };
     }
-    
+
     if (daysLeft <= 7) {
       return { message: `${daysLeft} days left`, variant: 'secondary' as const };
     }
-    
+
     return { message: `Active until ${endDate.toLocaleDateString()}`, variant: 'default' as const };
   }, [user.subscriptionEndDate, user.isActive]);
 
@@ -394,23 +394,23 @@ const [gameCreationError, setGameCreationError] = useState<string | null>(null);
     }
 
     logUpdateOperation('start');
-    
+
     // Step 1: Input validation
     const validation = validateGameSettings(createGameForm, gameData);
     if (!validation.isValid) {
       alert('Validation failed:\n' + validation.errors.join('\n'));
       return;
     }
-    
+
     // Step 2: Safety checks
     const safetyCheck = canUpdateGameSettings(gameData);
     if (!safetyCheck.canUpdate) {
       alert(`Cannot update settings: ${safetyCheck.reason}`);
       return;
     }
-    
+
     logUpdateOperation('validation');
-    
+
     // Step 3: Prepare update data
     const maxTicketsNum = parseInt(createGameForm.maxTickets);
     const updateData = {
@@ -419,27 +419,27 @@ const [gameCreationError, setGameCreationError] = useState<string | null>(null);
       selectedPrizes: [...createGameForm.selectedPrizes], // Create copy to avoid mutations
       selectedTicketSet: createGameForm.selectedTicketSet
     };
-    
+
     setIsCreating(true);
-    
+
     try {
       // ✅ UPDATED: Handle ticket expansion and other updates
       logUpdateOperation('live_update');
-      
+
       const currentMaxTickets = gameData.maxTickets;
       const newMaxTickets = maxTicketsNum;
-      
+
       // ✅ Check if we need to expand tickets
       if (newMaxTickets > currentMaxTickets) {
         console.log(`📈 Ticket expansion needed: ${currentMaxTickets} → ${newMaxTickets} (+${newMaxTickets - currentMaxTickets} tickets)`);
-        
+
         // Use expansion method for ticket count increase
         await firebaseService.expandGameTickets(
           gameData.gameId,
           newMaxTickets,
           createGameForm.selectedTicketSet
         );
-        
+
         // Update host template separately (expansion method doesn't handle template)
         await firebaseService.updateHostTemplate(user.uid, {
           hostPhone: createGameForm.hostPhone.trim(),
@@ -447,36 +447,36 @@ const [gameCreationError, setGameCreationError] = useState<string | null>(null);
           selectedTicketSet: createGameForm.selectedTicketSet,
           selectedPrizes: createGameForm.selectedPrizes
         });
-        
+
         console.log(`✅ Ticket expansion completed: ${currentMaxTickets} → ${newMaxTickets}`);
-      } 
+      }
       else {
         // No ticket expansion needed - use existing update method
         console.log(`📝 Standard settings update (no ticket expansion)`);
-        
+
         await firebaseService.updateGameAndTemplate(
           gameData.gameId,
           user.uid,
           updateData
         );
       }
-      
+
       logUpdateOperation('success');
 
       // Step 5: Update UI state
       setEditMode(false);
-      
+
       console.log('✅ Game settings updated successfully!');
-      
+
       // Note: Real-time listeners will automatically update the UI
       // No manual state updates needed
-      
+
     } catch (error: any) {
       logUpdateOperation('error', error);
-      
+
       // Step 6: User-friendly error handling
       let errorMessage = 'Failed to update game settings';
-      
+
       if (error.message.includes('below current bookings')) {
         errorMessage = error.message;
       } else if (error.message.includes('active') || error.message.includes('starting')) {
@@ -490,9 +490,9 @@ const [gameCreationError, setGameCreationError] = useState<string | null>(null);
       } else if (error.message) {
         errorMessage = error.message;
       }
-      
+
       alert(errorMessage);
-      
+
     } finally {
       setIsCreating(false);
       console.log('🏁 Update operation completed');
@@ -501,43 +501,43 @@ const [gameCreationError, setGameCreationError] = useState<string | null>(null);
 
   // ================== ENHANCED CREATE NEW GAME ==================
 
-const createNewGame = async () => {
-  // UI-LEVEL PROTECTION: Prevent rapid clicking
-  if (isCreating) {
-    alert('Game creation already in progress. Please wait...');
-    return;
-  }
+  const createNewGame = async () => {
+    // UI-LEVEL PROTECTION: Prevent rapid clicking
+    if (isCreating) {
+      alert('Game creation already in progress. Please wait...');
+      return;
+    }
 
-  // ✅ SAFETY: Additional validation before game creation
-  if (!user?.uid) {
-    alert('User authentication required');
-    return;
-  }
-  
-  if (!isSubscriptionValid()) {
-    alert('Your subscription has expired. Please contact the administrator.');
-    return;
-  }
+    // ✅ SAFETY: Additional validation before game creation
+    if (!user?.uid) {
+      alert('User authentication required');
+      return;
+    }
 
-  // Validate form inputs
-  const maxTicketsNum = parseInt(createGameForm.maxTickets);
-  if (isNaN(maxTicketsNum) || maxTicketsNum < 1 || maxTicketsNum > 600) {
-    alert('Please enter valid max tickets (1-600)');
-    return;
-  }
+    if (!isSubscriptionValid()) {
+      alert('Your subscription has expired. Please contact the administrator.');
+      return;
+    }
 
-  if (!createGameForm.hostPhone.trim()) {
-    alert('Please enter your phone number');
-    return;
-  }
+    // Validate form inputs
+    const maxTicketsNum = parseInt(createGameForm.maxTickets);
+    if (isNaN(maxTicketsNum) || maxTicketsNum < 1 || maxTicketsNum > 600) {
+      alert('Please enter valid max tickets (1-600)');
+      return;
+    }
 
-  if (createGameForm.selectedPrizes.length === 0) {
-    alert('Please select at least one prize');
-    return;
-  }
+    if (!createGameForm.hostPhone.trim()) {
+      alert('Please enter your phone number');
+      return;
+    }
 
-  setIsCreating(true);
-  setGameCreationError(null);
+    if (createGameForm.selectedPrizes.length === 0) {
+      alert('Please select at least one prize');
+      return;
+    }
+
+    setIsCreating(true);
+    setGameCreationError(null);
     setOperation({
       type: 'create',
       inProgress: true,
@@ -546,21 +546,21 @@ const createNewGame = async () => {
 
     try {
       console.log('🎮 Starting game creation process...');
-      
+
       // If we have cached winner data, delete the old game BEFORE creating new one
-     // ✅ FIXED: Only clear UI cache, cleanup will happen after successful creation
-if (cachedWinnerData) {
-  console.log('🗑️ Deleting previous completed game immediately before creating new one:', cachedWinnerData.gameId);
-  try {
-    await firebaseService.deleteGame(cachedWinnerData.gameId);
-    console.log('✅ Previous game deleted successfully');
-  } catch (deleteError) {
-    console.error('⚠️ Error deleting previous game (continuing with creation):', deleteError);
-    // Continue with creation even if deletion fails
-  }
-  setCachedWinnerData(null);
-}
-      
+      // ✅ FIXED: Only clear UI cache, cleanup will happen after successful creation
+      if (cachedWinnerData) {
+        console.log('🗑️ Deleting previous completed game immediately before creating new one:', cachedWinnerData.gameId);
+        try {
+          await firebaseService.deleteGame(cachedWinnerData.gameId);
+          console.log('✅ Previous game deleted successfully');
+        } catch (deleteError) {
+          console.error('⚠️ Error deleting previous game (continuing with creation):', deleteError);
+          // Continue with creation even if deletion fails
+        }
+        setCachedWinnerData(null);
+      }
+
       // Save host template settings
       await firebaseService.saveHostSettings(user.uid, {
         hostPhone: createGameForm.hostPhone,
@@ -582,32 +582,32 @@ if (cachedWinnerData) {
         createGameForm.selectedTicketSet,
         createGameForm.selectedPrizes
       );
-      
+
       console.log('✅ Game created successfully:', newGame.gameId);
-      
+
       setUIState('calculated');
-      
+
       setOperation(prev => ({
         ...prev,
         message: 'Game created! Waiting for real-time update...'
       }));
 
     } catch (error: any) {
-    console.error('❌ Create game error:', error);
-    setOperation({ type: null, inProgress: false, message: '' });
-    setGameCreationError(error.message);
-    
-    // Show user-friendly error messages
-    if (error.message.includes('already has an active game')) {
-      alert('You already have an active game running. Please complete or delete it first.');
-    } else if (error.message.includes('already creating a game')) {
-      alert('Game creation is already in progress. Please wait a moment.');
-    } else {
-      alert(error.message || 'Failed to create game. Please try again.');
+      console.error('❌ Create game error:', error);
+      setOperation({ type: null, inProgress: false, message: '' });
+      setGameCreationError(error.message);
+
+      // Show user-friendly error messages
+      if (error.message.includes('already has an active game')) {
+        alert('You already have an active game running. Please complete or delete it first.');
+      } else if (error.message.includes('already creating a game')) {
+        alert('Game creation is already in progress. Please wait a moment.');
+      } else {
+        alert(error.message || 'Failed to create game. Please try again.');
+      }
+    } finally {
+      setIsCreating(false);
     }
-  } finally {
-    setIsCreating(false);
-  }
   };
 
   // ================== OTHER EVENT HANDLERS ==================
@@ -628,12 +628,12 @@ if (cachedWinnerData) {
     try {
       await firebaseService.deleteGame(gameData.gameId);
       console.log('✅ Game deleted successfully');
-      
+
       setOperation(prev => ({
         ...prev,
         message: 'Game deleted! Waiting for real-time update...'
       }));
-      
+
     } catch (error: any) {
       console.error('Delete game error:', error);
       setOperation({ type: null, inProgress: false, message: '' });
@@ -657,7 +657,7 @@ if (cachedWinnerData) {
       'The winner information will be removed from view but you can note down contact details now.\n\n' +
       'Continue to create a new game?'
     );
-    
+
     if (confirmed) {
       console.log('✅ Host confirmed new game creation from winner display');
       console.log('🎯 Transitioning to setup mode (winner data preserved until new game created)');
@@ -668,7 +668,7 @@ if (cachedWinnerData) {
   }, []);
 
   // ================== USEEFFECTS ==================
-  
+
   // Load previous settings
   useEffect(() => {
     const loadPreviousSettings = async () => {
@@ -700,7 +700,7 @@ if (cachedWinnerData) {
       setCachedWinnerData(gameData);
       setUIState('winners');
     }
-    
+
     if (!gameData && uiState === 'winners' && cachedWinnerData) {
       console.log('🎮 Game deleted, transitioning to setup mode');
       setUIState('setup');
@@ -730,40 +730,40 @@ if (cachedWinnerData) {
   // ================== VIEW CALCULATION ==================
 
   const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
-  console.log('🎯 GameHost: Calculating current view:', {
-    uiState,
-    hasGameData: !!gameData,
-    gameOver: gameData?.gameState.gameOver,
-    isActive: gameData?.gameState.isActive,
-    isCountdown: gameData?.gameState.isCountdown,
-    calledNumbers: gameData?.gameState.calledNumbers?.length || 0
-  });
-  
-  if (uiState === 'winners') {
-    console.log('🏆 GameHost: Returning winners view');
-    return 'winners';
-  }
-  if (uiState === 'setup') {
-    console.log('🎮 GameHost: Returning setup view');
-    return 'setup';
-  }
-  if (!gameData) {
-    console.log('❌ GameHost: No game data, returning setup');
-    return 'setup';
-  }
-  if (gameData.gameState.gameOver) {
-    console.log('🏁 GameHost: Game over, returning winners');
-    return 'winners';
-  }
-  // ✅ FIXED: Include paused games with called numbers as 'live'
-  if (gameData.gameState.isActive || gameData.gameState.isCountdown || 
+    console.log('🎯 GameHost: Calculating current view:', {
+      uiState,
+      hasGameData: !!gameData,
+      gameOver: gameData?.gameState.gameOver,
+      isActive: gameData?.gameState.isActive,
+      isCountdown: gameData?.gameState.isCountdown,
+      calledNumbers: gameData?.gameState.calledNumbers?.length || 0
+    });
+
+    if (uiState === 'winners') {
+      console.log('🏆 GameHost: Returning winners view');
+      return 'winners';
+    }
+    if (uiState === 'setup') {
+      console.log('🎮 GameHost: Returning setup view');
+      return 'setup';
+    }
+    if (!gameData) {
+      console.log('❌ GameHost: No game data, returning setup');
+      return 'setup';
+    }
+    if (gameData.gameState.gameOver) {
+      console.log('🏁 GameHost: Game over, returning winners');
+      return 'winners';
+    }
+    // ✅ FIXED: Include paused games with called numbers as 'live'
+    if (gameData.gameState.isActive || gameData.gameState.isCountdown ||
       (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0)) {
-    console.log('🎮 GameHost: Game started/paused - returning LIVE view');
-    return 'live';
-  }
-  console.log('🎫 GameHost: Default - returning booking view');
-  return 'booking';
-};
+      console.log('🎮 GameHost: Game started/paused - returning LIVE view');
+      return 'live';
+    }
+    console.log('🎫 GameHost: Default - returning booking view');
+    return 'booking';
+  };
   const currentView = getCurrentView();
   const subscriptionStatus = getSubscriptionStatus();
 
@@ -774,7 +774,7 @@ if (cachedWinnerData) {
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading game data...</p>
+          <p className="text-muted-foreground">Loading game data...</p>
         </div>
       </div>
     );
@@ -788,7 +788,7 @@ if (cachedWinnerData) {
             <CardTitle className="text-red-600">Error Loading Game</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-700 mb-4">{error}</p>
+            <p className="text-muted-foreground mb-4">{error}</p>
             <Button onClick={() => window.location.reload()}>
               Reload Page
             </Button>
@@ -806,7 +806,7 @@ if (cachedWinnerData) {
             <CardTitle className="text-red-600">Subscription Expired</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-gray-700 mb-4">
+            <p className="text-muted-foreground mb-4">
               Your subscription has expired. Please contact the administrator to renew your subscription.
             </p>
             <Button onClick={() => window.location.reload()}>
@@ -823,23 +823,23 @@ if (cachedWinnerData) {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
-       {/* Unified Header */}
+        {/* Unified Header */}
         <div className="flex justify-between items-center mb-6 p-4 bg-white rounded-lg shadow-sm border">
           <div className="flex items-center space-x-4">
-            <span className="text-lg font-semibold text-gray-800">Welcome, {user.name}</span>
+            <span className="text-lg font-semibold text-foreground">Welcome, {user.name}</span>
             <Badge variant={subscriptionStatus.variant} className="text-xs">
               {subscriptionStatus.message}
             </Badge>
             {(currentView === 'booking' || currentView === 'live') && (
-              <Badge variant={currentView === 'booking' ? 'outline' : 'default'} className="text-xs text-gray-800">
+              <Badge variant={currentView === 'booking' ? 'outline' : 'default'} className="text-xs text-foreground">
                 {currentView === 'booking' && '🎫 Booking Open'}
                 {currentView === 'live' && '🔴 Live Game'}
               </Badge>
             )}
           </div>
           {(currentView === 'booking' || currentView === 'live') && gameData && (
-            <Button 
-              onClick={() => setEditMode(true)} 
+            <Button
+              onClick={() => setEditMode(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white"
               disabled={operation.inProgress}
               size="sm"
@@ -890,10 +890,10 @@ if (cachedWinnerData) {
             <HostControlsProvider userId={user.uid}>
               <HostDisplay />
             </HostControlsProvider>
-            
+
             <TicketManagementGrid
               gameData={gameData}
-              onRefreshGame={() => {}}
+              onRefreshGame={() => { }}
             />
           </div>
         )}
@@ -914,28 +914,28 @@ if (cachedWinnerData) {
           />
         )}
 
-       
+
         {/* Live Game Phases */}
-{currentView === 'live' && gameData && (
-  <div className="space-y-4">
-   
-    <HostControlsProvider userId={user.uid}>
-      <HostDisplay onCreateNewGame={createNewGame} />
-     <AudioManagerForHost
-        currentNumber={gameData.gameState.currentNumber}
-        prizes={Object.values(gameData.prizes)}
-        forceEnable={true}
-        gameState={gameData.gameState}
-      />
-    </HostControlsProvider>
-  </div>
-)}
+        {currentView === 'live' && gameData && (
+          <div className="space-y-4">
+
+            <HostControlsProvider userId={user.uid}>
+              <HostDisplay onCreateNewGame={createNewGame} />
+              <AudioManagerForHost
+                currentNumber={gameData.gameState.currentNumber}
+                prizes={Object.values(gameData.prizes)}
+                forceEnable={true}
+                gameState={gameData.gameState}
+              />
+            </HostControlsProvider>
+          </div>
+        )}
 
         {/* Development Debug Info */}
         {process.env.NODE_ENV === 'development' && (
-          <Card className="border-gray-300 bg-gray-50 mt-6">
+          <Card className="border-border bg-muted mt-6">
             <CardHeader>
-              <CardTitle className="text-sm text-gray-700">Debug: GameHost State</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">Debug: GameHost State</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-7 gap-4 text-xs">
@@ -971,11 +971,11 @@ if (cachedWinnerData) {
 
 // ================== FORM COMPONENTS ==================
 
-const CreateGameForm = ({ 
-  createGameForm, 
-  setCreateGameForm, 
-  onCreateGame, 
-  onMaxTicketsChange, 
+const CreateGameForm = ({
+  createGameForm,
+  setCreateGameForm,
+  onCreateGame,
+  onMaxTicketsChange,
   isCreating,
   operationInProgress,
   isFromWinners = false
@@ -1037,11 +1037,10 @@ const CreateGameForm = ({
           {TICKET_SETS.map(set => (
             <div
               key={set.id}
-              className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                createGameForm.selectedTicketSet === set.id
-                  ? 'border-blue-500 bg-blue'
-                  : 'border-gray-200 hover:border-gray-300'
-              } ${(!set.available || isCreating || operationInProgress) ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`p-4 border rounded-lg cursor-pointer transition-colors ${createGameForm.selectedTicketSet === set.id
+                ? 'border-blue-500 bg-blue'
+                : 'border-gray-200 hover:border-gray-300'
+                } ${(!set.available || isCreating || operationInProgress) ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={() => {
                 if (set.available && !isCreating && !operationInProgress) {
                   setCreateGameForm(prev => ({ ...prev, selectedTicketSet: set.id }));
@@ -1054,7 +1053,7 @@ const CreateGameForm = ({
                     <input
                       type="radio"
                       checked={createGameForm.selectedTicketSet === set.id}
-                      onChange={() => {}}
+                      onChange={() => { }}
                       className="mr-3"
                       disabled={!set.available || isCreating || operationInProgress}
                     />
@@ -1063,7 +1062,7 @@ const CreateGameForm = ({
                       {set.ticketCount} tickets
                     </Badge>
                   </div>
-                  <p className="text-sm text-gray-600 mt-1">{set.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{set.description}</p>
                 </div>
               </div>
             </div>
@@ -1071,14 +1070,14 @@ const CreateGameForm = ({
         </div>
       </div>
 
-     {/* Prize Selection */}
+      {/* Prize Selection */}
       <div>
         <Label className="flex items-center mb-3">
           <Crown className="w-4 h-4 mr-2" />
           Select Prizes
         </Label>
         <div className="grid grid-cols-1 gap-3">
-       {AVAILABLE_PRIZES
+          {AVAILABLE_PRIZES
             .sort((a, b) => a.order - b.order)
             .map(prize => (
               <div key={prize.id} className="flex items-start space-x-3">
@@ -1086,15 +1085,15 @@ const CreateGameForm = ({
                   id={prize.id}
                   checked={createGameForm.selectedPrizes.includes(prize.id)}
                   onCheckedChange={(checked) => {
-                      if (isCreating || operationInProgress) return;
-                      
-                      setCreateGameForm(prev => ({
-                        ...prev,
-                        selectedPrizes: checked
-                          ? [...prev.selectedPrizes, prize.id]
-                          : prev.selectedPrizes.filter(id => id !== prize.id)
-                      }));
-                    }}
+                    if (isCreating || operationInProgress) return;
+
+                    setCreateGameForm(prev => ({
+                      ...prev,
+                      selectedPrizes: checked
+                        ? [...prev.selectedPrizes, prize.id]
+                        : prev.selectedPrizes.filter(id => id !== prize.id)
+                    }));
+                  }}
                   disabled={isCreating || operationInProgress}
                 />
                 <div className="flex-1">
@@ -1102,12 +1101,11 @@ const CreateGameForm = ({
                     {prize.name}
                     <Badge
                       variant="outline"
-                      className={`ml-2 text-xs ${
-                        prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
+                      className={`ml-2 text-xs ${prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
                         prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                        prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                        'text-red-600 border-red-300'
-                      }`}
+                          prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
+                            'text-red-600 border-red-300'
+                        }`}
                     >
                       {prize.difficulty}
                     </Badge>
@@ -1122,13 +1120,13 @@ const CreateGameForm = ({
                       </Badge>
                     )}
                   </Label>
-                  <p className="text-sm text-gray-600">{prize.description}</p>
+                  <p className="text-sm text-muted-foreground">{prize.description}</p>
                 </div>
               </div>
             ))}
         </div>
       </div>
-      
+
       <Button
         onClick={onCreateGame}
         disabled={isCreating || operationInProgress || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
@@ -1144,22 +1142,22 @@ const CreateGameForm = ({
           'Create & Open Booking'
         )}
       </Button>
-      
+
       {operationInProgress && (
         <div className="text-center text-sm text-blue-600">
           <Clock className="w-4 h-4 inline mr-1" />
           Real-time system will automatically update the view when ready
         </div>
       )}
-      
+
       {/* ✅ NEW: Half Sheet info */}
       {createGameForm.selectedPrizes.includes('halfSheet') && (
         <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
           <p className="text-sm text-purple-800 font-medium">
-           
+
           </p>
           <p className="text-xs text-purple-600 mt-1">
-           
+
           </p>
         </div>
       )}
@@ -1179,15 +1177,15 @@ const CreateGameForm = ({
   </Card>
 );
 
-const EditGameForm = ({ 
-  gameData, 
-  createGameForm, 
-  setCreateGameForm, 
-  onUpdateGame, 
-  onDeleteGame, 
-  onCancel, 
-  onMaxTicketsChange, 
-  bookedCount, 
+const EditGameForm = ({
+  gameData,
+  createGameForm,
+  setCreateGameForm,
+  onUpdateGame,
+  onDeleteGame,
+  onCancel,
+  onMaxTicketsChange,
+  bookedCount,
   isCreating,
   operationInProgress
 }: any) => (
@@ -1207,18 +1205,18 @@ const EditGameForm = ({
       </Alert>
 
       {/* Current Stats */}
-      <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+      <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
         <div className="text-center">
           <p className="text-2xl font-bold text-blue-600">{bookedCount}</p>
-          <p className="text-sm text-gray-600">Booked</p>
+          <p className="text-sm text-muted-foreground">Booked</p>
         </div>
         <div className="text-center">
           <p className="text-2xl font-bold text-green-600">{gameData.maxTickets - bookedCount}</p>
-          <p className="text-sm text-gray-600">Available</p>
+          <p className="text-sm text-muted-foreground">Available</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold text-gray-600">{gameData.maxTickets}</p>
-          <p className="text-sm text-gray-600">Total</p>
+          <p className="text-2xl font-bold text-foreground">{gameData.maxTickets}</p>
+          <p className="text-sm text-muted-foreground">Total</p>
         </div>
       </div>
 
@@ -1264,12 +1262,12 @@ const EditGameForm = ({
           onChange={onMaxTicketsChange}
           disabled={isCreating || operationInProgress}
         />
-        <p className="text-sm text-gray-600 mt-1">
+        <p className="text-sm text-muted-foreground mt-1">
           ✅ Can only increase tickets (current: {gameData.maxTickets}, minimum: {gameData.maxTickets})
         </p>
       </div>
 
-     {/* Prize Selection */}
+      {/* Prize Selection */}
       <div>
         <Label className="flex items-center mb-3">
           <Crown className="w-4 h-4 mr-2" />
@@ -1277,15 +1275,15 @@ const EditGameForm = ({
         </Label>
         <div className="grid grid-cols-1 gap-3">
           {AVAILABLE_PRIZES
-          .sort((a, b) => a.order - b.order)
-          .map(prize => (
+            .sort((a, b) => a.order - b.order)
+            .map(prize => (
               <div key={prize.id} className="flex items-start space-x-3">
                 <Checkbox
                   id={`edit-${prize.id}`}
                   checked={createGameForm.selectedPrizes.includes(prize.id)}
-                 onCheckedChange={(checked) => {
+                  onCheckedChange={(checked) => {
                     if (isCreating || operationInProgress) return;
-                    
+
                     setCreateGameForm(prev => ({
                       ...prev,
                       selectedPrizes: checked
@@ -1300,12 +1298,11 @@ const EditGameForm = ({
                     {prize.name}
                     <Badge
                       variant="outline"
-                      className={`ml-2 text-xs ${
-                        prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
+                      className={`ml-2 text-xs ${prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
                         prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                        prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                        'text-red-600 border-red-300'
-                      }`}
+                          prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
+                            'text-red-600 border-red-300'
+                        }`}
                     >
                       {prize.difficulty}
                     </Badge>
@@ -1325,15 +1322,15 @@ const EditGameForm = ({
                       </Badge>
                     )}
                   </Label>
-                  <p className="text-sm text-gray-600">{prize.description}</p>
+                  <p className="text-sm text-muted-foreground">{prize.description}</p>
                 </div>
               </div>
             ))}
         </div>
       </div>
-      
+
       <div className="flex space-x-4">
-        <Button 
+        <Button
           onClick={onUpdateGame}
           disabled={isCreating || operationInProgress}
           className="bg-blue-600 hover:bg-blue-700 text-white"
@@ -1350,14 +1347,14 @@ const EditGameForm = ({
             </>
           )}
         </Button>
-        <Button 
+        <Button
           onClick={onCancel}
           disabled={operationInProgress}
           variant="outline"
         >
           Cancel
         </Button>
-        <Button 
+        <Button
           onClick={onDeleteGame}
           disabled={operationInProgress}
           variant="destructive"

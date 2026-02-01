@@ -339,7 +339,7 @@ export const Header: React.FC<HeaderProps> = ({
                       value={hostForm.email}
                       onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && !hostForm.password && document.getElementById('host-password')?.focus()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
@@ -353,7 +353,7 @@ export const Header: React.FC<HeaderProps> = ({
                       value={hostForm.password}
                       onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && hostForm.email && hostForm.password && authInitialized && handleHostLogin()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
@@ -415,7 +415,7 @@ export const Header: React.FC<HeaderProps> = ({
                       value={adminForm.email}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && !adminForm.password && document.getElementById('admin-password')?.focus()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
@@ -429,7 +429,7 @@ export const Header: React.FC<HeaderProps> = ({
                       value={adminForm.password}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && adminForm.email && adminForm.password && authInitialized && handleAdminLogin()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-gray-800 placeholder:text-gray-500"
+                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>

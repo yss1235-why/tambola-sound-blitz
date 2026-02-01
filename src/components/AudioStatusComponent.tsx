@@ -9,8 +9,8 @@ interface AudioStatusComponentProps {
   showInGameHost?: boolean; // Show in host dashboard
 }
 
-export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({ 
-  showInGameHost = false 
+export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
+  showInGameHost = false
 }) => {
   const [audioSupported, setAudioSupported] = useState<boolean>(false);
   const [audioEnabled, setAudioEnabled] = useState<boolean>(false);
@@ -26,16 +26,16 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
         setAudioError('Speech synthesis not supported in this browser');
         return;
       }
-      
+
       setAudioSupported(true);
-      
+
       // Check if user has interacted
       const hasInteracted = document.querySelector('body')?.hasAttribute('data-user-interacted');
       setUserInteracted(hasInteracted || false);
     };
 
     checkAudioStatus();
-    
+
     // Listen for user interaction
     const handleUserInteraction = () => {
       setUserInteracted(true);
@@ -65,12 +65,12 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
       const testUtterance = new SpeechSynthesisUtterance(' ');
       testUtterance.volume = 0.01;
       testUtterance.rate = 10;
-      
+
       const success = await new Promise<boolean>((resolve) => {
         testUtterance.onend = () => resolve(true);
         testUtterance.onerror = (event) => {
           console.error('Audio test failed:', event.error);
-          setAudioError(event.error === 'not-allowed' 
+          setAudioError(event.error === 'not-allowed'
             ? 'Audio blocked by browser. Please check browser settings.'
             : `Audio error: ${event.error}`
           );
@@ -113,7 +113,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
                 <VolumeX className="w-5 h-5 text-red-600" />
               )}
               <div>
-                <p className="font-medium text-gray-800">
+                <p className="font-medium text-foreground">
                   Audio Status: {audioEnabled ? 'Enabled' : 'Disabled'}
                 </p>
                 {audioError && (
@@ -159,11 +159,10 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
             </div>
             <div className="flex-1">
               <div className="flex items-center space-x-2 mb-2">
-                <Badge 
-                  variant="outline" 
-                  className={`text-xs ${
-                    audioEnabled ? 'text-green-700 border-green-400' : 'text-yellow-700 border-yellow-400'
-                  }`}
+                <Badge
+                  variant="outline"
+                  className={`text-xs ${audioEnabled ? 'text-green-700 border-green-400' : 'text-yellow-700 border-yellow-400'
+                    }`}
                 >
                   🔊 Game Audio
                 </Badge>
@@ -171,21 +170,21 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
                   variant="ghost"
                   size="sm"
                   onClick={() => setShowNotification(false)}
-                  className="h-4 w-4 p-0 text-gray-400 hover:text-gray-600"
+                  className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
                 >
                   ×
                 </Button>
               </div>
-              
+
               {audioEnabled ? (
                 <p className="text-sm text-green-800 mb-2">
                   ✅ Audio enabled! You'll hear number announcements during the game.
                 </p>
               ) : (
                 <p className="text-sm text-yellow-800 mb-2">
-                  {!audioSupported 
+                  {!audioSupported
                     ? '❌ Audio not supported in this browser'
-                    : !userInteracted 
+                    : !userInteracted
                       ? '👆 Click anywhere to enable game audio'
                       : audioError || '🔇 Audio disabled - click to enable'
                   }

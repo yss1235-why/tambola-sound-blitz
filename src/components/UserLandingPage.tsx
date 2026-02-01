@@ -330,7 +330,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
         <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-gray-600">Game not found</p>
+              <p className="text-muted-foreground">Game not found</p>
               <Button onClick={handleBackToList} className="mt-4">
                 Back to Games
               </Button>
@@ -545,8 +545,8 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                       <div className="mt-4 pt-3 border-t">
                         <Button
                           className={`w-full ${game.gameOver
-                              ? 'bg-accent hover:bg-accent/90 text-accent-foreground'
-                              : 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                            ? 'bg-accent hover:bg-accent/90 text-accent-foreground'
+                            : 'bg-primary hover:bg-primary/90 text-primary-foreground'
                             }`}
                           onClick={(e) => {
                             e.stopPropagation();

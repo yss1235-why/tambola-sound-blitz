@@ -380,14 +380,14 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                     variant="ghost"
                     onClick={() => togglePrize(prize.id)}
                     className={`w-full justify-between p-3 h-auto rounded-lg border-2 hover:bg-opacity-80 ${prize.won
-                        ? 'bg-green-50 border-green-200 hover:bg-green-100'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                      ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                       }`}
                   >
                     <div className="flex items-center space-x-3">
                       <div className={`p-2 rounded-full ${prize.won ? 'bg-green-100' : 'bg-gray-100'
                         }`}>
-                        <Trophy className={`w-4 h-4 ${prize.won ? 'text-green-600' : 'text-gray-400'
+                        <Trophy className={`w-4 h-4 ${prize.won ? 'text-green-600' : 'text-muted-foreground'
                           }`} />
                       </div>
                       <div className="text-left">
@@ -411,7 +411,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                             {prize.winners.length > 2 && '...'}
                           </div>
                         ) : (
-                          <div className="text-sm text-gray-400">
+                          <div className="text-sm text-muted-foreground">
                             Not Won
                           </div>
                         )}
@@ -447,7 +447,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                                     </Badge>
                                   )}
                                 </p>
-                                <p className="text-xs text-gray-600">
+                                <p className="text-xs text-muted-foreground">
                                   Ticket {winner.ticketId}
                                 </p>
                               </div>

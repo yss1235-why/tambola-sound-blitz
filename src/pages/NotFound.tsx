@@ -13,21 +13,21 @@ const NotFound: React.FC = () => {
       <Card className="max-w-md w-full bg-white/90 backdrop-blur-sm border-2 border-orange-200">
         <CardHeader className="text-center">
           <div className="text-6xl mb-4">🎲</div>
-          <CardTitle className="text-2xl text-gray-800">Page Not Found</CardTitle>
+          <CardTitle className="text-2xl text-foreground">Page Not Found</CardTitle>
         </CardHeader>
         <CardContent className="text-center space-y-4">
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             Oops! The page you're looking for doesn't exist. It might have been moved or deleted.
           </p>
           <div className="space-y-2">
-            <Button 
+            <Button
               onClick={() => navigate('/')}
               className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
             >
               <Home className="w-4 h-4 mr-2" />
               Go to Home
             </Button>
-            <Button 
+            <Button
               onClick={() => navigate(-1)}
               variant="outline"
               className="w-full border-orange-300 text-orange-600 hover:bg-orange-50"
