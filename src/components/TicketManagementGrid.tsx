@@ -7,12 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { 
-  Ticket, 
-  Users, 
-  Phone, 
-  Edit, 
-  Trash2, 
+import {
+  Ticket,
+  Users,
+  Phone,
+  Edit,
+  Trash2,
   UserPlus,
   CheckSquare,
   Loader2,
@@ -38,7 +38,7 @@ interface TicketInfo {
   bookedAt?: string;
 }
 
-export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({ 
+export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   gameData,
   onRefreshGame
 }) => {
@@ -51,7 +51,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   const [isCanceling, setIsCanceling] = useState('');
   const [isExpanding, setIsExpanding] = useState(false);
   const [isScrolledDown, setIsScrolledDown] = useState(false);
-  
+
   const [bookingForm, setBookingForm] = useState<BookingForm>({
     playerName: '',
     playerPhone: ''
@@ -66,7 +66,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   useEffect(() => {
     const currentTicketCount = Object.keys(gameData.tickets || {}).length;
     const expectedTicketCount = gameData.maxTickets;
-    
+
     if (currentTicketCount > 0 && currentTicketCount < expectedTicketCount) {
       setIsExpanding(true);
     } else {
@@ -77,11 +77,11 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
   // Generate ticket information
   const ticketInfo = useMemo(() => {
     const tickets: TicketInfo[] = [];
-    
+
     for (let i = 1; i <= gameData.maxTickets; i++) {
       const ticketId = i.toString();
       const ticket = gameData.tickets?.[ticketId];
-      
+
       tickets.push({
         ticketId,
         isBooked: ticket?.isBooked || false,
@@ -90,7 +90,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         bookedAt: ticket?.bookedAt
       });
     }
-    
+
     return tickets;
   }, [gameData.tickets, gameData.maxTickets]);
 
@@ -118,8 +118,8 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         setShowEditDialog(true);
       }
     } else {
-      setSelectedTickets(prev => 
-        prev.includes(ticketId) 
+      setSelectedTickets(prev =>
+        prev.includes(ticketId)
           ? prev.filter(id => id !== ticketId)
           : [...prev, ticketId]
       );
@@ -187,9 +187,9 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
     }
   };
 
- const handleCancelBooking = async (ticketId: string) => {
+  const handleCancelBooking = async (ticketId: string) => {
     if (!confirm('Are you sure you want to cancel this booking?')) return;
-    
+
     setIsCanceling(ticketId);
     try {
       await firebaseService.unbookTicket(gameData.gameId, ticketId);
@@ -216,13 +216,13 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
   const getTicketClassName = (ticket: TicketInfo) => {
     const baseClasses = "aspect-square flex items-center justify-center border-2 rounded-lg cursor-pointer transition-all duration-200";
-    
+
     if (ticket.isBooked) {
       return `${baseClasses} border-green-500 bg-green-200 text-black`;
     } else if (selectedTickets.includes(ticket.ticketId)) {
       return `${baseClasses} border-blue-500 bg-blue-200 text-black`;
     } else {
-      return `${baseClasses} border-gray-300 bg-white text-black hover:border-gray-400`;
+      return `${baseClasses} border-border bg-card text-foreground hover:border-primary/50`;
     }
   };
 
@@ -249,7 +249,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       {/* Loading State */}
       {(isBooking || isUpdating || isExpanding) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 flex items-center space-x-3">
+          <div className="bg-card rounded-lg p-6 flex items-center space-x-3">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
             <span className="font-medium">
               {isBooking ? 'Booking...' : isUpdating ? 'Updating...' : 'Expanding tickets...'}
@@ -268,24 +268,24 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-4 gap-2 mb-4">
-              <div className="text-center p-2 bg-blue-50 rounded">
-                <div className="text-lg font-bold text-blue-600">{gameData.maxTickets}</div>
-                <div className="text-xs text-blue-700">Total</div>
-              </div>
-              <div className="text-center p-2 bg-green-50 rounded">
-                <div className="text-lg font-bold text-green-600">{bookedCount}</div>
-                <div className="text-xs text-green-700">Booked</div>
-              </div>
-              <div className="text-center p-2 bg-gray-50 rounded">
-                <div className="text-lg font-bold text-gray-600">{availableCount}</div>
-                <div className="text-xs text-gray-700">Available</div>
-              </div>
-              <div className="text-center p-2 bg-orange-50 rounded">
-                <div className="text-lg font-bold text-orange-600">{selectedTickets.length}</div>
-                <div className="text-xs text-orange-700">Selected</div>
-              </div>
+            <div className="text-center p-2 bg-blue-50 rounded">
+              <div className="text-lg font-bold text-blue-600">{gameData.maxTickets}</div>
+              <div className="text-xs text-blue-700">Total</div>
             </div>
-         {/* Selection Controls */}
+            <div className="text-center p-2 bg-green-50 rounded">
+              <div className="text-lg font-bold text-green-600">{bookedCount}</div>
+              <div className="text-xs text-green-700">Booked</div>
+            </div>
+            <div className="text-center p-2 bg-muted rounded">
+              <div className="text-lg font-bold text-muted-foreground">{availableCount}</div>
+              <div className="text-xs text-muted-foreground">Available</div>
+            </div>
+            <div className="text-center p-2 bg-orange-50 rounded">
+              <div className="text-lg font-bold text-orange-600">{selectedTickets.length}</div>
+              <div className="text-xs text-orange-700">Selected</div>
+            </div>
+          </div>
+          {/* Selection Controls */}
           <div className="flex gap-2 mb-4">
             <Button
               onClick={() => setShowBookingDialog(true)}
@@ -310,7 +310,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             </Button>
 
             {selectedTickets.length > 0 && (
-              <Button 
+              <Button
                 onClick={deselectAll}
                 variant="outline"
                 className="flex-shrink-0"
@@ -325,7 +325,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
           {/* Legend */}
           <div className="flex flex-wrap gap-4 mb-6 text-sm">
             <div className="flex items-center space-x-2">
-              <div className="w-4 h-4 bg-white border-2 border-gray-300 rounded"></div>
+              <div className="w-4 h-4 bg-card border-2 border-border rounded"></div>
               <span>Available</span>
             </div>
             <div className="flex items-center space-x-2">
@@ -366,7 +366,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       {/* UPDATED: 6-Column Tickets Grid for Mobile */}
       <Card>
         <CardHeader>
-          
+
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -392,12 +392,11 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
       {/* 🆕 COMPACT HORIZONTAL FLOATING BOOKING SUMMARY */}
       {selectedTickets.length > 0 && (
-        <div 
-          className={`fixed z-50 bg-white border border-gray-200 rounded-lg shadow-xl p-3 transition-all duration-300 ${
-            isScrolledDown 
-              ? 'bottom-4 left-1/2 transform -translate-x-1/2' 
+        <div
+          className={`fixed z-50 bg-card border border-border rounded-lg shadow-xl p-3 transition-all duration-300 ${isScrolledDown
+              ? 'bottom-4 left-1/2 transform -translate-x-1/2'
               : 'bottom-4 left-4'
-          }`}
+            }`}
           style={{
             maxWidth: '500px'
           }}
@@ -407,26 +406,26 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             <span className="font-medium text-sm whitespace-nowrap">
               {selectedTickets.length} sel
             </span>
-            
-           {/* Name input */}
-                <input
-                  type="text"
-                  placeholder="Name *"
-                  value={bookingForm.playerName}
-                  onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
-                  required
-                />
-                
-                {/* Phone input */}
-                <input
-                  type="text"
-                  placeholder="Phone"
-                  value={bookingForm.playerPhone}
-                  onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                  className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
-                />
-            
+
+            {/* Name input */}
+            <input
+              type="text"
+              placeholder="Name *"
+              value={bookingForm.playerName}
+              onChange={(e) => setBookingForm(prev => ({ ...prev, playerName: e.target.value }))}
+              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
+              required
+            />
+
+            {/* Phone input */}
+            <input
+              type="text"
+              placeholder="Phone"
+              value={bookingForm.playerPhone}
+              onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
+              className="px-2 py-1 border border-gray-300 rounded text-sm w-24 focus:outline-none focus:ring-1 focus:ring-blue-500 text-black placeholder:text-black"
+            />
+
             {/* Book button */}
             <Button
               onClick={handleBookTickets}
@@ -435,13 +434,13 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             >
               {isBooking ? 'Booking...' : 'Book'}
             </Button>
-            
+
             {/* Close button */}
             <Button
               variant="ghost"
               size="sm"
               onClick={deselectAll}
-              className="h-6 w-6 p-0 hover:bg-gray-100"
+              className="h-6 w-6 p-0 hover:bg-muted"
             >
               <X className="h-3 w-3" />
             </Button>
@@ -453,7 +452,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       <Dialog open={showBookingDialog} onOpenChange={setShowBookingDialog}>
         <DialogContent>
           <DialogHeader>
-            
+
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -470,16 +469,16 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             <div>
               <Label htmlFor="playerPhone" className="text-white font-medium">Phone Number</Label>
               <Input
-                  id="playerPhone"
-                  value={bookingForm.playerPhone}
-                  onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
-                  placeholder="Enter phone number (optional)"
-                  className="text-white placeholder:text-white"
-                />
+                id="playerPhone"
+                value={bookingForm.playerPhone}
+                onChange={(e) => setBookingForm(prev => ({ ...prev, playerPhone: e.target.value }))}
+                placeholder="Enter phone number (optional)"
+                className="text-white placeholder:text-white"
+              />
             </div>
-            <div className="bg-gray-50 p-3 rounded">
+            <div className="bg-muted p-3 rounded">
               <p className="text-sm font-medium">Selected Tickets:</p>
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-muted-foreground">
                 {selectedTickets.map(id => `${id}`).join(', ')}
               </p>
             </div>
@@ -542,7 +541,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
             </div>
           </div>
         </DialogContent>
-     </Dialog>
+      </Dialog>
 
       {/* NEW: Booked Tickets List */}
       {(() => {
@@ -551,7 +550,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
         for (let i = 0; i < bookedTickets.length; i += 2) {
           bookedTicketRows.push(bookedTickets.slice(i, i + 2));
         }
-        
+
         return bookedTickets.length > 0 ? (
           <Card className="mt-6">
             <CardHeader>
@@ -567,17 +566,17 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
                     {row.map((ticket) => (
                       <div
                         key={ticket.ticketId}
-                        className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border"
+                        className="flex items-center justify-between p-4 bg-muted rounded-lg border"
                       >
                         <div className="flex-1">
-                          <div className="font-semibold text-gray-800">
+                          <div className="font-semibold text-foreground">
                             {ticket.playerName || 'Unknown Player'}
                           </div>
-                          <div className="text-sm text-gray-600">
+                          <div className="text-sm text-muted-foreground">
                             Ticket #{ticket.ticketId}
                           </div>
                           {ticket.playerPhone && (
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-muted-foreground/70">
                               📞 {ticket.playerPhone}
                             </div>
                           )}

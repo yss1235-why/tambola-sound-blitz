@@ -11,24 +11,23 @@ export const PrizeTracker: React.FC<PrizeTrackerProps> = ({ prizes }) => {
   return (
     <Card className="tambola-card">
       <CardHeader>
-        <CardTitle className="text-gray-800">🏆 Prizes</CardTitle>
+        <CardTitle className="text-foreground">🏆 Prizes</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {prizes.map((prize) => (
           <div
             key={prize.id}
-            className={`p-3 rounded-lg border-2 transition-all duration-300 ${
-              prize.won
+            className={`p-3 rounded-lg border-2 transition-all duration-300 ${prize.won
                 ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg'
-                : 'bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200'
-            }`}
+                : 'bg-gradient-to-r from-muted to-muted/80 border-border'
+              }`}
           >
             <div className="flex items-center justify-between">
               <div>
-                <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-gray-800'}`}>
+                <h3 className={`font-bold ${prize.won ? 'text-green-800' : 'text-foreground'}`}>
                   {prize.name}
                 </h3>
-                <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-gray-600'}`}>
+                <p className={`text-sm ${prize.won ? 'text-green-600' : 'text-muted-foreground'}`}>
                   {prize.pattern}
                 </p>
                 {prize.won && prize.winners && prize.winners.length > 0 && (
@@ -37,11 +36,10 @@ export const PrizeTracker: React.FC<PrizeTrackerProps> = ({ prizes }) => {
                   </p>
                 )}
               </div>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                prize.won 
-                  ? 'bg-green-500 text-white animate-bounce-in' 
-                  : 'bg-gray-200 text-gray-500'
-              }`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center ${prize.won
+                  ? 'bg-green-500 text-white animate-bounce-in'
+                  : 'bg-muted text-muted-foreground'
+                }`}>
                 {prize.won ? '✓' : '?'}
               </div>
             </div>
