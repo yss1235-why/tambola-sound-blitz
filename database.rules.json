@@ -1,0 +1,116 @@
+{
+    "rules": {
+        ".read": false,
+        ".write": false,
+        "admins": {
+            ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+            ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+            "$uid": {
+                ".read": "auth != null && auth.uid == $uid",
+                ".write": "auth != null && auth.uid == $uid"
+            }
+        },
+        "hosts": {
+            ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            ".write": "auth != null && root.child('admins').child(auth.uid).exists()",
+            "$uid": {
+                ".read": "auth != null && (auth.uid == $uid || root.child('admins').child(auth.uid).exists())",
+                ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || (auth.uid == $uid && !data.exists()))"
+            }
+        },
+        "hostLocks": {
+            ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            "$hostId": {
+                ".read": "auth != null && (auth.uid == $hostId || root.child('admins').child(auth.uid).exists())",
+                ".write": "auth != null && (auth.uid == $hostId || root.child('admins').child(auth.uid).exists())"
+            }
+        },
+        "games": {
+            ".indexOn": [
+                "hostId"
+            ],
+            ".read": true,
+            ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            "$gameId": {
+                ".read": true,
+                ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+                "tickets": {
+                    ".read": true,
+                    ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+                },
+                "calledNumbers": {
+                    ".read": true,
+                    ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+                },
+                "prizes": {
+                    ".read": true,
+                    ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+                },
+                "gameState": {
+                    ".read": true,
+                    ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+                }
+            }
+        },
+        "tickets": {
+            ".read": true,
+            ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            "$ticketId": {
+                ".read": true,
+                ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+            }
+        },
+        "bookings": {
+            ".read": true,
+            ".write": true,
+            "$bookingId": {
+                ".read": true,
+                ".write": true,
+                ".validate": "newData.hasChildren(['playerName', 'playerPhone', 'ticketId', 'timestamp'])"
+            }
+        },
+        "hostSettings": {
+            ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            "$hostId": {
+                ".read": "auth != null && (auth.uid == $hostId || root.child('admins').child(auth.uid).exists())",
+                ".write": "auth != null && (auth.uid == $hostId || root.child('admins').child(auth.uid).exists())"
+            }
+        },
+        "systemSettings": {
+            "theme": {
+                ".read": true,
+                ".write": "auth != null && root.child('admins').child(auth.uid).exists()"
+            }
+        },
+        "statistics": {
+            ".read": "auth != null && root.child('admins').child(auth.uid).exists()",
+            ".write": "auth != null && root.child('admins').child(auth.uid).exists()"
+        },
+        "number-calling-locks": {
+            ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            "$lockId": {
+                ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+                ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+            }
+        },
+        "game-locks": {
+            ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            "$lockId": {
+                ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+                ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+            }
+        },
+        "game-operations": {
+            ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+            "$lockId": {
+                ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())",
+                ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || root.child('hosts').child(auth.uid).exists())"
+            }
+        }
+    }
+}
