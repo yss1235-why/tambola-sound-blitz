@@ -1,4 +1,4 @@
-// src/components/GameHost.tsx - COMPLETE: Single Source of Truth Implementation + Expansion-Only Tickets
+﻿// src/components/GameHost.tsx - COMPLETE: Single Source of Truth Implementation + Expansion-Only Tickets
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -104,7 +104,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
     difficulty: ''
   },
   {
-    id: 'fullSheet', // ✅ MINIMAL CHANGE: Added Full Sheet
+    id: 'fullSheet', // âœ… MINIMAL CHANGE: Added Full Sheet
     name: 'Full Sheet',
     pattern: '',
     description: '',
@@ -173,7 +173,7 @@ const AVAILABLE_PRIZES: GamePrize[] = [
 ];
 
 // Helper component to connect AudioManager with HostControls
-// ✅ SECURE: Host-only component with full controls
+// âœ… SECURE: Host-only component with full controls
 const AudioManagerForHost: React.FC<{
   currentNumber: number | null;
   prizes: any[];
@@ -200,7 +200,7 @@ const AudioManagerForHost: React.FC<{
     />
   );
 };
-// ✅ SECURE: Player-only component with NO host controls
+// âœ… SECURE: Player-only component with NO host controls
 const AudioManagerForPlayer: React.FC<{
   currentNumber: number | null;
   prizes: any[];
@@ -223,7 +223,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   // ================== SAFETY AND VALIDATION UTILITIES ==================
 
   /**
-   * ✅ VALIDATION: Comprehensive input validation + NEW: Expansion-only validation
+   * âœ… VALIDATION: Comprehensive input validation + NEW: Expansion-only validation
    */
   const validateGameSettings = (formData: CreateGameForm, gameData: GameData): {
     isValid: boolean;
@@ -245,7 +245,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       errors.push(`Cannot set max tickets (${maxTickets}) below current bookings (${bookedCount})`);
     }
 
-    // ✅ NEW: Validate ticket reduction (expansion-only approach)
+    // âœ… NEW: Validate ticket reduction (expansion-only approach)
     const currentMaxTickets = gameData.maxTickets;
     if (maxTickets < currentMaxTickets) {
       errors.push(`Cannot reduce tickets from ${currentMaxTickets} to ${maxTickets}. You can only increase the ticket count. To reduce tickets, create a new game instead.`);
@@ -266,7 +266,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   };
 
   /**
-   * ✅ SAFETY: Check if update is safe to perform
+   * âœ… SAFETY: Check if update is safe to perform
    */
   const canUpdateGameSettings = (gameData: GameData): {
     canUpdate: boolean;
@@ -293,7 +293,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   };
 
   /**
-   * ✅ MONITORING: Operation status tracking
+   * âœ… MONITORING: Operation status tracking
    */
   const logUpdateOperation = (
     phase: 'start' | 'validation' | 'live_update' | 'template_update' | 'success' | 'error',
@@ -304,22 +304,22 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
 
     switch (phase) {
       case 'start':
-        console.log(`🔧 [${timestamp}] Starting settings update for game: ${gameId}`);
+        console.log(`ðŸ”§ [${timestamp}] Starting settings update for game: ${gameId}`);
         break;
       case 'validation':
-        console.log(`✅ [${timestamp}] Validation passed for game: ${gameId}`);
+        console.log(`âœ… [${timestamp}] Validation passed for game: ${gameId}`);
         break;
       case 'live_update':
-        console.log(`📡 [${timestamp}] Updating live game data for: ${gameId}`);
+        console.log(`ðŸ“¡ [${timestamp}] Updating live game data for: ${gameId}`);
         break;
       case 'template_update':
-        console.log(`💾 [${timestamp}] Updating host template for: ${gameId}`);
+        console.log(`ðŸ’¾ [${timestamp}] Updating host template for: ${gameId}`);
         break;
       case 'success':
-        console.log(`🎉 [${timestamp}] Settings update completed for: ${gameId}`);
+        console.log(`ðŸŽ‰ [${timestamp}] Settings update completed for: ${gameId}`);
         break;
       case 'error':
-        console.error(`❌ [${timestamp}] Settings update failed for: ${gameId}`, data);
+        console.error(`âŒ [${timestamp}] Settings update failed for: ${gameId}`, data);
         break;
     }
   };
@@ -377,18 +377,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   // ================== ENHANCED SINGLE SOURCE UPDATE + EXPANSION ==================
 
   /**
-   * ✅ ENHANCED SINGLE SOURCE UPDATE: Complete settings update with safety checks + NEW EXPANSION LOGIC
+   * âœ… ENHANCED SINGLE SOURCE UPDATE: Complete settings update with safety checks + NEW EXPANSION LOGIC
    * CRITICAL: This updates BOTH live game data AND host template + handles ticket expansion
    */
   const updateGameSettings = async () => {
     if (!gameData) {
-      console.error('❌ No game data available for update');
+      console.error('âŒ No game data available for update');
       alert('No active game found');
       return;
     }
 
     if (!user?.uid) {
-      console.error('❌ No user context available');
+      console.error('âŒ No user context available');
       alert('User not authenticated');
       return;
     }
@@ -423,15 +423,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     setIsCreating(true);
 
     try {
-      // ✅ UPDATED: Handle ticket expansion and other updates
+      // âœ… UPDATED: Handle ticket expansion and other updates
       logUpdateOperation('live_update');
 
       const currentMaxTickets = gameData.maxTickets;
       const newMaxTickets = maxTicketsNum;
 
-      // ✅ Check if we need to expand tickets
+      // âœ… Check if we need to expand tickets
       if (newMaxTickets > currentMaxTickets) {
-        console.log(`📈 Ticket expansion needed: ${currentMaxTickets} → ${newMaxTickets} (+${newMaxTickets - currentMaxTickets} tickets)`);
+        console.log(`ðŸ“ˆ Ticket expansion needed: ${currentMaxTickets} â†’ ${newMaxTickets} (+${newMaxTickets - currentMaxTickets} tickets)`);
 
         // Use expansion method for ticket count increase
         await firebaseService.expandGameTickets(
@@ -448,11 +448,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
           selectedPrizes: createGameForm.selectedPrizes
         });
 
-        console.log(`✅ Ticket expansion completed: ${currentMaxTickets} → ${newMaxTickets}`);
+        console.log(`âœ… Ticket expansion completed: ${currentMaxTickets} â†’ ${newMaxTickets}`);
       }
       else {
         // No ticket expansion needed - use existing update method
-        console.log(`📝 Standard settings update (no ticket expansion)`);
+        console.log(`ðŸ“ Standard settings update (no ticket expansion)`);
 
         await firebaseService.updateGameAndTemplate(
           gameData.gameId,
@@ -466,7 +466,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       // Step 5: Update UI state
       setEditMode(false);
 
-      console.log('✅ Game settings updated successfully!');
+      console.log('âœ… Game settings updated successfully!');
 
       // Note: Real-time listeners will automatically update the UI
       // No manual state updates needed
@@ -495,7 +495,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
 
     } finally {
       setIsCreating(false);
-      console.log('🏁 Update operation completed');
+      console.log('ðŸ Update operation completed');
     }
   };
 
@@ -508,7 +508,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       return;
     }
 
-    // ✅ SAFETY: Additional validation before game creation
+    // âœ… SAFETY: Additional validation before game creation
     if (!user?.uid) {
       alert('User authentication required');
       return;
@@ -545,17 +545,17 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     });
 
     try {
-      console.log('🎮 Starting game creation process...');
+      console.log('ðŸŽ® Starting game creation process...');
 
       // If we have cached winner data, delete the old game BEFORE creating new one
-      // ✅ FIXED: Only clear UI cache, cleanup will happen after successful creation
+      // âœ… FIXED: Only clear UI cache, cleanup will happen after successful creation
       if (cachedWinnerData) {
-        console.log('🗑️ Deleting previous completed game immediately before creating new one:', cachedWinnerData.gameId);
+        console.log('ðŸ—‘ï¸ Deleting previous completed game immediately before creating new one:', cachedWinnerData.gameId);
         try {
           await firebaseService.deleteGame(cachedWinnerData.gameId);
-          console.log('✅ Previous game deleted successfully');
+          console.log('âœ… Previous game deleted successfully');
         } catch (deleteError) {
-          console.error('⚠️ Error deleting previous game (continuing with creation):', deleteError);
+          console.error('âš ï¸ Error deleting previous game (continuing with creation):', deleteError);
           // Continue with creation even if deletion fails
         }
         setCachedWinnerData(null);
@@ -583,7 +583,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
         createGameForm.selectedPrizes
       );
 
-      console.log('✅ Game created successfully:', newGame.gameId);
+      console.log('âœ… Game created successfully:', newGame.gameId);
 
       setUIState('calculated');
 
@@ -593,7 +593,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       }));
 
     } catch (error: any) {
-      console.error('❌ Create game error:', error);
+      console.error('âŒ Create game error:', error);
       setOperation({ type: null, inProgress: false, message: '' });
       setGameCreationError(error.message);
 
@@ -627,7 +627,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
 
     try {
       await firebaseService.deleteGame(gameData.gameId);
-      console.log('✅ Game deleted successfully');
+      console.log('âœ… Game deleted successfully');
 
       setOperation(prev => ({
         ...prev,
@@ -652,18 +652,18 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
 
   const handleCreateNewGameFromWinners = React.useCallback(() => {
     const confirmed = window.confirm(
-      '🎮 Create New Game\n\n' +
+      'ðŸŽ® Create New Game\n\n' +
       'This will clear the winner display and take you to game setup.\n\n' +
       'The winner information will be removed from view but you can note down contact details now.\n\n' +
       'Continue to create a new game?'
     );
 
     if (confirmed) {
-      console.log('✅ Host confirmed new game creation from winner display');
-      console.log('🎯 Transitioning to setup mode (winner data preserved until new game created)');
+      console.log('âœ… Host confirmed new game creation from winner display');
+      console.log('ðŸŽ¯ Transitioning to setup mode (winner data preserved until new game created)');
       setUIState('setup');
     } else {
-      console.log('🚫 Host cancelled new game creation from winner display');
+      console.log('ðŸš« Host cancelled new game creation from winner display');
     }
   }, []);
 
@@ -673,10 +673,10 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   useEffect(() => {
     const loadPreviousSettings = async () => {
       try {
-        console.log('🔧 Loading previous host settings...');
+        console.log('ðŸ”§ Loading previous host settings...');
         const settings = await firebaseService.getHostSettings(user.uid);
         if (settings) {
-          console.log('✅ Previous settings loaded');
+          console.log('âœ… Previous settings loaded');
           setCreateGameForm(prev => ({
             ...prev,
             hostPhone: settings.hostPhone || prev.hostPhone,
@@ -696,13 +696,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   // Handle game completion and winner display
   useEffect(() => {
     if (gameData?.gameState.gameOver && uiState === 'calculated') {
-      console.log('🏆 Game completed, caching winner data for display');
+      console.log('ðŸ† Game completed, caching winner data for display');
       setCachedWinnerData(gameData);
       setUIState('winners');
     }
 
     if (!gameData && uiState === 'winners' && cachedWinnerData) {
-      console.log('🎮 Game deleted, transitioning to setup mode');
+      console.log('ðŸŽ® Game deleted, transitioning to setup mode');
       setUIState('setup');
     }
   }, [gameData?.gameState.gameOver, gameData, uiState, cachedWinnerData]);
@@ -711,13 +711,13 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   useEffect(() => {
     if (operation.inProgress) {
       if (operation.type === 'create' && gameData) {
-        console.log('✅ Create operation completed - game data received via real-time');
+        console.log('âœ… Create operation completed - game data received via real-time');
         setOperation({ type: null, inProgress: false, message: 'Game created successfully!' });
         setTimeout(() => {
           setOperation({ type: null, inProgress: false, message: '' });
         }, 3000);
       } else if (operation.type === 'delete' && !gameData) {
-        console.log('✅ Delete operation completed - game data cleared via real-time');
+        console.log('âœ… Delete operation completed - game data cleared via real-time');
         setOperation({ type: null, inProgress: false, message: 'Game deleted successfully!' });
         setTimeout(() => {
           setOperation({ type: null, inProgress: false, message: '' });
@@ -730,7 +730,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
   // ================== VIEW CALCULATION ==================
 
   const getCurrentView = (): 'create' | 'booking' | 'live' | 'winners' | 'setup' => {
-    console.log('🎯 GameHost: Calculating current view:', {
+    console.log('ðŸŽ¯ GameHost: Calculating current view:', {
       uiState,
       hasGameData: !!gameData,
       gameOver: gameData?.gameState.gameOver,
@@ -740,28 +740,28 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     });
 
     if (uiState === 'winners') {
-      console.log('🏆 GameHost: Returning winners view');
+      console.log('ðŸ† GameHost: Returning winners view');
       return 'winners';
     }
     if (uiState === 'setup') {
-      console.log('🎮 GameHost: Returning setup view');
+      console.log('ðŸŽ® GameHost: Returning setup view');
       return 'setup';
     }
     if (!gameData) {
-      console.log('❌ GameHost: No game data, returning setup');
+      console.log('âŒ GameHost: No game data, returning setup');
       return 'setup';
     }
     if (gameData.gameState.gameOver) {
-      console.log('🏁 GameHost: Game over, returning winners');
+      console.log('ðŸ GameHost: Game over, returning winners');
       return 'winners';
     }
-    // ✅ FIXED: Include paused games with called numbers as 'live'
+    // âœ… FIXED: Include paused games with called numbers as 'live'
     if (gameData.gameState.isActive || gameData.gameState.isCountdown ||
       (gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0)) {
-      console.log('🎮 GameHost: Game started/paused - returning LIVE view');
+      console.log('ðŸŽ® GameHost: Game started/paused - returning LIVE view');
       return 'live';
     }
-    console.log('🎫 GameHost: Default - returning booking view');
+    console.log('ðŸŽ« GameHost: Default - returning booking view');
     return 'booking';
   };
   const currentView = getCurrentView();
@@ -773,7 +773,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading game data...</p>
         </div>
       </div>
@@ -785,7 +785,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       <div className="flex items-center justify-center min-h-screen">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle className="text-red-600">Error Loading Game</CardTitle>
+            <CardTitle className="text-destructive">Error Loading Game</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">{error}</p>
@@ -803,7 +803,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
       <div className="flex items-center justify-center min-h-screen">
         <Card className="max-w-md">
           <CardHeader>
-            <CardTitle className="text-red-600">Subscription Expired</CardTitle>
+            <CardTitle className="text-destructive">Subscription Expired</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground mb-4">
@@ -832,15 +832,15 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
             </Badge>
             {(currentView === 'booking' || currentView === 'live') && (
               <Badge variant={currentView === 'booking' ? 'outline' : 'default'} className="text-xs text-foreground">
-                {currentView === 'booking' && '🎫 Booking Open'}
-                {currentView === 'live' && '🔴 Live Game'}
+                {currentView === 'booking' && 'ðŸŽ« Booking Open'}
+                {currentView === 'live' && 'ðŸ”´ Live Game'}
               </Badge>
             )}
           </div>
           {(currentView === 'booking' || currentView === 'live') && gameData && (
             <Button
               onClick={() => setEditMode(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
               disabled={operation.inProgress}
               size="sm"
             >
@@ -852,11 +852,11 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
 
         {/* Status Display */}
         {operation.inProgress && (
-          <Card className="mb-6 border-blue-200 bg-blue-50">
+          <Card className="mb-6 border-primary/30 bg-primary/10">
             <CardContent className="py-4">
               <div className="flex items-center">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                <span className="text-blue-800">{operation.message}</span>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+                <span className="text-primary">{operation.message}</span>
               </div>
             </CardContent>
           </Card>
@@ -987,8 +987,8 @@ const CreateGameForm = ({
         Create New Tambola Game
       </CardTitle>
       {isFromWinners && (
-        <p className="text-sm text-blue-600">
-          ✅ Previous game winner data cleared from view. Configure your new game below.
+        <p className="text-sm text-primary">
+          âœ… Previous game winner data cleared from view. Configure your new game below.
         </p>
       )}
     </CardHeader>
@@ -1038,8 +1038,8 @@ const CreateGameForm = ({
             <div
               key={set.id}
               className={`p-4 border rounded-lg cursor-pointer transition-colors ${createGameForm.selectedTicketSet === set.id
-                ? 'border-blue-500 bg-blue'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-primary bg-primary/10'
+                : 'border-border hover:border-primary/40'
                 } ${(!set.available || isCreating || operationInProgress) ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={() => {
                 if (set.available && !isCreating && !operationInProgress) {
@@ -1101,21 +1101,21 @@ const CreateGameForm = ({
                     {prize.name}
                     <Badge
                       variant="outline"
-                      className={`ml-2 text-xs ${prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
-                        prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                          prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                            'text-red-600 border-red-300'
+                      className={`ml-2 text-xs ${prize.difficulty === 'easy' ? 'text-accent border-accent/40' :
+                        prize.difficulty === 'medium' ? 'text-primary border-primary/40' :
+                          prize.difficulty === 'hard' ? 'text-secondary-foreground border-secondary/40' :
+                            'text-destructive border-destructive/40'
                         }`}
                     >
                       {prize.difficulty}
                     </Badge>
                     {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
-                      <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                      <Badge variant="outline" className="ml-1 text-xs text-secondary-foreground border-secondary/40">
                         Traditional
                       </Badge>
                     )}
                     {prize.id === 'secondFullHouse' && (
-                      <Badge variant="outline" className="ml-1 text-xs text-green-600 border-green-300">
+                      <Badge variant="outline" className="ml-1 text-xs text-accent border-accent/40">
                         Independent
                       </Badge>
                     )}
@@ -1130,7 +1130,7 @@ const CreateGameForm = ({
       <Button
         onClick={onCreateGame}
         disabled={isCreating || operationInProgress || !createGameForm.hostPhone.trim() || !createGameForm.maxTickets.trim() || createGameForm.selectedPrizes.length === 0}
-        className="w-full bg-blue-600 hover:bg-blue-700"
+        className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
         size="lg"
       >
         {isCreating ? (
@@ -1144,32 +1144,32 @@ const CreateGameForm = ({
       </Button>
 
       {operationInProgress && (
-        <div className="text-center text-sm text-blue-600">
+        <div className="text-center text-sm text-primary">
           <Clock className="w-4 h-4 inline mr-1" />
           Real-time system will automatically update the view when ready
         </div>
       )}
 
-      {/* ✅ NEW: Half Sheet info */}
+      {/* âœ… NEW: Half Sheet info */}
       {createGameForm.selectedPrizes.includes('halfSheet') && (
-        <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-          <p className="text-sm text-purple-800 font-medium">
+        <div className="p-3 bg-secondary/15 border border-secondary/30 rounded-lg">
+          <p className="text-sm text-secondary-foreground font-medium">
 
           </p>
-          <p className="text-xs text-purple-600 mt-1">
+          <p className="text-xs text-secondary-foreground/80 mt-1">
 
           </p>
         </div>
       )}
 
-      {/* ✅ MINIMAL CHANGE: Added Full Sheet info box */}
+      {/* âœ… MINIMAL CHANGE: Added Full Sheet info box */}
       {createGameForm.selectedPrizes.includes('fullSheet') && (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800 font-medium">
-            🏆 Full Sheet Prize Enabled
+        <div className="p-3 bg-primary/10 border border-primary/30 rounded-lg">
+          <p className="text-sm text-primary font-medium">
+            ðŸ† Full Sheet Prize Enabled
           </p>
-          <p className="text-xs text-blue-600 mt-1">
-            Players who book all 6 tickets from the same complete set (positions 1,2,3,4,5,6) can win when each ticket has ≥2 marked numbers.
+          <p className="text-xs text-primary/80 mt-1">
+            Players who book all 6 tickets from the same complete set (positions 1,2,3,4,5,6) can win when each ticket has â‰¥2 marked numbers.
           </p>
         </div>
       )}
@@ -1200,18 +1200,18 @@ const EditGameForm = ({
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          You can edit game settings as long as the game hasn't started yet. ✅ Ticket expansion is supported - you can only increase the ticket count.
+          You can edit game settings as long as the game hasn't started yet. âœ… Ticket expansion is supported - you can only increase the ticket count.
         </AlertDescription>
       </Alert>
 
       {/* Current Stats */}
       <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
         <div className="text-center">
-          <p className="text-2xl font-bold text-blue-600">{bookedCount}</p>
+          <p className="text-2xl font-bold text-primary">{bookedCount}</p>
           <p className="text-sm text-muted-foreground">Booked</p>
         </div>
         <div className="text-center">
-          <p className="text-2xl font-bold text-green-600">{gameData.maxTickets - bookedCount}</p>
+          <p className="text-2xl font-bold text-accent">{gameData.maxTickets - bookedCount}</p>
           <p className="text-sm text-muted-foreground">Available</p>
         </div>
         <div className="text-center">
@@ -1220,13 +1220,13 @@ const EditGameForm = ({
         </div>
       </div>
 
-      {/* ✅ NEW: Expansion Notice */}
+      {/* âœ… NEW: Expansion Notice */}
       {parseInt(createGameForm.maxTickets) > gameData.maxTickets && (
-        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-sm text-blue-800 font-medium">
-            📈 Ticket Expansion Detected
+        <div className="p-3 bg-primary/10 border border-primary/30 rounded-lg">
+          <p className="text-sm text-primary font-medium">
+            ðŸ“ˆ Ticket Expansion Detected
           </p>
-          <p className="text-xs text-blue-600 mt-1">
+          <p className="text-xs text-primary/80 mt-1">
             Will expand from {gameData.maxTickets} to {createGameForm.maxTickets} tickets (+{parseInt(createGameForm.maxTickets) - gameData.maxTickets} new tickets). All existing bookings will be preserved.
           </p>
         </div>
@@ -1256,14 +1256,14 @@ const EditGameForm = ({
         <Input
           id="editMaxTickets"
           type="number"
-          min={gameData.maxTickets} // ✅ NEW: Prevent reduction
+          min={gameData.maxTickets} // âœ… NEW: Prevent reduction
           max="600"
           value={createGameForm.maxTickets}
           onChange={onMaxTicketsChange}
           disabled={isCreating || operationInProgress}
         />
         <p className="text-sm text-muted-foreground mt-1">
-          ✅ Can only increase tickets (current: {gameData.maxTickets}, minimum: {gameData.maxTickets})
+          âœ… Can only increase tickets (current: {gameData.maxTickets}, minimum: {gameData.maxTickets})
         </p>
       </div>
 
@@ -1298,26 +1298,26 @@ const EditGameForm = ({
                     {prize.name}
                     <Badge
                       variant="outline"
-                      className={`ml-2 text-xs ${prize.difficulty === 'easy' ? 'text-green-600 border-green-300' :
-                        prize.difficulty === 'medium' ? 'text-blue-600 border-blue-300' :
-                          prize.difficulty === 'hard' ? 'text-orange-600 border-orange-300' :
-                            'text-red-600 border-red-300'
+                      className={`ml-2 text-xs ${prize.difficulty === 'easy' ? 'text-accent border-accent/40' :
+                        prize.difficulty === 'medium' ? 'text-primary border-primary/40' :
+                          prize.difficulty === 'hard' ? 'text-secondary-foreground border-secondary/40' :
+                            'text-destructive border-destructive/40'
                         }`}
                     >
                       {prize.difficulty}
                     </Badge>
                     {(prize.id === 'halfSheet' || prize.id === 'fullSheet') && (
-                      <Badge variant="outline" className="ml-1 text-xs text-purple-600 border-purple-300">
+                      <Badge variant="outline" className="ml-1 text-xs text-secondary-foreground border-secondary/40">
                         Traditional
                       </Badge>
                     )}
                     {prize.id === 'secondFullHouse' && (
-                      <Badge variant="outline" className="ml-1 text-xs text-green-600 border-green-300">
+                      <Badge variant="outline" className="ml-1 text-xs text-accent border-accent/40">
                         Independent
                       </Badge>
                     )}
                     {gameData.prizes[prize.id]?.won && (
-                      <Badge variant="default" className="ml-2 text-xs bg-green-600">
+                      <Badge variant="default" className="ml-2 text-xs bg-accent text-accent-foreground">
                         Won
                       </Badge>
                     )}
@@ -1333,7 +1333,7 @@ const EditGameForm = ({
         <Button
           onClick={onUpdateGame}
           disabled={isCreating || operationInProgress}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground"
         >
           {isCreating ? (
             <>
@@ -1368,3 +1368,4 @@ const EditGameForm = ({
 );
 
 export default GameHost;
+

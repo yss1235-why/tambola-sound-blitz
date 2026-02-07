@@ -1,4 +1,4 @@
-// src/components/RecentWinnersDisplay.tsx - COMPLETELY REWRITTEN: Mobile-optimized with shared utility
+﻿// src/components/RecentWinnersDisplay.tsx - COMPLETELY REWRITTEN: Mobile-optimized with shared utility
 import React, { useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,7 +15,8 @@ import {
   Play
 } from 'lucide-react';
 import { useGameData } from '@/providers/GameDataProvider';
-// ✅ NEW: Import shared ticket renderer utility
+import { useTheme } from '@/providers/ThemeProvider';
+// âœ… NEW: Import shared ticket renderer utility
 import { renderTicket } from '@/utils/ticketRenderer';
 
 interface RecentWinnersDisplayProps {
@@ -28,9 +29,15 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
   onCreateNewGame
 }) => {
   const { gameData, isLoading, error } = useGameData();
+  const { settings: themeSettings } = useTheme();
+  const isPremiumLightTheme = themeSettings.preset === 'premiumLight';
+  const premiumSurfaceClass = isPremiumLightTheme ? 'premium-light-surface premium-light-elevated' : '';
+  const premiumHighlightClass = isPremiumLightTheme
+    ? 'premium-light-highlight-card border border-border text-foreground'
+    : '';
   const [expandedWinners, setExpandedWinners] = useState<Set<string>>(new Set());
 
-  // ✅ START WITH ALL TICKETS COLLAPSED for mobile-friendly one-screen view
+  // âœ… START WITH ALL TICKETS COLLAPSED for mobile-friendly one-screen view
   React.useEffect(() => {
     if (gameData && gameData.gameState.gameOver) {
       setExpandedWinners(new Set()); // Start collapsed
@@ -73,11 +80,11 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
   // Error state
   if (error) {
     return (
-      <Card className="border-red-300">
+      <Card className={`border-destructive/40 ${premiumSurfaceClass}`}>
         <CardContent className="p-6 text-center">
-          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-          <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Results</h3>
-          <p className="text-red-600">{error}</p>
+          <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-3" />
+          <h3 className="text-lg font-semibold text-destructive mb-2">Error Loading Results</h3>
+          <p className="text-destructive">{error}</p>
         </CardContent>
       </Card>
     );
@@ -85,7 +92,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
 
   if (!gameData || !gameData.gameState.gameOver) {
     return (
-      <Card>
+      <Card className={premiumSurfaceClass}>
         <CardContent className="p-6 text-center">
           <Trophy className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
           <h3 className="text-lg font-semibold text-foreground mb-2">Game Not Completed</h3>
@@ -98,15 +105,15 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
 
-  // 🎯 HOST MODE: Clean celebration view
+  // ðŸŽ¯ HOST MODE: Clean celebration view
   if (hostMode) {
     return (
-      <div className="space-y-4">
+      <div className={`space-y-4 ${isPremiumLightTheme ? 'premium-light-winners' : ''}`}>
         {/* Celebration Header */}
-        <Card className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
+        <Card className={isPremiumLightTheme ? `premium-light-winner-hero ${premiumHighlightClass}` : 'bg-gradient-to-r from-primary to-accent text-primary-foreground border-0'}>
           <CardContent className="text-center py-6">
             <Trophy className="w-12 h-12 mx-auto mb-3 animate-bounce" />
-            <h1 className="text-2xl md:text-4xl font-bold mb-2">🎉 Game Completed! 🎉</h1>
+            <h1 className="text-2xl md:text-4xl font-bold mb-2 premium-light-winners-title">Game Completed!</h1>
             <p className="text-lg md:text-xl opacity-90">
               Congratulations to all {totalWinners} winner{totalWinners !== 1 ? 's' : ''}!
             </p>
@@ -119,11 +126,11 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
         </Card>
 
         {/* Prize Winners - Compact for Host */}
-        <Card>
+        <Card className={premiumSurfaceClass}>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center">
-              <Trophy className="w-5 h-5 mr-2 text-yellow-600" />
-              🏆 Prize Winners
+              <Trophy className="w-5 h-5 mr-2 text-primary" />
+              Prize Winners
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -137,17 +144,17 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                 {wonPrizes
                   .sort((a, b) => (a.order || 0) - (b.order || 0))
                   .map((prize) => (
-                    <Card key={prize.id} className="bg-green-50 border-green-200">
+                    <Card key={prize.id} className="bg-accent/10 border-accent/30 premium-light-winner-prize-card">
                       <CardContent className="p-3">
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
-                            <h3 className="text-lg font-bold text-green-800 flex items-center">
-                              🏆 {prize.name}
-                              {prize.id === 'fullHouse' && ' ⭐ FINAL WINNER!'}
+                            <h3 className="text-lg font-bold text-foreground flex items-center">
+                              {prize.name}
+                              {prize.id === 'fullHouse' && ' FINAL WINNER!'}
                             </h3>
-                            <p className="text-sm text-green-600">{prize.pattern}</p>
+                            <p className="text-sm text-accent">{prize.pattern}</p>
                           </div>
-                          <Badge className="bg-green-600 text-white">
+                          <Badge className="bg-accent text-accent-foreground">
                             {prize.winners?.length || 0} winner{(prize.winners?.length || 0) !== 1 ? 's' : ''}
                           </Badge>
                         </div>
@@ -156,7 +163,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                         {prize.winners && prize.winners.length > 0 && (
                           <div className="mt-3 space-y-2">
                             {prize.winners.map((winner, idx) => (
-                              <div key={idx} className="flex items-center justify-between p-2 bg-card rounded border">
+                              <div key={idx} className="flex items-center justify-between p-2 bg-card rounded border premium-light-winner-row">
                                 <div className="flex items-center">
                                   <User className="w-4 h-4 text-muted-foreground mr-2" />
                                   <span className="font-medium text-foreground">{winner.name}</span>
@@ -165,7 +172,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                   Ticket {winner.ticketId}
                                   {winner.phone && (
                                     <span className="ml-2 text-xs text-muted-foreground/70">
-                                      📞 {winner.phone}
+                                      Phone: {winner.phone}
                                     </span>
                                   )}
                                 </div>
@@ -183,11 +190,11 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
 
         {/* Create New Game Button */}
         {onCreateNewGame && (
-          <Card>
+          <Card className={premiumSurfaceClass}>
             <CardContent className="p-4 text-center">
               <Button
                 onClick={onCreateNewGame}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3"
                 size="lg"
               >
                 <Play className="w-5 h-5 mr-2" />
@@ -200,16 +207,16 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
     );
   }
 
-  // 🔄 PUBLIC MODE: Detailed view with expandable tickets
+  // ðŸ”„ PUBLIC MODE: Detailed view with expandable tickets
   return (
-    <div className="min-h-screen bg-background p-2 sm:p-4">
+    <div className={`min-h-screen bg-background p-2 sm:p-4 ${isPremiumLightTheme ? 'premium-light-winners' : ''}`}>
       <div className="max-w-4xl mx-auto space-y-4">
 
         {/* Mobile-Optimized Game Completion Header */}
-        <Card className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
+        <Card className={isPremiumLightTheme ? `premium-light-winner-hero ${premiumHighlightClass}` : 'bg-gradient-to-r from-primary to-accent text-primary-foreground border-0'}>
           <CardHeader className="text-center py-4 sm:py-6">
-            <CardTitle className="text-xl sm:text-2xl md:text-4xl font-bold">
-              🎉 Game Completed! 🎉
+            <CardTitle className="text-xl sm:text-2xl md:text-4xl font-bold premium-light-winners-title">
+              Game Completed!
             </CardTitle>
             <div className="text-sm sm:text-base md:text-lg opacity-90 mt-2">
               <p className="font-medium">Congratulations to all {totalWinners} winners!</p>
@@ -226,14 +233,14 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
         </Card>
 
         {/* Mobile-Optimized Prize Winners Display */}
-        <Card>
+        <Card className={premiumSurfaceClass}>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center">
                 <Trophy className="w-5 h-5 mr-2" />
                 Prize Winners
               </div>
-              <Badge className="bg-green-600 text-white text-xs sm:text-sm">
+              <Badge className="bg-accent text-accent-foreground text-xs sm:text-sm">
                 {wonPrizes.length} prize{wonPrizes.length !== 1 ? 's' : ''} won
               </Badge>
             </CardTitle>
@@ -243,21 +250,21 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
               {wonPrizes
                 .sort((a, b) => (a.order || 0) - (b.order || 0))
                 .map((prize) => (
-                  <Card key={prize.id} className="bg-green-50 border-green-200 overflow-hidden">
+                  <Card key={prize.id} className="bg-accent/10 border-accent/30 overflow-hidden premium-light-winner-prize-card">
                     <CardContent className="p-0">
                       <div className="p-2 sm:p-3">
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-bold text-green-800 text-sm sm:text-base truncate flex items-center">
-                              🏆 {prize.name}
+                            <h3 className="font-bold text-foreground text-sm sm:text-base truncate flex items-center">
+                              {prize.name}
                               {prize.winningNumber && (
-                                <Badge variant="outline" className="ml-2 text-xs border-green-400 text-green-700 hidden sm:inline-flex">
+                                <Badge variant="outline" className="ml-2 text-xs border-accent/40 text-accent hidden sm:inline-flex">
                                   Won on #{prize.winningNumber}
                                 </Badge>
                               )}
                             </h3>
                           </div>
-                          <Badge className="bg-green-600 text-white text-xs">
+                          <Badge className="bg-accent text-accent-foreground text-xs">
                             {prize.winners?.length || 0}
                           </Badge>
                         </div>
@@ -267,9 +274,9 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                           <div className="space-y-1">
                             {/* Multiple Winners Header */}
                             {prize.winners.length > 1 && (
-                              <div className="text-xs bg-green-100 border border-green-300 rounded p-1.5 mb-1.5">
-                                <p className="text-green-800 font-medium">
-                                  🎉 Multiple Winners ({prize.winners.length} players!)
+                              <div className="text-xs bg-accent/15 border border-accent/30 rounded p-1.5 mb-1.5">
+                                <p className="text-accent font-medium">
+                                  Multiple Winners ({prize.winners.length} players!)
                                 </p>
                               </div>
                             )}
@@ -280,16 +287,16 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                               const winnerTicket = gameData.tickets[winner.ticketId];
 
                               return (
-                                <div key={winnerId} className="bg-card rounded-md border border-green-200">
+                                <div key={winnerId} className="bg-card rounded-md border border-accent/30 premium-light-winner-row">
                                   {/* Winner Header - Clickable */}
                                   <Button
                                     variant="ghost"
                                     onClick={() => toggleWinnerTicket(winnerId)}
-                                    className="w-full justify-between p-1.5 sm:p-2 h-auto hover:bg-green-50 rounded-md"
+                                    className="w-full justify-between p-1.5 sm:p-2 h-auto hover:bg-accent/10 rounded-md"
                                   >
                                     <div className="flex items-center space-x-2 flex-1 min-w-0">
-                                      <div className="bg-green-100 p-1.5 rounded-full flex-shrink-0">
-                                        <Ticket className="w-3 h-3 sm:w-4 sm:h-4 text-green-600" />
+                                      <div className="bg-accent/20 p-1.5 rounded-full flex-shrink-0">
+                                        <Ticket className="w-3 h-3 sm:w-4 sm:h-4 text-accent" />
                                       </div>
                                       <div className="text-left flex-1 min-w-0">
                                         <p className="font-medium text-foreground text-xs sm:text-sm truncate flex items-center">
@@ -297,7 +304,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                           {winner.name}
                                           {/* Winner number indicator for multiple winners */}
                                           {prize.winners.length > 1 && (
-                                            <Badge variant="outline" className="ml-2 text-xs border-green-400 text-green-700">
+                                            <Badge variant="outline" className="ml-2 text-xs border-accent/40 text-accent">
                                               Winner #{idx + 1}
                                             </Badge>
                                           )}
@@ -318,35 +325,35 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                         {isExpanded ? 'Hide' : 'Show'} Ticket
                                       </span>
                                       {isExpanded ?
-                                        <ChevronUp className="w-4 h-4 text-green-600" /> :
-                                        <ChevronDown className="w-4 h-4 text-green-600" />
+                                        <ChevronUp className="w-4 h-4 text-accent" /> :
+                                        <ChevronDown className="w-4 h-4 text-accent" />
                                       }
                                     </div>
                                   </Button>
 
                                   {/* Expandable Winning Ticket */}
                                   {isExpanded && (
-                                    <div className="px-1.5 sm:px-2 pb-1.5 sm:pb-2 bg-muted border-t border-green-200">
+                                    <div className="px-1.5 sm:px-2 pb-1.5 sm:pb-2 bg-muted border-t border-accent/30 premium-light-winner-ticket-expand">
                                       <div className="flex items-center justify-between mb-1.5 pt-1.5">
                                         <h5 className="font-medium text-foreground flex items-center text-xs sm:text-sm">
-                                          <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-green-600" />
+                                          <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-accent" />
                                           {winner.name}'s Winning Ticket {winner.ticketId}
                                           {prize.winners.length > 1 && (
-                                            <span className="ml-2 text-green-600">(#{idx + 1})</span>
+                                            <span className="ml-2 text-accent">(#{idx + 1})</span>
                                           )}
                                         </h5>
-                                        <Badge variant="outline" className="text-xs border-green-400 text-green-700">
+                                        <Badge variant="outline" className="text-xs border-accent/40 text-accent">
                                           {prize.name} Winner
                                         </Badge>
                                       </div>
                                       {winnerTicket ? (
                                         <div className="p-2">
-                                          {/* ✅ NEW: Use shared renderTicket utility with pattern highlighting */}
+                                          {/* âœ… NEW: Use shared renderTicket utility with pattern highlighting */}
                                           {renderTicket({
                                             ticket: winnerTicket,
                                             calledNumbers: gameData.gameState.calledNumbers || [],
                                             showPlayerInfo: false,
-                                            patternHighlight: prize.id // ✅ KEY FEATURE: Pattern highlighting
+                                            patternHighlight: prize.id // âœ… KEY FEATURE: Pattern highlighting
                                           })}
                                         </div>
                                       ) : (
@@ -385,3 +392,4 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
     </div>
   );
 };
+

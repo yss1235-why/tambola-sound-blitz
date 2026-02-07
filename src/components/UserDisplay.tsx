@@ -23,6 +23,7 @@ import { AudioManager } from './AudioManager';
 import { AudioStatusComponent } from './AudioStatusComponent';
 import { TambolaTicket } from '@/services/firebase';
 import { renderTicket } from '@/utils/ticketRenderer';
+import { useTheme } from '@/providers/ThemeProvider';
 
 interface SearchedTicket {
   ticket: TambolaTicket;
@@ -32,13 +33,15 @@ interface SearchedTicket {
 
 export const UserDisplay: React.FC = () => {
   const { gameData, currentPhase, timeUntilAction, isLoading } = useGameData();
+  const { settings: themeSettings } = useTheme();
+  const isPremiumLightTheme = themeSettings.preset === 'premiumLight';
   const calledNumbers = gameData?.gameState?.calledNumbers || [];
 
   // Add game over detection for players
   useEffect(() => {
-    console.log('🔍 UserDisplay checking game over:', gameData?.gameState?.gameOver);
+    console.log('ðŸ” UserDisplay checking game over:', gameData?.gameState?.gameOver);
     if (gameData?.gameState?.gameOver) {
-      console.log('🏆 UserDisplay detected game over, notifying parent');
+      console.log('ðŸ† UserDisplay detected game over, notifying parent');
 
       // Dispatch custom event to notify parent components
       const gameEndEvent = new CustomEvent('tambola-game-ended', {
@@ -51,19 +54,19 @@ export const UserDisplay: React.FC = () => {
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedTickets, setSearchedTickets] = useState<SearchedTicket[]>([]);
-  // ✅ ENHANCED: Extract data safely with null checks and format validation
+  // âœ… ENHANCED: Extract data safely with null checks and format validation
   const tickets = gameData?.tickets || {};
-  // ✅ CHANGED: Use visual called numbers instead of database
+  // âœ… CHANGED: Use visual called numbers instead of database
 
   const currentNumber = gameData?.gameState.currentNumber;
   const prizes = gameData ? Object.values(gameData.prizes).sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
-  // ✅ NEW: Validate ticket ID format consistency
+  // âœ… NEW: Validate ticket ID format consistency
   const validateTicketFormat = React.useCallback(() => {
     const ticketIds = Object.keys(tickets);
     const simpleIds = ticketIds.filter(id => /^\d{1,3}$/.test(id) && parseInt(id, 10).toString() === id);
     const paddedIds = ticketIds.filter(id => /^\d{3}$/.test(id) && parseInt(id, 10).toString() !== id);
 
-    console.log(`🎫 Ticket format analysis: ${simpleIds.length} simple, ${paddedIds.length} padded (total: ${ticketIds.length})`);
+    console.log(`ðŸŽ« Ticket format analysis: ${simpleIds.length} simple, ${paddedIds.length} padded (total: ${ticketIds.length})`);
 
     return {
       total: ticketIds.length,
@@ -99,14 +102,14 @@ export const UserDisplay: React.FC = () => {
     });
   };
 
-  // ✅ ENHANCED: Handle ticket search with format validation
+  // âœ… ENHANCED: Handle ticket search with format validation
   const handleSearch = () => {
     if (!searchQuery.trim()) return;
 
     const searchedTicketId = searchQuery.trim();
-    console.log(`🔍 Searching for ticket: "${searchedTicketId}"`);
+    console.log(`ðŸ” Searching for ticket: "${searchedTicketId}"`);
 
-    // ✅ NEW: Try both formats for backward compatibility during transition
+    // âœ… NEW: Try both formats for backward compatibility during transition
     let ticket = tickets[searchedTicketId];
     let actualTicketId = searchedTicketId;
 
@@ -116,7 +119,7 @@ export const UserDisplay: React.FC = () => {
       if (tickets[paddedId]) {
         ticket = tickets[paddedId];
         actualTicketId = paddedId;
-        console.log(`🔄 Found ticket using padded format: ${paddedId}`);
+        console.log(`ðŸ”„ Found ticket using padded format: ${paddedId}`);
       }
     }
 
@@ -126,23 +129,23 @@ export const UserDisplay: React.FC = () => {
       if (tickets[simpleId]) {
         ticket = tickets[simpleId];
         actualTicketId = simpleId;
-        console.log(`🔄 Found ticket using simple format: ${simpleId}`);
+        console.log(`ðŸ”„ Found ticket using simple format: ${simpleId}`);
       }
     }
 
     if (ticket && ticket.isBooked && ticket.playerName) {
-      console.log(`✅ Found booked ticket: ${actualTicketId} for ${ticket.playerName}`);
+      console.log(`âœ… Found booked ticket: ${actualTicketId} for ${ticket.playerName}`);
 
       // Find all tickets by this player
       const playerTickets = Object.values(tickets).filter(
         t => t.isBooked && t.playerName === ticket.playerName
       );
 
-      console.log(`👥 Found ${playerTickets.length} tickets for player: ${ticket.playerName}`);
+      console.log(`ðŸ‘¥ Found ${playerTickets.length} tickets for player: ${ticket.playerName}`);
 
       // Add each ticket individually to the search results
       const newSearchedTickets: SearchedTicket[] = playerTickets
-        .filter(t => t && t.rows && Array.isArray(t.rows)) // ✅ ENHANCED: Only include tickets with valid rows
+        .filter(t => t && t.rows && Array.isArray(t.rows)) // âœ… ENHANCED: Only include tickets with valid rows
         .map(t => ({
           ticket: t,
           playerName: t.playerName!,
@@ -151,13 +154,13 @@ export const UserDisplay: React.FC = () => {
 
       if (newSearchedTickets.length > 0) {
         setSearchedTickets(prev => [...prev, ...newSearchedTickets]);
-        console.log(`✅ Added ${newSearchedTickets.length} valid tickets to search results`);
+        console.log(`âœ… Added ${newSearchedTickets.length} valid tickets to search results`);
       } else {
-        console.warn(`⚠️ No valid tickets found for player (all missing row data)`);
+        console.warn(`âš ï¸ No valid tickets found for player (all missing row data)`);
         alert('Tickets found but data is still loading. Please try again in a moment.');
       }
     } else {
-      console.log(`❌ Ticket not found or not booked: ${searchedTicketId}`);
+      console.log(`âŒ Ticket not found or not booked: ${searchedTicketId}`);
       alert(`Ticket ${searchedTicketId} not found or not booked yet.`);
     }
 
@@ -169,10 +172,10 @@ export const UserDisplay: React.FC = () => {
     setSearchedTickets(prev => prev.filter(item => item.uniqueId !== uniqueId));
   };
 
-  // ✅ DELETED: Remove the entire existing renderTicket function (100+ lines)
-  // ✅ REPLACED: With import from shared utility above
+  // âœ… DELETED: Remove the entire existing renderTicket function (100+ lines)
+  // âœ… REPLACED: With import from shared utility above
 
-  // ✅ ENHANCED: Helper to render prize winner tickets with safety checks
+  // âœ… ENHANCED: Helper to render prize winner tickets with safety checks
   const renderPrizeWinnerTickets = (prize: any) => {
     if (!prize.winners || prize.winners.length === 0) return null;
 
@@ -182,7 +185,7 @@ export const UserDisplay: React.FC = () => {
           {prize.winners.map((winner: any, idx: number) => {
             const winnerTicket = tickets[winner.ticketId];
 
-            // ✅ ENHANCED: Check if ticket exists and has valid structure
+            // âœ… ENHANCED: Check if ticket exists and has valid structure
             if (!winnerTicket || !winnerTicket.rows) {
               return (
                 <div key={idx} className="space-y-2">
@@ -197,13 +200,13 @@ export const UserDisplay: React.FC = () => {
                       </Badge>
                     )}
                   </div>
-                  <div className="bg-yellow-50 p-4 rounded-lg border-2 border-yellow-200">
+                  <div className="bg-muted p-4 rounded-lg border-2 border-border">
                     <div className="text-center py-2">
-                      <Clock className="w-4 h-4 text-yellow-600 mx-auto mb-1" />
-                      <p className="text-sm text-yellow-700">
+                      <Clock className="w-4 h-4 text-primary mx-auto mb-1" />
+                      <p className="text-sm text-foreground">
                         Winner ticket updating to new format...
                       </p>
-                      <p className="text-xs text-yellow-600 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         This may take a moment during the format transition
                       </p>
                     </div>
@@ -225,7 +228,7 @@ export const UserDisplay: React.FC = () => {
                     </Badge>
                   )}
                 </div>
-                {/* ✅ UPDATED: Use shared renderTicket utility */}
+                {/* âœ… UPDATED: Use shared renderTicket utility */}
                 {renderTicket({
                   ticket: winnerTicket,
                   calledNumbers,
@@ -239,7 +242,7 @@ export const UserDisplay: React.FC = () => {
     );
   };
 
-  // ✅ ENHANCED: Group searched tickets by player with safety checks
+  // âœ… ENHANCED: Group searched tickets by player with safety checks
   const groupedSearchResults = searchedTickets
     .filter(item => item.ticket && item.ticket.rows) // Only include valid tickets
     .reduce((acc, item) => {
@@ -250,13 +253,17 @@ export const UserDisplay: React.FC = () => {
       return acc;
     }, {} as { [playerName: string]: SearchedTicket[] });
 
-  // ✅ NEW: Get format analysis for debugging
+  // âœ… NEW: Get format analysis for debugging
   const formatAnalysis = validateTicketFormat();
+  const premiumSurfaceClass = isPremiumLightTheme ? 'premium-light-surface premium-light-elevated' : '';
+  const premiumHighlightClass = isPremiumLightTheme
+    ? 'premium-light-highlight-card border border-border text-foreground'
+    : '';
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background p-4 flex items-center justify-center">
-        <Card className="max-w-md w-full">
+        <Card className={`max-w-md w-full ${premiumSurfaceClass}`}>
           <CardContent className="p-8 text-center">
             <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
             <h2 className="text-xl font-semibold text-foreground mb-2">Loading Game...</h2>
@@ -270,9 +277,9 @@ export const UserDisplay: React.FC = () => {
   if (!gameData) {
     return (
       <div className="min-h-screen bg-background p-4 flex items-center justify-center">
-        <Card className="max-w-md w-full">
+        <Card className={`max-w-md w-full ${premiumSurfaceClass}`}>
           <CardContent className="p-8 text-center">
-            <div className="text-6xl mb-4">🎲</div>
+            <div className="text-2xl mb-4 text-muted-foreground">Game</div>
             <h2 className="text-2xl font-bold text-foreground mb-2">Game Not Found</h2>
             <p className="text-muted-foreground">The game you're looking for doesn't exist or has ended.</p>
           </CardContent>
@@ -282,13 +289,13 @@ export const UserDisplay: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className={`min-h-screen bg-background p-4 ${isPremiumLightTheme ? 'premium-light-user-display' : ''}`}>
+      <div className="max-w-7xl mx-auto space-y-6 premium-light-user-display-content">
         {/* Audio Status Component for Users */}
         <AudioStatusComponent />
 
         {/* Header */}
-        <Card className="bg-card/90 backdrop-blur-sm border border-border">
+        <Card className={`bg-card/90 backdrop-blur-sm border border-border ${premiumSurfaceClass}`}>
           <CardHeader className="text-center py-4">
             <p className="text-lg text-muted-foreground font-medium">
               {currentPhase === 'finished' ? 'Game Complete!' :
@@ -300,7 +307,7 @@ export const UserDisplay: React.FC = () => {
 
         {/* Countdown Display */}
         {currentPhase === 'countdown' && (
-          <Card className="bg-gradient-to-r from-yellow-400 to-red-500 text-white border-0">
+          <Card className={isPremiumLightTheme ? premiumHighlightClass : 'bg-gradient-to-r from-primary to-accent text-primary-foreground border-0'}>
             <CardContent className="text-center py-8">
               <Clock className="w-12 h-12 mx-auto mb-4 animate-pulse" />
               <div className="text-6xl font-bold animate-bounce">
@@ -313,7 +320,7 @@ export const UserDisplay: React.FC = () => {
 
         {/* Current Number Display */}
         {currentNumber && currentPhase === 'playing' && (
-          <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white border-0">
+          <Card className={isPremiumLightTheme ? premiumHighlightClass : 'bg-gradient-to-r from-primary to-primary/80 text-primary-foreground border-0'}>
             <CardContent className="text-center py-4">
               <p className="text-lg mb-2">Current Number</p>
               <div className="text-5xl font-bold animate-pulse">{currentNumber}</div>
@@ -324,7 +331,7 @@ export const UserDisplay: React.FC = () => {
 
         {/* Number Grid - Full Width */}
         {(currentPhase === 'playing' || currentPhase === 'finished') && (
-          <Card className="bg-card/90 backdrop-blur-sm border border-border">
+          <Card className={`bg-card/90 backdrop-blur-sm border border-border ${premiumSurfaceClass}`}>
             <CardHeader>
               <CardTitle className="text-center text-foreground flex items-center justify-center">
                 <Hash className="w-5 h-5 mr-2" />
@@ -341,7 +348,7 @@ export const UserDisplay: React.FC = () => {
         )}
         {/* Player Tickets Search */}
         {(currentPhase === 'playing' || currentPhase === 'finished') && Object.keys(tickets).length > 0 && (
-          <Card className="bg-card/90 backdrop-blur-sm border border-border">
+          <Card className={`bg-card/90 backdrop-blur-sm border border-border ${premiumSurfaceClass}`}>
             <CardHeader>
               <CardTitle className="text-foreground flex items-center">
                 <Users className="w-5 h-5 mr-2" />
@@ -367,7 +374,7 @@ export const UserDisplay: React.FC = () => {
                   <Button
                     onClick={() => setSearchedTickets([])}
                     variant="outline"
-                    className="text-red-600 hover:text-red-700"
+                    className="text-destructive hover:text-destructive/80"
                   >
                     Clear All
                   </Button>
@@ -380,7 +387,7 @@ export const UserDisplay: React.FC = () => {
                   <Ticket className="w-12 h-12 mx-auto mb-4 text-muted-foreground/60" />
                   <p>Search for any of your ticket numbers to view all your booked tickets</p>
                   <p className="text-sm mt-2">
-                    ✅ New format: Just enter the number (1, 2, 3...) - no leading zeros needed
+                    New format: Just enter the number (1, 2, 3...) - no leading zeros needed
                   </p>
                   <p className="text-xs text-muted-foreground/70 mt-1">
                     You can remove individual tickets to track only the ones you want
@@ -390,7 +397,7 @@ export const UserDisplay: React.FC = () => {
 
               {/* Search Results */}
               {Object.entries(groupedSearchResults).map(([playerName, playerTickets]) => (
-                <div key={playerName} className="border rounded-lg p-4 bg-muted">
+                <div key={playerName} className="border rounded-lg p-4 bg-muted premium-light-search-group">
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1">
                     {playerTickets.map((item) => (
@@ -399,12 +406,12 @@ export const UserDisplay: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => removeSearchedTicket(item.uniqueId)}
-                          className="absolute top-0 right-0 z-10 bg-white/90 text-red-600 hover:text-red-700 hover:bg-red-50 p-0.5 h-3 w-3"
+                          className="absolute top-0 right-0 z-10 bg-card/90 text-destructive hover:text-destructive/80 hover:bg-destructive/10 p-0.5 h-3 w-3"
                           title={`Remove Ticket ${item.ticket.ticketId}`}
                         >
                           <X className="w-3 h-3" />
                         </Button>
-                        {/* ✅ UPDATED: Use shared renderTicket utility */}
+                        {/* âœ… UPDATED: Use shared renderTicket utility */}
                         {renderTicket({
                           ticket: item.ticket,
                           calledNumbers,
@@ -420,7 +427,7 @@ export const UserDisplay: React.FC = () => {
         )}
         {/* Prizes Section - Moved to Bottom */}
         {(currentPhase === 'playing' || currentPhase === 'finished') && (
-          <Card className="bg-card/90 backdrop-blur-sm border border-border">
+          <Card className={`bg-card/90 backdrop-blur-sm border border-border ${premiumSurfaceClass}`}>
             <CardHeader>
               <CardTitle className="text-foreground flex items-center justify-center">
                 <Trophy className="w-5 h-5 mr-2" />
@@ -432,37 +439,37 @@ export const UserDisplay: React.FC = () => {
                 {prizes.map((prize) => (
                   <div key={prize.id}>
                     <div
-                      className={`p-3 rounded-lg border-2 transition-all duration-300 ${prize.won
-                        ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-lg cursor-pointer hover:shadow-xl'
+                      className={`p-3 rounded-lg border-2 transition-all duration-300 premium-light-prize-row ${prize.won
+                        ? 'bg-accent/10 border-accent/30 shadow-lg cursor-pointer hover:shadow-xl'
                         : 'bg-gradient-to-r from-muted to-muted/80 border-border'
                         }`}
                       onClick={() => prize.won && togglePrizeDetails(prize.id)}
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <h3 className={`font-bold ${prize.won ? 'text-green-900' : 'text-foreground'}`}>
+                          <h3 className="font-bold text-foreground">
                             {prize.name}
                           </h3>
-                          <p className={`text-sm ${prize.won ? 'text-green-700' : 'text-muted-foreground'}`}>
+                          <p className={`text-sm ${prize.won ? 'text-accent' : 'text-muted-foreground'}`}>
                             {prize.pattern}
                           </p>
                           {prize.won && prize.winners && prize.winners.length > 0 && (
-                            <p className="text-sm font-medium text-green-800 mt-1">
+                            <p className="text-sm font-medium text-accent mt-1">
                               Won by: {prize.winners.map(w => w.name).join(', ')}
                             </p>
                           )}
                         </div>
                         <div className="flex items-center space-x-2">
                           <div className={`w-8 h-8 rounded-full flex items-center justify-center ${prize.won
-                            ? 'bg-green-500 text-white'
+                            ? 'bg-accent text-accent-foreground'
                             : 'bg-muted text-muted-foreground'
                             }`}>
-                            {prize.won ? '✓' : '?'}
+                            {prize.won ? 'Won' : '?'}
                           </div>
                           {prize.won && (
                             expandedPrizes.has(prize.id) ?
-                              <ChevronUp className="w-4 h-4 text-green-600" /> :
-                              <ChevronDown className="w-4 h-4 text-green-600" />
+                              <ChevronUp className="w-4 h-4 text-accent" /> :
+                              <ChevronDown className="w-4 h-4 text-accent" />
                           )}
                         </div>
                       </div>
@@ -479,10 +486,10 @@ export const UserDisplay: React.FC = () => {
 
         {/* Game Over Display */}
         {currentPhase === 'finished' && (
-          <Card className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white border-0">
+          <Card className={isPremiumLightTheme ? premiumHighlightClass : 'bg-gradient-to-r from-primary to-accent text-primary-foreground border-0'}>
             <CardContent className="text-center py-12">
               <Trophy className="w-16 h-16 mx-auto mb-4" />
-              <h2 className="text-4xl font-bold mb-2">🎉 Game Over! 🎉</h2>
+              <h2 className="text-4xl font-bold mb-2">Game Over!</h2>
               <p className="text-xl">Congratulations to all winners!</p>
               <div className="mt-4 text-lg">
                 <p>Total Numbers Called: {calledNumbers.length}</p>
@@ -494,17 +501,17 @@ export const UserDisplay: React.FC = () => {
 
         {/* Booking Phase Display */}
         {currentPhase === 'booking' && (
-          <Card className="bg-card/90 backdrop-blur-sm border border-border">
+          <Card className={`bg-card/90 backdrop-blur-sm border border-border ${premiumSurfaceClass}`}>
             <CardContent className="text-center py-12">
-              <div className="text-6xl mb-4">🎫</div>
+              <div className="text-2xl mb-4 text-muted-foreground">Booking</div>
               <h2 className="text-2xl font-bold text-foreground mb-2">Booking Open</h2>
               <p className="text-muted-foreground mb-4">
                 Game is ready for ticket booking. Contact the host to book your tickets.
               </p>
               {gameData.hostPhone && (
-                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                  <p className="text-green-800 font-medium">
-                    📱 Contact Host: +{gameData.hostPhone}
+                <div className="bg-accent/10 p-4 rounded-lg border border-accent/30">
+                  <p className="text-accent font-medium">
+                    Contact Host: +{gameData.hostPhone}
                   </p>
                 </div>
               )}
@@ -519,13 +526,13 @@ export const UserDisplay: React.FC = () => {
             prizes={Object.values(gameData.prizes)}
             onAudioComplete={() => {
               // For users, no callback needed - only hosts need timing control
-              console.log('🔊 User audio announcement completed');
+              console.log('ðŸ”Š User audio announcement completed');
             }}
             forceEnable={false} // Let users enable manually
           />
         )}
 
-        {/* ✅ NEW: Development format debugging info */}
+        {/* âœ… NEW: Development format debugging info */}
         {process.env.NODE_ENV === 'development' && (
           <Card className="border-border bg-muted">
             <CardHeader>
@@ -543,7 +550,7 @@ export const UserDisplay: React.FC = () => {
                   <span className="font-medium">Padded (old):</span> {formatAnalysis.padded}
                 </div>
                 <div>
-                  <span className="font-medium">Consistent:</span> {formatAnalysis.isConsistent ? '✅' : '❌'}
+                  <span className="font-medium">Consistent:</span> {formatAnalysis.isConsistent ? 'Yes' : 'No'}
                 </div>
               </div>
             </CardContent>
@@ -553,3 +560,4 @@ export const UserDisplay: React.FC = () => {
     </div>
   );
 };
+

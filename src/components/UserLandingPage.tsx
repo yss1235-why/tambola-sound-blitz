@@ -8,10 +8,10 @@ import { UserDisplay } from './UserDisplay';
 import { RecentWinnersDisplay } from './RecentWinnersDisplay';
 import { AudioManager } from '@/components/AudioManager';
 import { GameDataProvider } from '@/providers/GameDataProvider';
+import { useTheme } from '@/providers/ThemeProvider';
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
 import { firebaseService, GameData } from '@/services/firebase';
 import {
-  Loader2,
   Trophy,
   Gamepad2,
   Phone,
@@ -19,20 +19,19 @@ import {
   RefreshCw,
   Activity,
   Clock,
-  Zap,
   CheckCircle
 } from 'lucide-react';
 
 interface UserLandingPageProps {
   onGameSelection?: (gameId: string) => void;
   selectedGameId?: string | null;
-  // ✅ UNCHANGED: Accept pre-loaded games for instant display
+  // âœ… UNCHANGED: Accept pre-loaded games for instant display
   preloadedGames?: GameData[];
   gamesLoading?: boolean;
   gamesError?: string | null;
 }
 
-// 🔧 MODIFIED: Enhanced game summary interface with winner information
+// ðŸ”§ MODIFIED: Enhanced game summary interface with winner information
 interface GameSummary {
   gameId: string;
   name: string;
@@ -41,10 +40,10 @@ interface GameSummary {
   isActive: boolean;
   isCountdown: boolean;
   hasStarted: boolean;
-  gameOver: boolean; // 🆕 NEW: Track if game is completed
+  gameOver: boolean; // ðŸ†• NEW: Track if game is completed
   bookedTickets: number;
   createdAt: string;
-  // 🆕 NEW: Winner information for completed games
+  // ðŸ†• NEW: Winner information for completed games
   winnerCount?: number;
   prizesWon?: number;
   totalPrizes?: number;
@@ -57,14 +56,16 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
   gamesLoading = false,
   gamesError = null
 }) => {
-  const [currentView, setCurrentView] = useState<'list' | 'booking' | 'game' | 'winners'>('list'); // 🆕 NEW: Add winners view
+  const [currentView, setCurrentView] = useState<'list' | 'booking' | 'game' | 'winners'>('list'); // ðŸ†• NEW: Add winners view
   const [selectedGameData, setSelectedGameData] = useState<GameData | null>(null);
+  const { settings: themeSettings } = useTheme();
+  const isPremiumLightTheme = themeSettings.preset === 'premiumLight';
 
-  // ✅ UNCHANGED: Use pre-loaded games with fallback subscription (now includes completed games)
+  // âœ… UNCHANGED: Use pre-loaded games with fallback subscription (now includes completed games)
   const fallbackSubscription = useActiveGamesSubscription();
   const shouldUseFallback = preloadedGames.length === 0 && !gamesLoading && !gamesError;
 
-  // ✅ UNCHANGED: Choose data source (preloaded vs subscription)
+  // âœ… UNCHANGED: Choose data source (preloaded vs subscription)
   const gameDataSource = useMemo(() => {
     if (preloadedGames.length > 0 || gamesLoading || gamesError) {
       // Use pre-loaded data (faster path)
@@ -85,7 +86,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     }
   }, [preloadedGames, gamesLoading, gamesError, fallbackSubscription]);
 
-  // 🔧 MODIFIED: Enhanced game summaries with winner information
+  // ðŸ”§ MODIFIED: Enhanced game summaries with winner information
   const gameSummaries: GameSummary[] = useMemo(() => {
     if (!gameDataSource.games) return [];
 
@@ -93,7 +94,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
       const bookedTickets = game.tickets ?
         Object.values(game.tickets).filter(t => t.isBooked).length : 0;
 
-      // 🆕 NEW: Calculate winner statistics for completed games
+      // ðŸ†• NEW: Calculate winner statistics for completed games
       let winnerCount = 0;
       let prizesWon = 0;
       const totalPrizes = Object.keys(game.prizes).length;
@@ -114,10 +115,10 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
         isActive: game.gameState.isActive,
         isCountdown: game.gameState.isCountdown,
         hasStarted: (game.gameState.calledNumbers?.length || 0) > 0,
-        gameOver: game.gameState.gameOver, // 🆕 NEW
+        gameOver: game.gameState.gameOver, // ðŸ†• NEW
         bookedTickets,
         createdAt: game.createdAt,
-        // 🆕 NEW: Winner statistics
+        // ðŸ†• NEW: Winner statistics
         winnerCount,
         prizesWon,
         totalPrizes
@@ -126,7 +127,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
   }, [gameDataSource.games]);
 
   const selectGame = useCallback((gameId: string) => {
-    console.log('🎯 Selecting game:', gameId);
+    console.log('ðŸŽ¯ Selecting game:', gameId);
 
     if (onGameSelection) {
       onGameSelection(gameId);
@@ -134,17 +135,17 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
     const selectedGame = gameDataSource.games?.find(g => g.gameId === gameId);
     if (selectedGame) {
-      console.log('🔍 Selected game state:', selectedGame.gameState);
+      console.log('ðŸ” Selected game state:', selectedGame.gameState);
       setSelectedGameData(selectedGame); // Store the selected game
 
-      // 🆕 NEW: Handle completed games
+      // ðŸ†• NEW: Handle completed games
       if (selectedGame.gameState.gameOver) {
-        console.log('🏆 Selected completed game - showing winners');
+        console.log('ðŸ† Selected completed game - showing winners');
         setCurrentView('winners');
         return;
       }
 
-      // ✅ UNCHANGED: Existing active game logic
+      // âœ… UNCHANGED: Existing active game logic
       const hasStarted = (selectedGame.gameState.calledNumbers?.length || 0) > 0 ||
         selectedGame.gameState.isActive ||
         selectedGame.gameState.isCountdown;
@@ -152,7 +153,30 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
       setCurrentView(hasStarted ? 'game' : 'booking');
     }
   }, [onGameSelection, gameDataSource.games]);
-  // 🔥 AUTO-NAVIGATION: Automatically switch views when game state changes in real-time
+
+  // Premium Light theme: remove index game chooser and route straight into the game flow
+  useEffect(() => {
+    if (!isPremiumLightTheme || currentView !== 'list' || gameDataSource.loading) {
+      return;
+    }
+
+    const targetGameId =
+      selectedGameId ||
+      gameSummaries.find((game) => !game.gameOver)?.gameId ||
+      gameSummaries[0]?.gameId;
+
+    if (targetGameId) {
+      selectGame(targetGameId);
+    }
+  }, [
+    isPremiumLightTheme,
+    currentView,
+    gameDataSource.loading,
+    selectedGameId,
+    gameSummaries,
+    selectGame
+  ]);
+  // ðŸ”¥ AUTO-NAVIGATION: Automatically switch views when game state changes in real-time
   useEffect(() => {
     // STEP 1: Only run when a specific game is selected (not on the games list page)
     if (!selectedGameId || currentView === 'list') {
@@ -165,7 +189,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
     // STEP 3: If the game doesn't exist anymore, go back to the games list
     if (!selectedGame) {
-      console.log('🔍 Game not found, returning to list');
+      console.log('ðŸ” Game not found, returning to list');
       setCurrentView('list');
       if (onGameSelection) {
         onGameSelection('');
@@ -177,28 +201,28 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     let shouldShowView: 'booking' | 'game' | 'winners';
 
     if (selectedGame.gameState.gameOver) {
-      // Case 1: Game is finished → show winners page
+      // Case 1: Game is finished â†’ show winners page
       shouldShowView = 'winners';
-      console.log('🏆 Game finished, should show winners');
+      console.log('ðŸ† Game finished, should show winners');
 
     } else if (
       selectedGame.gameState.isActive ||
       selectedGame.gameState.isCountdown ||
       (selectedGame.gameState.calledNumbers?.length || 0) > 0
     ) {
-      // Case 2: Game has started (active, countdown, or numbers called) → show live game
+      // Case 2: Game has started (active, countdown, or numbers called) â†’ show live game
       shouldShowView = 'game';
-      console.log('🎮 Game started, should show live game');
+      console.log('ðŸŽ® Game started, should show live game');
 
     } else {
-      // Case 3: Game not started yet → show booking page
+      // Case 3: Game not started yet â†’ show booking page
       shouldShowView = 'booking';
-      console.log('🎫 Game not started, should show booking');
+      console.log('ðŸŽ« Game not started, should show booking');
     }
 
     // STEP 5: Only switch views if the target view is different from current view
     if (currentView !== shouldShowView) {
-      console.log(`🔄 AUTO-SWITCHING VIEW: ${currentView} → ${shouldShowView}`, {
+      console.log(`ðŸ”„ AUTO-SWITCHING VIEW: ${currentView} â†’ ${shouldShowView}`, {
         gameId: selectedGameId,
         gameOver: selectedGame.gameState.gameOver,
         isActive: selectedGame.gameState.isActive,
@@ -212,17 +236,17 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
   }, [selectedGameId, currentView, gameDataSource.games, onGameSelection]);
 
-  // ✅ NEW: Listen for explicit game end events for players
+  // âœ… NEW: Listen for explicit game end events for players
   useEffect(() => {
     const handleGameEnd = (event: CustomEvent) => {
       const { gameId: endedGameId } = event.detail;
-      console.log(`🎉 Player received game end event for game ${endedGameId} - current game: ${selectedGameId}`);
+      console.log(`ðŸŽ‰ Player received game end event for game ${endedGameId} - current game: ${selectedGameId}`);
 
       if (endedGameId === selectedGameId && currentView !== 'winners') {
-        console.log('✅ Game end event matches current game - redirecting to winners');
+        console.log('âœ… Game end event matches current game - redirecting to winners');
         setTimeout(() => {
           setCurrentView('winners');
-          console.log('🏆 Player force-redirected to winners via custom event');
+          console.log('ðŸ† Player force-redirected to winners via custom event');
         }, 500);
       }
     };
@@ -234,14 +258,14 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     };
   }, [selectedGameId, currentView]);
 
-  // ✅ UNCHANGED: All existing handler functions
+  // âœ… UNCHANGED: All existing handler functions
   const handleBookTicket = async (ticketId: string, playerName: string, playerPhone: string) => {
     const selectedGame = gameDataSource.games?.find(g => g.gameId === selectedGameId);
     if (!selectedGame) return;
 
     try {
       await firebaseService.bookTicket(ticketId, playerName, playerPhone, selectedGame.gameId);
-      console.log('✅ Ticket booked successfully');
+      console.log('âœ… Ticket booked successfully');
     } catch (error: any) {
       alert(error.message || 'Failed to book ticket');
     }
@@ -254,19 +278,21 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     }
   }, [onGameSelection]);
 
-  // 🆕 NEW: Winners view rendering
+  // ðŸ†• NEW: Winners view rendering
   if (currentView === 'winners' && selectedGameId) {
     return (
       <GameDataProvider gameId={selectedGameId}>
         <div className="space-y-4">
-          <div className="p-4 text-white">
-            <Button
-              onClick={handleBackToList}
-              className="bg-black text-white hover:bg-gray-800 border-black"
-            >
-              ← Back to Games
-            </Button>
-          </div>
+          {!isPremiumLightTheme && (
+            <div className="p-4 text-foreground">
+              <Button
+                onClick={handleBackToList}
+                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 border-border"
+              >
+                Back to Games
+              </Button>
+            </div>
+          )}
           <RecentWinnersDisplay />
 
           <AudioManager
@@ -288,19 +314,21 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     );
   }
 
-  // ✅ UNCHANGED: All existing view rendering logic (game, booking, loading, error)
+  // âœ… UNCHANGED: All existing view rendering logic (game, booking, loading, error)
   if (currentView === 'game' && selectedGameId) {
     return (
       <GameDataProvider gameId={selectedGameId}>
         <div className="space-y-4">
-          <div className="p-4 text-white">
-            <Button
-              onClick={handleBackToList}
-              className="bg-black text-white hover:bg-gray-800 border-black"
-            >
-              ← Back to Games
-            </Button>
-          </div>
+          {!isPremiumLightTheme && (
+            <div className="p-4 text-foreground">
+              <Button
+                onClick={handleBackToList}
+                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 border-border"
+              >
+                Back to Games
+              </Button>
+            </div>
+          )}
           <UserDisplay />
 
           <AudioManager
@@ -327,36 +355,44 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
     if (!selectedGame) {
       return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4 flex items-center justify-center">
+        <div className="min-h-screen bg-background p-4 flex items-center justify-center">
           <Card>
             <CardContent className="p-8 text-center">
               <p className="text-muted-foreground">Game not found</p>
-              <Button onClick={handleBackToList} className="mt-4">
-                Back to Games
-              </Button>
+              {isPremiumLightTheme ? (
+                <Button onClick={() => window.location.reload()} className="mt-4">
+                  Refresh
+                </Button>
+              ) : (
+                <Button onClick={handleBackToList} className="mt-4">
+                  Back to Games
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>
       );
     }
 
-    // ✅ NOTE: We removed the conflicting auto-switch logic here
+    // âœ… NOTE: We removed the conflicting auto-switch logic here
     // Our new useEffect handles all transitions automatically
 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 p-4">
+      <div className="min-h-screen bg-background p-4">
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
-            <Button
-              onClick={handleBackToList}
-              className="bg-black text-white hover:bg-gray-800 border-black"
-            >
-              ← Back to Games
-            </Button>
+          <div className={`flex items-center ${isPremiumLightTheme ? 'justify-end' : 'justify-between'}`}>
+            {!isPremiumLightTheme && (
+              <Button
+                onClick={handleBackToList}
+                className="bg-secondary text-secondary-foreground hover:bg-secondary/80 border-border"
+              >
+                Back to Games
+              </Button>
+            )}
             <div className="flex items-center space-x-2">
               <Badge variant="default">Booking Phase</Badge>
-              <Badge variant="outline" className="text-green-600 border-green-400">
+              <Badge variant="outline" className="text-accent border-accent/40">
                 <Activity className="w-3 h-3 mr-1" />
                 Live Updates
               </Badge>
@@ -374,7 +410,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     );
   }
 
-  // ✅ UNCHANGED: Loading and error states
+  // âœ… UNCHANGED: Loading and error states
   if (gameDataSource.loading && gameSummaries.length === 0) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -396,7 +432,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
       <div className="min-h-screen bg-background p-4 flex items-center justify-center">
         <Card className="max-w-md w-full">
           <CardContent className="p-8 text-center">
-            <div className="text-6xl mb-4">⚠️</div>
+            <div className="text-2xl mb-4 text-destructive">Warning</div>
             <h2 className="text-2xl font-bold text-foreground mb-2">Connection Error</h2>
             <p className="text-muted-foreground mb-4">{gameDataSource.error}</p>
             <Button onClick={() => window.location.reload()}>
@@ -408,11 +444,49 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     );
   }
 
-  // 🔧 MODIFIED: Enhanced games list with completed game indicators
+
+  if (isPremiumLightTheme) {
+    if (gameSummaries.length === 0) {
+      return (
+        <div className="min-h-screen bg-background p-4 flex items-center justify-center">
+          <Card className="max-w-md w-full">
+            <CardContent className="p-8 text-center">
+              <div className="text-2xl mb-4 text-muted-foreground">No Games</div>
+              <h2 className="text-2xl font-bold text-foreground mb-2">No Games Available</h2>
+              <p className="text-muted-foreground mb-4">
+                There are currently no active or recent Tambola games. Check back soon!
+              </p>
+              <Button
+                onClick={() => window.location.reload()}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-background p-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-lg text-foreground">Opening current game...</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Redirecting you directly to booking, live game, or winners.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ðŸ”§ MODIFIED: Enhanced games list with completed game indicators
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="max-w-7xl mx-auto space-y-6">
-        {/* ✅ Header with theme colors */}
+        {/* âœ… Header with theme colors */}
         <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
@@ -425,11 +499,11 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
           </CardHeader>
         </Card>
 
-        {/* 🔧 MODIFIED: Enhanced Games List */}
+        {/* ðŸ”§ MODIFIED: Enhanced Games List */}
         {gameSummaries.length === 0 ? (
           <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
             <CardContent className="p-8 text-center">
-              <div className="text-6xl mb-4">🎯</div>
+              <div className="text-2xl mb-4 text-muted-foreground">No Games</div>
               <h2 className="text-2xl font-bold text-foreground mb-2">No Games Available</h2>
               <p className="text-muted-foreground mb-4">
                 There are currently no active or recent Tambola games. Check back soon!
@@ -455,8 +529,8 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                 {gameSummaries.map((game, index) => (
                   <Card
                     key={game.gameId}
-                    className={`cursor-pointer transition-all duration-200 border-gray-200 hover:border-orange-300 hover:shadow-lg ${index === 0 ? 'ring-2 ring-blue-200' : ''
-                      } ${game.gameOver ? 'bg-gradient-to-br from-yellow-50 to-orange-50' : ''}`}
+                    className={`cursor-pointer transition-all duration-200 border-border hover:border-primary/40 hover:shadow-lg ${index === 0 ? 'ring-2 ring-primary/30' : ''
+                      } ${game.gameOver ? 'bg-accent/10' : ''}`}
                     onClick={() => selectGame(game.gameId)}
                   >
                     <CardContent className="p-6">
@@ -464,7 +538,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                         <div className="flex-1">
                           <h3 className="font-bold text-foreground text-lg">{game.name}</h3>
                           {index === 0 && (
-                            <p className="text-xs text-blue-600 font-medium">← Most Recent</p>
+                            <p className="text-xs text-primary font-medium">Most Recent</p>
                           )}
                         </div>
                         <Badge
@@ -472,62 +546,62 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                             game.isActive ? "default" :
                               game.isCountdown ? "secondary" :
                                 game.hasStarted && !game.gameOver ? "destructive" :
-                                  game.gameOver ? "outline" : // 🆕 NEW: Completed games
+                                  game.gameOver ? "outline" : // ðŸ†• NEW: Completed games
                                     "outline"
                           }
-                          className={game.gameOver ? "border-yellow-500 text-yellow-700 bg-yellow-100" : ""}
+                          className={game.gameOver ? "border-accent/40 text-accent bg-accent/10" : ""}
                         >
-                          {game.isActive ? '🔴 Live' :
-                            game.isCountdown ? '🟡 Starting' :
-                              game.hasStarted && !game.gameOver ? '🎮 Playing' :
-                                game.gameOver ? '🏆 Completed' : // 🆕 NEW
-                                  '⚪ Booking'}
+                          {game.isActive ? 'Live' :
+                            game.isCountdown ? 'Starting' :
+                              game.hasStarted && !game.gameOver ? 'Playing' :
+                                game.gameOver ? 'Completed' :
+                                  'Booking'}
                         </Badge>
                       </div>
 
                       <div className="space-y-3">
                         {!game.gameOver ? (
-                          // ✅ UNCHANGED: Active game display
+                          // âœ… UNCHANGED: Active game display
                           <>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center">
-                                <Ticket className="w-4 h-4 mr-2 text-blue-600" />
+                                <Ticket className="w-4 h-4 mr-2 text-primary" />
                                 <span className="text-sm text-muted-foreground">Tickets</span>
                               </div>
-                              <span className="font-semibold text-blue-600">
+                              <span className="font-semibold text-primary">
                                 {game.bookedTickets}/{game.maxTickets}
                               </span>
                             </div>
 
                             <div className="flex items-center justify-between">
                               <div className="flex items-center">
-                                <Trophy className="w-4 h-4 mr-2 text-purple-600" />
+                                <Trophy className="w-4 h-4 mr-2 text-accent" />
                                 <span className="text-sm text-muted-foreground">Available</span>
                               </div>
-                              <span className="font-semibold text-purple-600">
+                              <span className="font-semibold text-accent">
                                 {game.maxTickets - game.bookedTickets} tickets
                               </span>
                             </div>
                           </>
                         ) : (
-                          // 🆕 NEW: Completed game display
+                          // ðŸ†• NEW: Completed game display
                           <>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center">
-                                <Trophy className="w-4 h-4 mr-2 text-yellow-600" />
+                                <Trophy className="w-4 h-4 mr-2 text-primary" />
                                 <span className="text-sm text-muted-foreground">Winners</span>
                               </div>
-                              <span className="font-semibold text-yellow-600">
+                              <span className="font-semibold text-primary">
                                 {game.winnerCount || 0} players
                               </span>
                             </div>
 
                             <div className="flex items-center justify-between">
                               <div className="flex items-center">
-                                <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
+                                <CheckCircle className="w-4 h-4 mr-2 text-accent" />
                                 <span className="text-sm text-muted-foreground">Prizes Won</span>
                               </div>
-                              <span className="font-semibold text-green-600">
+                              <span className="font-semibold text-accent">
                                 {game.prizesWon || 0}/{game.totalPrizes || 0}
                               </span>
                             </div>
@@ -536,7 +610,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
                         {game.hostPhone && (
                           <div className="flex items-center">
-                            <Phone className="w-4 h-4 mr-2 text-green-600" />
+                            <Phone className="w-4 h-4 mr-2 text-accent" />
                             <span className="text-sm text-muted-foreground">{game.hostPhone}</span>
                           </div>
                         )}
@@ -576,30 +650,6 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
                 ))}
               </div>
 
-              {/* ✅ UPDATED: Performance info */}
-              <div className="mt-6 p-4 bg-muted border border-border rounded-lg">
-                <div className="flex items-center justify-center space-x-4 text-sm text-muted-foreground">
-                  <div className="flex items-center">
-                    {gameDataSource.source === 'preloaded' ? (
-                      <Zap className="w-4 h-4 mr-1 text-green-600" />
-                    ) : (
-                      <Activity className="w-4 h-4 mr-1 text-blue-600" />
-                    )}
-                    <span>
-                      {gameDataSource.source === 'preloaded'
-                        ? 'Fast loading active - Games loaded instantly'
-                        : 'Live view - Active games + recent winners available'
-                      }
-                    </span>
-                  </div>
-                  {gameDataSource.loading && (
-                    <div className="flex items-center text-orange-600">
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                      <span>Refreshing...</span>
-                    </div>
-                  )}
-                </div>
-              </div>
             </CardContent>
           </Card>
         )}
@@ -609,10 +659,18 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
           <CardContent className="p-4">
             <div className="text-center text-sm text-muted-foreground">
               <p>
-                Developed and designed by <span className="font-semibold text-foreground">Innovative Archive</span>
+                Developed and designed by{' '}
+                <a
+                  href="https://innovarc.uk/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-semibold text-foreground underline-offset-2 hover:underline"
+                >
+                  Innovative Archive
+                </a>
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                © 2025 All rights reserved. ™
+                © 2025 All rights reserved.
               </p>
             </div>
           </CardContent>
@@ -621,3 +679,4 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     </div>
   );
 };
+

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Menu, LogOut, User, Loader2, ImageIcon } from 'lucide-react';
+import { LogIn, Menu, LogOut, User, Loader2, ImageIcon, Shield } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -55,6 +55,10 @@ export const Header: React.FC<HeaderProps> = ({
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
   const [isHostLoginOpen, setIsHostLoginOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isPremiumLightTheme, setIsPremiumLightTheme] = useState(
+    typeof document !== 'undefined' &&
+    document.documentElement.getAttribute('data-theme-preset') === 'premiumLight'
+  );
 
   // Login form states
   const [adminForm, setAdminForm] = useState({
@@ -73,6 +77,19 @@ export const Header: React.FC<HeaderProps> = ({
       setIsAdminLoginOpen(true);
     }
   }, [forceShowAdminLogin, isAdminLoginOpen]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const updateThemePreset = () => {
+      setIsPremiumLightTheme(root.getAttribute('data-theme-preset') === 'premiumLight');
+    };
+
+    updateThemePreset();
+    const observer = new MutationObserver(updateThemePreset);
+    observer.observe(root, { attributes: true, attributeFilter: ['data-theme-preset'] });
+
+    return () => observer.disconnect();
+  }, []);
 
   // ✅ NEW: Handle login dialog opening (triggers auth initialization)
   const handleOpenLogin = async (type: 'admin' | 'host') => {
@@ -178,27 +195,21 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Friend's Tambola
             </h1>
-            {/* ✅ NEW: Show auth status in development */}
-            {process.env.NODE_ENV === 'development' && (
-              <div className="ml-4 text-xs text-muted-foreground">
-                {authInitialized ? '🔐 Auth Ready' : '⚡ Fast Load'}
-              </div>
-            )}
           </div>
 
           {/* Session Warning - Only show for authenticated hosts */}
           {userRole === 'host' && hostControls?.sessionStatus.conflictWarning && (
-            <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-2 rounded mr-4">
+            <div className="bg-muted border border-border text-foreground px-4 py-2 rounded mr-4">
               ⚠️ {hostControls.sessionStatus.conflictWarning}
               {!hostControls.sessionStatus.isPrimary && (
                 <div className="text-sm mt-1">
                   Another device has game control. You can view but cannot start/control games.
                   <button
                     onClick={() => hostControls?.requestPrimaryControl()}
-                    className="text-blue-600 underline ml-2 hover:text-blue-800"
+                    className="text-primary underline ml-2 hover:text-primary/80"
                   >
                     Take Control
                   </button>
@@ -214,7 +225,7 @@ export const Header: React.FC<HeaderProps> = ({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-2 border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold"
+                    className="border-2 border-primary/40 text-primary hover:bg-primary/10 font-semibold"
                     disabled={authLoading}
                   >
                     {authLoading ? (
@@ -230,13 +241,13 @@ export const Header: React.FC<HeaderProps> = ({
                     <p className="text-sm font-medium">{currentUser.email}</p>
                     <p className="text-xs text-muted-foreground capitalize">{userRole}</p>
                     {userRole === 'admin' && 'permissions' in currentUser && (
-                      <div className="text-xs text-green-600 mt-1">
+                      <div className="text-xs text-accent mt-1">
                         {currentUser.permissions.createHosts && '✓ Create Hosts '}
                         {currentUser.permissions.manageUsers && '✓ Manage Users'}
                       </div>
                     )}
                     {userRole === 'host' && 'subscriptionEndDate' in currentUser && (
-                      <div className="text-xs text-blue-600 mt-1">
+                      <div className="text-xs text-primary mt-1">
                         {currentUser.isActive ? '✓ Active' : '❌ Inactive'}
                       </div>
                     )}
@@ -259,14 +270,44 @@ export const Header: React.FC<HeaderProps> = ({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
+            ) : isPremiumLightTheme ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-2 border-primary/40 text-primary hover:bg-primary/10 font-semibold"
+                  disabled={authLoading}
+                  onClick={() => handleOpenLogin('host')}
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <User className="w-4 h-4 mr-2" />
+                  )}
+                  Host Login
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
+                  disabled={authLoading}
+                  onClick={() => handleOpenLogin('admin')}
+                >
+                  {authLoading ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Shield className="w-4 h-4 mr-2" />
+                  )}
+                  Admin Login
+                </Button>
+              </div>
             ) : (
-              // ✅ NEW: Login dropdown (triggers lazy auth)
+              // ? NEW: Login dropdown (triggers lazy auth)
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="border-2 border-orange-400 text-orange-600 hover:bg-orange-50 font-semibold"
+                    className="border-2 border-primary/40 text-primary hover:bg-primary/10 font-semibold"
                     disabled={authLoading}
                   >
                     {authLoading ? (
@@ -306,26 +347,26 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* ✅ NEW: Host Login Dialog (with auth initialization) */}
             <Dialog open={isHostLoginOpen} onOpenChange={handleCloseHostDialog}>
-              <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
+              <DialogContent className="sm:max-w-md bg-card border-2 border-border">
                 <DialogHeader>
                   <DialogTitle className="text-foreground flex items-center">
                     Host Login
                     {!authInitialized && (
-                      <Loader2 className="w-4 h-4 ml-2 animate-spin text-orange-500" />
+                      <Loader2 className="w-4 h-4 ml-2 animate-spin text-primary" />
                     )}
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
                   {!authInitialized && (
-                    <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-                      <p className="text-sm text-orange-800 font-medium">Initializing authentication...</p>
-                      <p className="text-xs text-orange-600">Please wait while we set up the login system</p>
+                    <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                      <p className="text-sm text-primary font-medium">Initializing authentication...</p>
+                      <p className="text-xs text-primary/80">Please wait while we set up the login system</p>
                     </div>
                   )}
 
                   {authError && (
-                    <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-                      <p className="text-sm text-red-800">{authError}</p>
+                    <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/30">
+                      <p className="text-sm text-destructive">{authError}</p>
                     </div>
                   )}
 
@@ -339,7 +380,7 @@ export const Header: React.FC<HeaderProps> = ({
                       value={hostForm.email}
                       onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && !hostForm.password && document.getElementById('host-password')?.focus()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
+                      className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
@@ -353,13 +394,13 @@ export const Header: React.FC<HeaderProps> = ({
                       value={hostForm.password}
                       onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && hostForm.email && hostForm.password && authInitialized && handleHostLogin()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
+                      className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
                   <Button
                     onClick={handleHostLogin}
-                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
                     disabled={isLoggingIn || !authInitialized || !hostForm.email || !hostForm.password}
                   >
                     {isLoggingIn ? (
@@ -377,31 +418,31 @@ export const Header: React.FC<HeaderProps> = ({
 
             {/* ✅ NEW: Admin Login Dialog (with auth initialization) */}
             <Dialog open={isAdminLoginOpen} onOpenChange={handleCloseAdminDialog}>
-              <DialogContent className="sm:max-w-md bg-white border-2 border-orange-200">
+              <DialogContent className="sm:max-w-md bg-card border-2 border-border">
                 <DialogHeader>
                   <DialogTitle className="text-foreground flex items-center">
                     Admin Login
                     {!authInitialized && (
-                      <Loader2 className="w-4 h-4 ml-2 animate-spin text-orange-500" />
+                      <Loader2 className="w-4 h-4 ml-2 animate-spin text-primary" />
                     )}
                   </DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm text-blue-800 font-medium">Admin Login</p>
-                    <p className="text-xs text-blue-600">Enter your admin credentials</p>
+                  <div className="p-3 bg-accent/10 rounded-lg border border-accent/30">
+                    <p className="text-sm text-accent font-medium">Admin Login</p>
+                    <p className="text-xs text-accent/80">Enter your admin credentials</p>
                   </div>
 
                   {!authInitialized && (
-                    <div className="p-3 bg-orange-50 rounded-lg border border-orange-200">
-                      <p className="text-sm text-orange-800 font-medium">Initializing authentication...</p>
-                      <p className="text-xs text-orange-600">Please wait while we set up the login system</p>
+                    <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+                      <p className="text-sm text-primary font-medium">Initializing authentication...</p>
+                      <p className="text-xs text-primary/80">Please wait while we set up the login system</p>
                     </div>
                   )}
 
                   {authError && (
-                    <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-                      <p className="text-sm text-red-800">{authError}</p>
+                    <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/30">
+                      <p className="text-sm text-destructive">{authError}</p>
                     </div>
                   )}
 
@@ -415,7 +456,7 @@ export const Header: React.FC<HeaderProps> = ({
                       value={adminForm.email}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && !adminForm.password && document.getElementById('admin-password')?.focus()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
+                      className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
@@ -429,13 +470,13 @@ export const Header: React.FC<HeaderProps> = ({
                       value={adminForm.password}
                       onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
                       onKeyPress={(e) => e.key === 'Enter' && adminForm.email && adminForm.password && authInitialized && handleAdminLogin()}
-                      className="border-2 border-orange-200 focus:border-orange-400 bg-white text-foreground placeholder:text-muted-foreground"
+                      className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
                   <Button
                     onClick={handleAdminLogin}
-                    className="w-full bg-gradient-to-r from-orange-500 to-red-500 text-white hover:from-orange-600 hover:to-red-600"
+                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
                     disabled={isLoggingIn || !authInitialized || !adminForm.email || !adminForm.password}
                   >
                     {isLoggingIn ? (

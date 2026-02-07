@@ -288,7 +288,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const expiredHosts = hosts.filter(h => new Date(h.subscriptionEndDate) < new Date()).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-background via-muted/40 to-card p-4">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">

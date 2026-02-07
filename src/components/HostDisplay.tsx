@@ -1,4 +1,4 @@
-// ================================================================================
+﻿// ================================================================================
 // FILE 1: src/components/HostDisplay.tsx - SIMPLIFIED WINNER DISPLAY
 // ================================================================================
 
@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
 import { useHostControls } from '@/providers/HostControlsProvider';
-// ✅ Import simplified winner component
+// âœ… Import simplified winner component
 import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay';
 
 interface HostDisplayProps {
@@ -39,7 +39,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const { gameData, currentPhase, timeUntilAction, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   const hostControls = useHostControls();
-  // ✅ Extract new properties
+  // âœ… Extract new properties
   const {
     isPreparingGame,
     preparationStatus,
@@ -49,21 +49,21 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const [showWinnerDisplay, setShowWinnerDisplay] = useState(false);
   // Add delay before showing winner display
   useEffect(() => {
-    console.log('🔍 Game over check:', gameData?.gameState?.gameOver);
+    console.log('ðŸ” Game over check:', gameData?.gameState?.gameOver);
     if (gameData?.gameState?.gameOver) {
-      console.log('🏆 Game is over, starting winner display timer');
+      console.log('ðŸ† Game is over, starting winner display timer');
       // Wait 2.5 seconds for prize audio to finish
       const timer = setTimeout(() => {
-        console.log('🎉 Showing winner display now');
+        console.log('ðŸŽ‰ Showing winner display now');
         setShowWinnerDisplay(true);
       }, 2500);
 
       return () => {
-        console.log('🧹 Clearing winner display timer');
+        console.log('ðŸ§¹ Clearing winner display timer');
         clearTimeout(timer);
       };
     } else {
-      console.log('📱 Game not over, hiding winner display');
+      console.log('ðŸ“± Game not over, hiding winner display');
       setShowWinnerDisplay(false);
     }
   }, [gameData?.gameState?.gameOver]);
@@ -89,7 +89,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   };
 
 
-  // ✅ SIMPLIFIED: Only automatic game control handlers
+  // âœ… SIMPLIFIED: Only automatic game control handlers
   const handleStartGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
@@ -144,13 +144,13 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   // Error state
   if (error) {
     return (
-      <Card className="border-red-300">
+      <Card className="border-destructive/40">
         <CardContent className="p-8 text-center">
-          <div className="text-6xl mb-4">⚠️</div>
-          <h2 className="text-xl font-semibold text-red-800 mb-2">Error Loading Game</h2>
-          <p className="text-red-600 mb-4">{error}</p>
+          <div className="text-6xl mb-4">âš ï¸</div>
+          <h2 className="text-xl font-semibold text-destructive mb-2">Error Loading Game</h2>
+          <p className="text-destructive mb-4">{error}</p>
           {onCreateNewGame && (
-            <Button onClick={onCreateNewGame} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={onCreateNewGame} className="bg-primary hover:bg-primary/90">
               Create New Game
             </Button>
           )}
@@ -164,7 +164,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     return (
       <Card>
         <CardContent className="p-8 text-center">
-          <div className="text-6xl mb-4">🎮</div>
+          <div className="text-6xl mb-4">ðŸŽ®</div>
           <h2 className="text-2xl font-bold text-foreground mb-2">No Active Game</h2>
           <p className="text-muted-foreground mb-4">Create a new game to start hosting</p>
           {onCreateNewGame && (
@@ -177,33 +177,33 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     );
   }
 
-  // ✅ NEW: SIMPLIFIED WINNER DISPLAY after delay
+  // âœ… NEW: SIMPLIFIED WINNER DISPLAY after delay
   if (showWinnerDisplay && gameData?.gameState?.gameOver) {
-    console.log(`🏆 Showing winner display after delay`);
+    console.log(`ðŸ† Showing winner display after delay`);
     return (
       <SimplifiedWinnerDisplay
         gameData={gameData}
         onCreateNewGame={() => {
-          // ✅ Add confirmation before creating new game from winner display
+          // âœ… Add confirmation before creating new game from winner display
           const confirmed = window.confirm(
-            '🎮 Create New Game\n\n' +
+            'ðŸŽ® Create New Game\n\n' +
             'You are about to create a new game. The current winner information will be cleared from your dashboard.\n\n' +
             'Make sure you have noted down any winner contact details or taken screenshots if needed.\n\n' +
             'Continue to create a new game?'
           );
 
           if (confirmed && onCreateNewGame) {
-            console.log('✅ Host confirmed new game creation from winner display');
+            console.log('âœ… Host confirmed new game creation from winner display');
             onCreateNewGame();
           } else {
-            console.log('🚫 Host cancelled new game creation from winner display');
+            console.log('ðŸš« Host cancelled new game creation from winner display');
           }
         }}
       />
     );
   }
 
-  // ✅ EXISTING: Full interface for active games (booking, countdown, playing phases)
+  // âœ… EXISTING: Full interface for active games (booking, countdown, playing phases)
   return (
     <div className="space-y-6">
 
@@ -221,13 +221,13 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           <div className="flex flex-wrap gap-2">
             {currentPhase === 'booking' && (
               <>
-                {/* ✅ NEW: Preparation Status Display */}
+                {/* âœ… NEW: Preparation Status Display */}
 
 
                 <Button
                   onClick={handleStartGame}
                   disabled={bookedCount === 0 || hostControls?.isProcessing}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  className="flex-1 bg-primary hover:bg-primary/90"
                   size="sm"
                 >
                   <Play className="w-4 h-4 mr-2" />
@@ -236,7 +236,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                     : `Start Automatic Game (${bookedCount > 0 ? 'Ready' : 'Need players'})`
                   }
                 </Button>
-                {/* ✅ REMOVED: Preparation instructions hidden */}
+                {/* âœ… REMOVED: Preparation instructions hidden */}
               </>
             )}
             {currentPhase === 'countdown' && (
@@ -263,7 +263,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                   <div className="space-y-2 flex-1">
                     <Button
                       onClick={handleResumeGame}
-                      className="w-full bg-green-600 hover:bg-green-700"
+                      className="w-full bg-primary hover:bg-primary/90"
                       size="lg"
                       disabled={hostControls?.isProcessing}
                     >
@@ -272,10 +272,10 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                         hostControls?.countdownTime === 0 && hostControls?.firebasePaused ? 'Click to Start Number Calling' : 'Resume Automatic Game'}
                     </Button>
 
-                    {/* ✅ NEW: Show auto-pause warning */}
+                    {/* âœ… NEW: Show auto-pause warning */}
                     {hostControls?.wasAutopaused && (
-                      <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 text-center">
-                        ⚠️ Game was auto-paused due to page refresh. Click Resume to continue safely.
+                      <div className="text-xs text-primary bg-primary/10 border border-primary/30 rounded px-2 py-1 text-center">
+                        âš ï¸ Game was auto-paused due to page refresh. Click Resume to continue safely.
                       </div>
                     )}
                   </div>
@@ -340,10 +340,10 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                 .map((num, index) => (
                   <div
                     key={`${num}-${index}`}
-                    className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-white
+                    className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold
                       ${index === 0
-                        ? 'bg-gradient-to-br from-red-500 to-red-600 ring-2 ring-red-300 text-lg scale-110'
-                        : 'bg-gradient-to-br from-blue-500 to-blue-600 text-sm'
+                        ? 'bg-gradient-to-br from-primary to-primary/80 text-primary-foreground ring-2 ring-primary/40 text-lg scale-110'
+                        : 'bg-gradient-to-br from-accent to-accent/80 text-accent-foreground text-sm'
                       }`}
                   >
                     {num}
@@ -352,7 +352,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </div>
             {gameData.gameState.calledNumbers.length > 20 && (
               <p className="text-sm text-muted-foreground mt-3 text-center">
-                Showing last 20 numbers • Total called: {gameData.gameState.calledNumbers.length}
+                Showing last 20 numbers â€¢ Total called: {gameData.gameState.calledNumbers.length}
               </p>
             )}
           </CardContent>
@@ -380,14 +380,14 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                     variant="ghost"
                     onClick={() => togglePrize(prize.id)}
                     className={`w-full justify-between p-3 h-auto rounded-lg border-2 hover:bg-opacity-80 ${prize.won
-                      ? 'bg-green-50 border-green-200 hover:bg-green-100'
+                      ? 'bg-accent/10 border-accent/30 hover:bg-accent/20'
                       : 'bg-muted border-border hover:bg-muted/80'
                       }`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className={`p-2 rounded-full ${prize.won ? 'bg-green-100' : 'bg-muted/80'
+                      <div className={`p-2 rounded-full ${prize.won ? 'bg-accent/20' : 'bg-muted/80'
                         }`}>
-                        <Trophy className={`w-4 h-4 ${prize.won ? 'text-green-600' : 'text-muted-foreground'
+                        <Trophy className={`w-4 h-4 ${prize.won ? 'text-accent' : 'text-muted-foreground'
                           }`} />
                       </div>
                       <div className="text-left">
@@ -395,7 +395,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                           {prize.name}
                         </h3>
                         {prize.won && prize.winners && (
-                          <p className="text-sm text-green-600">
+                          <p className="text-sm text-accent">
                             {prize.winners.length} winner{prize.winners.length !== 1 ? 's' : ''}
                           </p>
                         )}
@@ -406,7 +406,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                       {/* Quick Ticket Preview */}
                       <div className="text-right">
                         {prize.won && prize.winners ? (
-                          <div className="text-sm font-mono text-green-700">
+                          <div className="text-sm font-mono text-accent">
                             {prize.winners.slice(0, 2).map(w => w.ticketId).join(', ')}
                             {prize.winners.length > 2 && '...'}
                           </div>
@@ -420,8 +420,8 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                       {/* Chevron */}
                       {prize.won ? (
                         isExpanded ?
-                          <ChevronUp className="w-4 h-4 text-green-600" /> :
-                          <ChevronDown className="w-4 h-4 text-green-600" />
+                          <ChevronUp className="w-4 h-4 text-accent" /> :
+                          <ChevronDown className="w-4 h-4 text-accent" />
                       ) : (
                         <div className="w-4 h-4" /> // Empty space for alignment
                       )}
@@ -430,19 +430,19 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
 
                   {/* Expandable Winner Details */}
                   {isExpanded && prize.won && prize.winners && (
-                    <div className="px-3 pb-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="px-3 pb-3 bg-accent/10 rounded-lg border border-accent/30">
                       <div className="space-y-2">
                         {prize.winners.map((winner, idx) => (
-                          <div key={idx} className="flex items-center justify-between p-2 bg-white rounded border border-green-100">
+                          <div key={idx} className="flex items-center justify-between p-2 bg-card rounded border border-accent/30">
                             <div className="flex items-center space-x-3">
-                              <div className="bg-green-100 p-1.5 rounded-full">
-                                <User className="w-3 h-3 text-green-600" />
+                              <div className="bg-accent/20 p-1.5 rounded-full">
+                                <User className="w-3 h-3 text-accent" />
                               </div>
                               <div>
                                 <p className="font-medium text-foreground text-sm">
                                   {winner.name}
                                   {prize.winners.length > 1 && (
-                                    <Badge variant="outline" className="ml-2 text-xs border-green-400 text-green-700">
+                                    <Badge variant="outline" className="ml-2 text-xs border-accent/40 text-accent">
                                       Winner {idx + 1}
                                     </Badge>
                                   )}
@@ -454,7 +454,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                             </div>
 
                             {/* Winner Badge */}
-                            <Badge variant="outline" className="text-xs border-green-400 text-green-700">
+                            <Badge variant="outline" className="text-xs border-accent/40 text-accent">
                               {prize.name}
                             </Badge>
                           </div>
@@ -462,7 +462,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
 
                         {/* Prize Details */}
                         {prize.winningNumber && (
-                          <div className="text-xs text-green-600 text-center pt-2 border-t border-green-200">
+                          <div className="text-xs text-accent text-center pt-2 border-t border-accent/30">
                             Won on number {prize.winningNumber}
                             {prize.wonAt && (
                               <span className="ml-2">
@@ -483,3 +483,4 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     </div>
   );
 };
+

@@ -388,19 +388,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     };
   }, []);
 
-  // Provide audio status for debugging (only in development)
-  if (process.env.NODE_ENV === 'development') {
-    return (
-      <div className="fixed bottom-4 right-4 bg-black bg-opacity-75 text-white p-2 rounded text-xs">
-        <div>Audio: {isAudioSupported ? (isAudioEnabled ? 'ON' : 'OFF') : 'UNSUPPORTED'}</div>
-        <div>Playing: {isPlaying ? 'YES' : 'NO'}</div>
-        <div>Queue: {audioCoordinator.getQueueLength()}</div>
-        <div>Last #: {lastProcessedNumber.current}</div>
-      </div>
-    );
-  }
-
-  return null; // No visual component in production
+  return null;
 };
 
 export default AudioManager;

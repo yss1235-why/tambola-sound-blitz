@@ -1,6 +1,6 @@
 // src/types/theme.ts - Complete theme type definitions with full color coverage
 
-export type PresetTheme = 'default' | 'neon' | 'festive' | 'ocean' | 'sunset' | 'midnight' | 'custom';
+export type PresetTheme = 'default' | 'neon' | 'festive' | 'ocean' | 'sunset' | 'midnight' | 'premiumLight' | 'custom';
 
 // Extended color interface for complete UI transformation
 export interface ThemeColors {
@@ -263,6 +263,40 @@ export const THEME_PRESETS: Record<PresetTheme, ThemePreset> = {
         },
         preview: {
             gradient: 'linear-gradient(135deg, #3B82F6 0%, #0F172A 100%)',
+        },
+    },
+    premiumLight: {
+        id: 'premiumLight',
+        name: 'Premium Light',
+        description: 'Clean premium light system with editorial contrast',
+        colors: {
+            primary: '222 62% 34%',
+            primaryForeground: '0 0% 100%',
+            secondary: '219 38% 93%',
+            secondaryForeground: '222 24% 20%',
+            background: '220 29% 97%',
+            foreground: '222 28% 14%',
+            accent: '38 52% 48%',
+            accentForeground: '222 24% 20%',
+            muted: '216 35% 94%',
+            mutedForeground: '220 16% 42%',
+            card: '0 0% 100%',
+            cardForeground: '222 28% 14%',
+            border: '216 28% 86%',
+            input: '216 28% 86%',
+            ring: '220 68% 51%',
+            gameCalled: '142 45% 84%',
+            gameCalledForeground: '144 52% 27%',
+            gameCurrent: '36 72% 86%',
+            gameCurrentForeground: '36 61% 32%',
+            gameCell: '0 0% 100%',
+            gameCellForeground: '220 22% 30%',
+            bodyGradientFrom: '220 29% 97%',
+            bodyGradientVia: '214 32% 94%',
+            bodyGradientTo: '216 30% 90%',
+        },
+        preview: {
+            gradient: 'linear-gradient(135deg, #213f8f 0%, #b8863b 100%)',
         },
     },
     custom: {

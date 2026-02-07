@@ -157,34 +157,6 @@ const isPatternPosition = (
   }
 };
 
-// Helper function for pattern names and descriptions
-const getPatternName = (prizeId: string): string => {
-  switch (prizeId) {
-    case 'earlyFive': return 'First 5 Called Numbers';
-    case 'topLine': return 'Top Line Complete';
-    case 'middleLine': return 'Middle Line Complete';
-    case 'bottomLine': return 'Bottom Line Complete';
-    case 'corner': return '4 Corner Numbers';
-    case 'starCorner': return '4 Corners + Center';
-    case 'fullHouse': return 'All Numbers';
-    case 'secondFullHouse': return 'All Numbers (Second Winner)';
-    default: return 'Winning Pattern';
-  }
-};
-
-const getPatternDescription = (prizeId: string): string => {
-  switch (prizeId) {
-    case 'earlyFive': return 'Yellow borders show the first 5 numbers called from this ticket';
-    case 'corner': return 'Yellow borders show corner positions (leftmost & rightmost of top/bottom rows)';
-    case 'starCorner': return 'Yellow borders show 4 corners + center number';
-    case 'topLine':
-    case 'middleLine':
-    case 'bottomLine': return 'Yellow borders show the complete winning row';
-    case 'fullHouse': return 'Yellow borders show all numbers';
-    case 'secondFullHouse': return 'Yellow borders show all numbers (Second Full House winner)';
-    default: return 'Yellow borders show pattern positions';
-  }
-};
 export const renderTicket = ({
   ticket,
   calledNumbers,
@@ -320,20 +292,6 @@ export const renderTicket = ({
         })}
       </div>
 
-      {/* Pattern explanation for highlighted tickets */}
-      {patternHighlight && (
-        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-center">
-          <p className="text-xs text-blue-800 font-medium">
-            🎯 Winning Pattern: {getPatternName(patternHighlight)}
-          </p>
-          <p className="text-xs text-blue-600 mt-1">
-            {getPatternDescription(patternHighlight)}
-          </p>
-          <p className="text-xs text-blue-500 mt-1">
-            ✅ Green: Called & marked • 🟡 Yellow border: Pattern positions
-          </p>
-        </div>
-      )}
     </div>
   );
 };

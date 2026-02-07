@@ -32,6 +32,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         const unsubscribe = themeService.subscribeToTheme((newSettings) => {
             setSettings(newSettings);
             setIsLoading(false);
+            document.documentElement.setAttribute('data-theme-preset', newSettings.preset);
 
             // Only apply if enabled for all players
             if (newSettings.enabledForAll) {
@@ -49,6 +50,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         if (!isLoading && settings.enabledForAll) {
             themeService.applyThemeToDocument(colors);
         }
+        document.documentElement.setAttribute('data-theme-preset', settings.preset);
     }, [settings, colors, isLoading]);
 
     const contextValue: ThemeContextValue = {

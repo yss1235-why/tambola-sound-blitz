@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Phone, User, Users, Loader2, Activity, Clock } from 'lucide-react';
+import { Phone, Clock, LayoutGrid, CheckCircle2, Ticket } from 'lucide-react';
 import { TambolaTicket, GameData, firebaseService } from '@/services/firebase';
 
 interface TicketBookingGridProps {
@@ -150,24 +150,24 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 premium-light-booking">
       {/* Game Info Section */}
-      <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
+      <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border premium-light-surface premium-light-elevated">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl text-foreground">
+          <CardTitle className="text-3xl text-foreground premium-light-brand-title">
             {realTimeGameData.name}
           </CardTitle>
           <div className="flex justify-center items-center space-x-8 mt-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{bookedCount}</div>
+              <div className="text-2xl font-bold text-primary">{bookedCount}</div>
               <div className="text-sm text-muted-foreground">Tickets Booked</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{availableCount}</div>
+              <div className="text-2xl font-bold text-accent">{availableCount}</div>
               <div className="text-sm text-muted-foreground">Available</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">{totalCount}</div>
+              <div className="text-2xl font-bold text-foreground">{totalCount}</div>
               <div className="text-sm text-muted-foreground">Max Tickets</div>
             </div>
           </div>
@@ -178,7 +178,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 
       {/* Tickets Grid */}
       {/* Tickets Grid */}
-      <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
+      <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border premium-light-surface premium-light-elevated">
         <CardHeader>
           <CardTitle className="text-2xl text-foreground text-center">
             {viewMode === 'all' ? 'All Tickets' : 'Available Tickets Only'}
@@ -194,17 +194,19 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
                 : 'text-muted-foreground hover:text-foreground'}
             >
-              🎫 All Tickets ({Object.keys(allTickets).length})
+              <LayoutGrid className="w-4 h-4 mr-1.5" />
+              All Tickets ({Object.keys(allTickets).length})
             </Button>
             <Button
               onClick={() => setViewMode('available')}
               variant={viewMode === 'available' ? 'default' : 'outline'}
               size="sm"
               className={viewMode === 'available'
-                ? 'bg-green-500 hover:bg-green-600 text-white'
+                ? 'bg-accent hover:bg-accent/90 text-accent-foreground'
                 : 'text-muted-foreground hover:text-foreground'}
             >
-              ✅ Available Only ({Object.values(allTickets).filter(t => !t.isBooked).length})
+              <CheckCircle2 className="w-4 h-4 mr-1.5" />
+              Available Only ({Object.values(allTickets).filter(t => !t.isBooked).length})
             </Button>
           </div>
         </CardHeader>
@@ -213,13 +215,13 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
             {Object.entries(availableTickets).map(([ticketId, ticket]) => (
               <div
                 key={ticketId}
-                className={`relative rounded border-2 transition-all duration-200 ${ticket.isBooked
+                className={`relative rounded border-2 transition-all duration-200 premium-light-ticket-card ${ticket.isBooked
                   ? 'bg-gradient-to-br from-green-100 to-emerald-100 border-green-300 shadow-md'
                   : 'bg-card border-border hover:border-primary hover:shadow-lg cursor-pointer'
                   }`}
               >
                 {/* NEW: Ticket Info Header */}
-                <div className="flex items-center justify-between p-3 border-b border-border">
+                <div className="flex items-center justify-between p-3 border-b border-border premium-light-ticket-header">
                   <div className="flex items-center space-x-2">
                     <span className="font-bold text-foreground">Ticket {ticketId}</span>
                   </div>
@@ -236,7 +238,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                 <div className="p-3 md:p-4">
                   {/* ✅ SAFETY: Check if ticket rows exist and are properly structured */}
                   {ticket.rows && Array.isArray(ticket.rows) && ticket.rows.every(row => Array.isArray(row)) ? (
-                    <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-2 border border-yellow-500 rounded">
+                    <div className="grid grid-cols-9 gap-1 mb-1 bg-amber-50 p-2 border border-yellow-500 rounded premium-light-ticket-grid">
                       {ticket.rows.flat().map((number, index) => (
                         <div
                           key={index}
@@ -268,7 +270,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
                   )}
 
                   {/* Booking Status / Button */}
-                  <div className="py-1 px-3 rounded-b bg-muted">
+                  <div className="py-1 px-3 rounded-b bg-muted premium-light-ticket-footer">
                     {ticket.isBooked ? (
                       <div className="text-center">
                         {/* Phone number removed */}
@@ -296,7 +298,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
           {/* Empty State for Available Only mode */}
           {viewMode === 'available' && Object.keys(availableTickets).length === 0 && (
             <div className="text-center py-12">
-              <div className="text-6xl mb-4">🎟️</div>
+              <Ticket className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="text-xl font-semibold text-foreground mb-2">
                 All Tickets Have Been Booked!
               </h3>
@@ -319,3 +321,5 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
     </div>
   );
 };
+
+

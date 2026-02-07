@@ -76,6 +76,10 @@
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     transition: background 0.3s ease, color 0.3s ease;
   }
+
+  html[data-theme-preset='premiumLight'] body {
+    font-family: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
 }
 
 @layer components {
@@ -520,6 +524,86 @@
     @apply bg-gray-500/50 border-red-900;
   }
 }
+
+  /* Premium Light theme: scoped so other presets remain unchanged */
+  html[data-theme-preset='premiumLight'] .premium-light-surface {
+    background: rgba(255, 255, 255, 0.96);
+    border-color: hsl(var(--border));
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-elevated {
+    box-shadow:
+      0 2px 8px rgba(15, 23, 42, 0.06),
+      0 14px 34px rgba(15, 23, 42, 0.08);
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-brand-title {
+    font-family: 'Fraunces', Georgia, serif;
+    letter-spacing: 0.01em;
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-highlight-card {
+    background: linear-gradient(145deg, #f7faff, #eaf0fb);
+    box-shadow: inset 0 0 0 1px rgba(33, 63, 143, 0.08);
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-user-display-content {
+    max-width: 1320px;
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-user-display .number-cell,
+  html[data-theme-preset='premiumLight'] .premium-light-booking .number-cell {
+    border-radius: 12px;
+    border-color: hsl(var(--border));
+    box-shadow: none;
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-booking .premium-light-ticket-card {
+    border-radius: 16px;
+    background: #ffffff;
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-booking .premium-light-ticket-header {
+    background: linear-gradient(180deg, #ffffff, #f8faff);
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-booking .premium-light-ticket-grid {
+    background: #fff7e6;
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-booking .premium-light-ticket-footer {
+    background: #eef2f8;
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-user-display .premium-light-search-group,
+  html[data-theme-preset='premiumLight'] .premium-light-user-display .premium-light-prize-row {
+    background: #f4f7fc;
+    border-color: hsl(var(--border));
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-winner-hero {
+    background: linear-gradient(145deg, #f7faff, #ebf1fd);
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-winners-title {
+    font-family: 'Fraunces', Georgia, serif;
+    letter-spacing: 0.01em;
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-winners .premium-light-winner-prize-card {
+    background: #f4f7fc;
+    border-color: hsl(var(--border));
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-winners .premium-light-winner-row {
+    background: #ffffff;
+    border-color: hsl(var(--border));
+  }
+
+  html[data-theme-preset='premiumLight'] .premium-light-winners .premium-light-winner-ticket-expand {
+    background: #edf2fb;
+    border-color: hsl(var(--border));
+  }
 
   /* Custom animations */
   @keyframes number-call {

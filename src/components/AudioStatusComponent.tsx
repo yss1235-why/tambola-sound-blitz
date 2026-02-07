@@ -1,4 +1,4 @@
-// src/components/AudioStatusComponent.tsx - FIXED: Show audio status for both hosts and users
+﻿// src/components/AudioStatusComponent.tsx - FIXED: Show audio status for both hosts and users
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -92,7 +92,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
     }
   };
 
-  // ✅ FIXED: Auto-hide notification if audio is working
+  // âœ… FIXED: Auto-hide notification if audio is working
   useEffect(() => {
     if (audioSupported && audioEnabled && !audioError) {
       const timer = setTimeout(() => setShowNotification(false), 5000);
@@ -103,24 +103,24 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
   // Show in game host dashboard
   if (showInGameHost) {
     return (
-      <Card className="border-yellow-200 bg-yellow-50">
+      <Card className="border-border bg-muted">
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
               {audioEnabled ? (
-                <CheckCircle className="w-5 h-5 text-green-600" />
+                <CheckCircle className="w-5 h-5 text-accent" />
               ) : (
-                <VolumeX className="w-5 h-5 text-red-600" />
+                <VolumeX className="w-5 h-5 text-destructive" />
               )}
               <div>
                 <p className="font-medium text-foreground">
                   Audio Status: {audioEnabled ? 'Enabled' : 'Disabled'}
                 </p>
                 {audioError && (
-                  <p className="text-sm text-red-600">{audioError}</p>
+                  <p className="text-sm text-destructive">{audioError}</p>
                 )}
                 {!userInteracted && (
-                  <p className="text-sm text-yellow-600">Click anywhere to enable audio</p>
+                  <p className="text-sm text-primary">Click anywhere to enable audio</p>
                 )}
               </div>
             </div>
@@ -128,7 +128,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
               <Button
                 onClick={handleEnableAudio}
                 size="sm"
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-primary hover:bg-primary/90"
               >
                 Enable Audio
               </Button>
@@ -139,7 +139,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
     );
   }
 
-  // ✅ FIXED: CHANGE 3 - Disable user notifications
+  // âœ… FIXED: CHANGE 3 - Disable user notifications
   if (!showInGameHost) {
     return null;
   }
@@ -147,24 +147,24 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
   // Show floating notification for players when needed (this code will never run due to above change)
   return (
     <div className="fixed top-4 right-4 z-50 max-w-sm animate-bounce-in">
-      <Card className="border-yellow-400 bg-yellow-50 shadow-lg">
+      <Card className="border-border bg-muted shadow-lg">
         <CardContent className="p-4">
           <div className="flex items-start space-x-3">
             <div className="flex-shrink-0">
               {audioEnabled ? (
-                <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                <CheckCircle className="w-5 h-5 text-accent mt-0.5" />
               ) : (
-                <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                <AlertCircle className="w-5 h-5 text-primary mt-0.5" />
               )}
             </div>
             <div className="flex-1">
               <div className="flex items-center space-x-2 mb-2">
                 <Badge
                   variant="outline"
-                  className={`text-xs ${audioEnabled ? 'text-green-700 border-green-400' : 'text-yellow-700 border-yellow-400'
+                  className={`text-xs ${audioEnabled ? 'text-accent border-accent/40' : 'text-primary border-primary/40'
                     }`}
                 >
-                  🔊 Game Audio
+                  ðŸ”Š Game Audio
                 </Badge>
                 <Button
                   variant="ghost"
@@ -172,21 +172,21 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
                   onClick={() => setShowNotification(false)}
                   className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
                 >
-                  ×
+                  Ã—
                 </Button>
               </div>
 
               {audioEnabled ? (
-                <p className="text-sm text-green-800 mb-2">
-                  ✅ Audio enabled! You'll hear number announcements during the game.
+                <p className="text-sm text-accent mb-2">
+                  âœ… Audio enabled! You'll hear number announcements during the game.
                 </p>
               ) : (
-                <p className="text-sm text-yellow-800 mb-2">
+                <p className="text-sm text-foreground mb-2">
                   {!audioSupported
-                    ? '❌ Audio not supported in this browser'
+                    ? 'âŒ Audio not supported in this browser'
                     : !userInteracted
-                      ? '👆 Click anywhere to enable game audio'
-                      : audioError || '🔇 Audio disabled - click to enable'
+                      ? 'ðŸ‘† Click anywhere to enable game audio'
+                      : audioError || 'ðŸ”‡ Audio disabled - click to enable'
                   }
                 </p>
               )}
@@ -195,7 +195,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
                 <Button
                   onClick={handleEnableAudio}
                   size="sm"
-                  className="w-full bg-yellow-600 hover:bg-yellow-700 text-white"
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                 >
                   <Volume2 className="w-4 h-4 mr-2" />
                   Enable Game Audio
@@ -203,8 +203,8 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
               )}
 
               {!audioSupported && (
-                <p className="text-xs text-yellow-700 mt-2">
-                  💡 Try using Chrome, Firefox, or Safari for audio support
+                <p className="text-xs text-muted-foreground mt-2">
+                  ðŸ’¡ Try using Chrome, Firefox, or Safari for audio support
                 </p>
               )}
             </div>
@@ -214,3 +214,4 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
     </div>
   );
 };
+

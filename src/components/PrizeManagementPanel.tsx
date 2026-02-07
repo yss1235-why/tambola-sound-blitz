@@ -1,4 +1,4 @@
-// src/components/PrizeManagementPanel.tsx - Fixed without refresh dependency
+﻿// src/components/PrizeManagementPanel.tsx - Fixed without refresh dependency
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -28,8 +28,8 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
     if (!prize.won) {
       return {
         status: 'pending',
-        icon: '⏳',
-        className: 'bg-gray-50 border-gray-200',
+        icon: 'â³',
+        className: 'bg-muted border-border',
         badgeVariant: 'secondary' as const,
         statusText: 'Not Won'
       };
@@ -38,8 +38,8 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
     const winnerCount = prize.winners?.length || 0;
     return {
       status: 'won',
-      icon: '🏆',
-      className: 'bg-green-50 border-green-200',
+      icon: 'ðŸ†',
+      className: 'bg-accent/10 border-accent/30',
       badgeVariant: 'default' as const,
       statusText: `Won by ${winnerCount} player${winnerCount !== 1 ? 's' : ''}`
     };
@@ -58,31 +58,31 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
         <CardContent>
           {/* Prize Statistics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="text-2xl font-bold text-blue-600">
+            <div className="text-center p-3 bg-primary/10 rounded-lg border border-primary/30">
+              <div className="text-2xl font-bold text-primary">
                 {Object.keys(gameData.prizes).length}
               </div>
-              <div className="text-sm text-blue-700">Total Prizes</div>
+              <div className="text-sm text-primary">Total Prizes</div>
             </div>
-            <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-              <div className="text-2xl font-bold text-green-600">
+            <div className="text-center p-3 bg-accent/10 rounded-lg border border-accent/30">
+              <div className="text-2xl font-bold text-accent">
                 {Object.values(gameData.prizes).filter(p => p.won).length}
               </div>
-              <div className="text-sm text-green-700">Prizes Won</div>
+              <div className="text-sm text-accent">Prizes Won</div>
             </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-              <div className="text-2xl font-bold text-purple-600">
+            <div className="text-center p-3 bg-secondary/15 rounded-lg border border-secondary/30">
+              <div className="text-2xl font-bold text-secondary-foreground">
                 {Object.values(gameData.prizes).reduce((total, prize) =>
                   total + (prize.winners?.length || 0), 0
                 )}
               </div>
-              <div className="text-sm text-purple-700">Total Winners</div>
+              <div className="text-sm text-secondary-foreground">Total Winners</div>
             </div>
-            <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
-              <div className="text-2xl font-bold text-orange-600">
+            <div className="text-center p-3 bg-muted rounded-lg border border-border">
+              <div className="text-2xl font-bold text-foreground">
                 {bookedTickets.length}
               </div>
-              <div className="text-sm text-orange-700">Active Players</div>
+              <div className="text-sm text-muted-foreground">Active Players</div>
             </div>
           </div>
         </CardContent>
@@ -134,16 +134,16 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
 
                           {/* Winners Display */}
                           {prize.won && prize.winners && prize.winners.length > 0 && (
-                            <div className="bg-white p-3 rounded border border-green-200">
+                            <div className="bg-card p-3 rounded border border-accent/30">
                               <div className="flex items-center mb-2">
-                                <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                                <p className="text-sm font-medium text-green-700">Winners:</p>
+                                <CheckCircle className="w-4 h-4 text-accent mr-2" />
+                                <p className="text-sm font-medium text-accent">Winners:</p>
                               </div>
                               <div className="space-y-1">
                                 {prize.winners.map((winner, index) => (
                                   <div key={index} className="flex items-center justify-between text-sm">
                                     <span className="font-medium text-foreground">
-                                      🎉 {winner.name} - Ticket {winner.ticketId}
+                                      ðŸŽ‰ {winner.name} - Ticket {winner.ticketId}
                                     </span>
                                     {winner.phone && (
                                       <span className="text-muted-foreground flex items-center">
@@ -179,3 +179,4 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
     </div>
   );
 };
+

@@ -9,8 +9,8 @@ const NotFound: React.FC = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-red-50 to-pink-50 flex items-center justify-center p-4">
-      <Card className="max-w-md w-full bg-white/90 backdrop-blur-sm border-2 border-orange-200">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <Card className="max-w-md w-full bg-card/90 backdrop-blur-sm border-2 border-border">
         <CardHeader className="text-center">
           <div className="text-6xl mb-4">🎲</div>
           <CardTitle className="text-2xl text-foreground">Page Not Found</CardTitle>
@@ -22,7 +22,7 @@ const NotFound: React.FC = () => {
           <div className="space-y-2">
             <Button
               onClick={() => navigate('/')}
-              className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600"
+              className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Home className="w-4 h-4 mr-2" />
               Go to Home
@@ -30,7 +30,7 @@ const NotFound: React.FC = () => {
             <Button
               onClick={() => navigate(-1)}
               variant="outline"
-              className="w-full border-orange-300 text-orange-600 hover:bg-orange-50"
+              className="w-full border-border text-primary hover:bg-primary/10"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Go Back
