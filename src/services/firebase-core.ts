@@ -746,7 +746,29 @@ class FirebaseCoreService {
           const completedCount = sortedGames.filter(g => g.gameState.gameOver).length;
           // Games available log removed for performance
 
-          callback(sortedGames);
+          // Enrich games with LIVE businessName from host records
+          // (game data may have stale/missing businessName from creation time)
+          const uniqueHostIds = [...new Set(sortedGames.map(g => g.hostId))];
+          const hostNamePromises = uniqueHostIds.map(async (hostId) => {
+            try {
+              const hostSnap = await get(ref(database, `hosts/${hostId}/businessName`));
+              return { hostId, businessName: hostSnap.exists() ? hostSnap.val() as string : undefined };
+            } catch {
+              return { hostId, businessName: undefined };
+            }
+          });
+
+          Promise.all(hostNamePromises).then((hostNames) => {
+            const hostNameMap = new Map(hostNames.map(h => [h.hostId, h.businessName]));
+            const enrichedGames = sortedGames.map(game => ({
+              ...game,
+              businessName: hostNameMap.get(game.hostId) || game.businessName
+            }));
+            callback(enrichedGames);
+          }).catch(() => {
+            // Fallback: use games as-is if host lookup fails
+            callback(sortedGames);
+          });
         } else {
           callback([]);
         }
