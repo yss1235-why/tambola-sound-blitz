@@ -746,8 +746,11 @@ class FirebaseCoreService {
           const completedCount = sortedGames.filter(g => g.gameState.gameOver).length;
           // Games available log removed for performance
 
-          // Enrich games with LIVE businessName from host records
-          // (game data may have stale/missing businessName from creation time)
+          // Fire callback IMMEDIATELY with whatever data is available
+          callback(sortedGames);
+
+          // Then try to enrich with LIVE host businessNames in background
+          // (will update UI again if host data is accessible)
           const uniqueHostIds = [...new Set(sortedGames.map(g => g.hostId))];
           const hostNamePromises = uniqueHostIds.map(async (hostId) => {
             try {
@@ -759,15 +762,17 @@ class FirebaseCoreService {
           });
 
           Promise.all(hostNamePromises).then((hostNames) => {
-            const hostNameMap = new Map(hostNames.map(h => [h.hostId, h.businessName]));
-            const enrichedGames = sortedGames.map(game => ({
-              ...game,
-              businessName: hostNameMap.get(game.hostId) || game.businessName
-            }));
-            callback(enrichedGames);
+            const hasAnyName = hostNames.some(h => h.businessName);
+            if (hasAnyName) {
+              const hostNameMap = new Map(hostNames.map(h => [h.hostId, h.businessName]));
+              const enrichedGames = sortedGames.map(game => ({
+                ...game,
+                businessName: hostNameMap.get(game.hostId) || game.businessName
+              }));
+              callback(enrichedGames);
+            }
           }).catch(() => {
-            // Fallback: use games as-is if host lookup fails
-            callback(sortedGames);
+            // Silently fail - original callback already fired
           });
         } else {
           callback([]);
