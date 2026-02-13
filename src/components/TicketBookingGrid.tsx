@@ -28,7 +28,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 
   // ✅ FIXED: Setup real-time subscription to detect game state changes
   useEffect(() => {
-    console.log('🔔 TicketBooking: Setting up real-time subscription for game:', gameData.gameId);
 
     // Clean up existing subscription
     if (subscriptionRef.current) {
@@ -37,12 +36,7 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
 
     const unsubscribe = firebaseService.subscribeToGame(gameData.gameId, (updatedGameData) => {
       if (updatedGameData) {
-        console.log('📡 TicketBooking: Game state updated:', {
-          isActive: updatedGameData.gameState.isActive,
-          isCountdown: updatedGameData.gameState.isCountdown,
-          calledNumbers: updatedGameData.gameState.calledNumbers?.length || 0,
-          gameOver: updatedGameData.gameState.gameOver
-        });
+        // Log removed for performance - TicketBooking state update
 
         setRealTimeGameData(updatedGameData);
 
@@ -53,7 +47,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
           updatedGameData.gameState.gameOver;
 
         if (hasGameStarted) {
-          console.log('🎮 TicketBooking: Auto-switching to game view - host started the game!');
           onGameStart();
         }
       }
@@ -84,7 +77,6 @@ export const TicketBookingGrid: React.FC<TicketBookingGridProps> = ({
           }
         }
       } catch (error) {
-        console.error('Error loading host info:', error);
       } finally {
         setIsLoadingHost(false);
       }

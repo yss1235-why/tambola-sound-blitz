@@ -22,7 +22,7 @@ import { NumberGrid } from './NumberGrid';
 import { AudioManager } from './AudioManager';
 import { AudioStatusComponent } from './AudioStatusComponent';
 import { TambolaTicket } from '@/services/firebase';
-import { renderTicket } from '@/utils/ticketRenderer';
+import { renderTicket, resolveWinnerTickets } from '@/utils/ticketRenderer';
 import { useTheme } from '@/providers/ThemeProvider';
 
 interface SearchedTicket {
@@ -39,9 +39,7 @@ export const UserDisplay: React.FC = () => {
 
   // Add game over detection for players
   useEffect(() => {
-    console.log('ðŸ” UserDisplay checking game over:', gameData?.gameState?.gameOver);
     if (gameData?.gameState?.gameOver) {
-      console.log('ðŸ† UserDisplay detected game over, notifying parent');
 
       // Dispatch custom event to notify parent components
       const gameEndEvent = new CustomEvent('tambola-game-ended', {
@@ -54,19 +52,17 @@ export const UserDisplay: React.FC = () => {
   const [expandedPrizes, setExpandedPrizes] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedTickets, setSearchedTickets] = useState<SearchedTicket[]>([]);
-  // âœ… ENHANCED: Extract data safely with null checks and format validation
+  // ENHANCED: Extract data safely with null checks and format validation
   const tickets = gameData?.tickets || {};
-  // âœ… CHANGED: Use visual called numbers instead of database
+  // CHANGED: Use visual called numbers instead of database
 
   const currentNumber = gameData?.gameState.currentNumber;
   const prizes = gameData ? Object.values(gameData.prizes).sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
-  // âœ… NEW: Validate ticket ID format consistency
+  // NEW: Validate ticket ID format consistency
   const validateTicketFormat = React.useCallback(() => {
     const ticketIds = Object.keys(tickets);
     const simpleIds = ticketIds.filter(id => /^\d{1,3}$/.test(id) && parseInt(id, 10).toString() === id);
     const paddedIds = ticketIds.filter(id => /^\d{3}$/.test(id) && parseInt(id, 10).toString() !== id);
-
-    console.log(`ðŸŽ« Ticket format analysis: ${simpleIds.length} simple, ${paddedIds.length} padded (total: ${ticketIds.length})`);
 
     return {
       total: ticketIds.length,
@@ -102,14 +98,13 @@ export const UserDisplay: React.FC = () => {
     });
   };
 
-  // âœ… ENHANCED: Handle ticket search with format validation
+  // ENHANCED: Handle ticket search with format validation
   const handleSearch = () => {
     if (!searchQuery.trim()) return;
 
     const searchedTicketId = searchQuery.trim();
-    console.log(`ðŸ” Searching for ticket: "${searchedTicketId}"`);
 
-    // âœ… NEW: Try both formats for backward compatibility during transition
+    // NEW: Try both formats for backward compatibility during transition
     let ticket = tickets[searchedTicketId];
     let actualTicketId = searchedTicketId;
 
@@ -119,7 +114,6 @@ export const UserDisplay: React.FC = () => {
       if (tickets[paddedId]) {
         ticket = tickets[paddedId];
         actualTicketId = paddedId;
-        console.log(`ðŸ”„ Found ticket using padded format: ${paddedId}`);
       }
     }
 
@@ -129,23 +123,19 @@ export const UserDisplay: React.FC = () => {
       if (tickets[simpleId]) {
         ticket = tickets[simpleId];
         actualTicketId = simpleId;
-        console.log(`ðŸ”„ Found ticket using simple format: ${simpleId}`);
       }
     }
 
     if (ticket && ticket.isBooked && ticket.playerName) {
-      console.log(`âœ… Found booked ticket: ${actualTicketId} for ${ticket.playerName}`);
 
       // Find all tickets by this player
       const playerTickets = Object.values(tickets).filter(
         t => t.isBooked && t.playerName === ticket.playerName
       );
 
-      console.log(`ðŸ‘¥ Found ${playerTickets.length} tickets for player: ${ticket.playerName}`);
-
       // Add each ticket individually to the search results
       const newSearchedTickets: SearchedTicket[] = playerTickets
-        .filter(t => t && t.rows && Array.isArray(t.rows)) // âœ… ENHANCED: Only include tickets with valid rows
+        .filter(t => t && t.rows && Array.isArray(t.rows)) // ENHANCED: Only include tickets with valid rows
         .map(t => ({
           ticket: t,
           playerName: t.playerName!,
@@ -154,13 +144,10 @@ export const UserDisplay: React.FC = () => {
 
       if (newSearchedTickets.length > 0) {
         setSearchedTickets(prev => [...prev, ...newSearchedTickets]);
-        console.log(`âœ… Added ${newSearchedTickets.length} valid tickets to search results`);
       } else {
-        console.warn(`âš ï¸ No valid tickets found for player (all missing row data)`);
         alert('Tickets found but data is still loading. Please try again in a moment.');
       }
     } else {
-      console.log(`âŒ Ticket not found or not booked: ${searchedTicketId}`);
       alert(`Ticket ${searchedTicketId} not found or not booked yet.`);
     }
 
@@ -172,10 +159,10 @@ export const UserDisplay: React.FC = () => {
     setSearchedTickets(prev => prev.filter(item => item.uniqueId !== uniqueId));
   };
 
-  // âœ… DELETED: Remove the entire existing renderTicket function (100+ lines)
-  // âœ… REPLACED: With import from shared utility above
+  // DELETED: Remove the entire existing renderTicket function (100+ lines)
+  // REPLACED: With import from shared utility above
 
-  // âœ… ENHANCED: Helper to render prize winner tickets with safety checks
+  // ENHANCED: Helper to render prize winner tickets with safety checks + multi-ticket support
   const renderPrizeWinnerTickets = (prize: any) => {
     if (!prize.winners || prize.winners.length === 0) return null;
 
@@ -183,16 +170,17 @@ export const UserDisplay: React.FC = () => {
       <div className="mt-3 p-4 bg-card rounded-lg border border-border">
         <div className="space-y-4">
           {prize.winners.map((winner: any, idx: number) => {
-            const winnerTicket = tickets[winner.ticketId];
+            // Handle multi-ticket prizes (halfSheet/fullSheet store "1,2,3")
+            const { isMultiTicket, ticketIds: ticketIdList, tickets: winnerTickets } = resolveWinnerTickets(winner.ticketId, tickets);
 
-            // âœ… ENHANCED: Check if ticket exists and has valid structure
-            if (!winnerTicket || !winnerTicket.rows) {
+            // No valid tickets found
+            if (winnerTickets.length === 0) {
               return (
                 <div key={idx} className="space-y-2">
                   <div className="flex items-center justify-between mb-2">
                     <h5 className="font-medium text-foreground">
                       <User className="w-4 h-4 inline mr-1" />
-                      {winner.name} - Ticket {winner.ticketId}
+                      {winner.name} - {isMultiTicket ? 'Tickets' : 'Ticket'} {winner.ticketId}
                     </h5>
                     {prize.winningNumber && (
                       <Badge variant="outline" className="text-muted-foreground border-border">
@@ -220,7 +208,7 @@ export const UserDisplay: React.FC = () => {
                 <div className="flex items-center justify-between mb-2">
                   <h5 className="font-medium text-foreground">
                     <User className="w-4 h-4 inline mr-1" />
-                    {winner.name} - Ticket {winner.ticketId}
+                    {winner.name} - {isMultiTicket ? 'Tickets' : 'Ticket'} {winner.ticketId}
                   </h5>
                   {prize.winningNumber && (
                     <Badge variant="outline" className="text-muted-foreground border-border">
@@ -228,12 +216,24 @@ export const UserDisplay: React.FC = () => {
                     </Badge>
                   )}
                 </div>
-                {/* âœ… UPDATED: Use shared renderTicket utility */}
-                {renderTicket({
-                  ticket: winnerTicket,
-                  calledNumbers,
-                  showPlayerInfo: false
-                })}
+                {/* Render all tickets (single for normal prizes, multiple for sheet prizes) */}
+                <div className={isMultiTicket ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2' : ''}>
+                  {winnerTickets.map((ticket: any, tIdx: number) => (
+                    <div key={tIdx}>
+                      {isMultiTicket && (
+                        <p className="text-xs text-accent font-medium mb-1 text-center">
+                          Ticket {ticketIdList[tIdx]} ({tIdx + 1} of {ticketIdList.length})
+                        </p>
+                      )}
+                      {renderTicket({
+                        ticket,
+                        calledNumbers,
+                        showPlayerInfo: false,
+                        patternHighlight: prize.id
+                      })}
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })}
@@ -242,7 +242,7 @@ export const UserDisplay: React.FC = () => {
     );
   };
 
-  // âœ… ENHANCED: Group searched tickets by player with safety checks
+  // ENHANCED: Group searched tickets by player with safety checks
   const groupedSearchResults = searchedTickets
     .filter(item => item.ticket && item.ticket.rows) // Only include valid tickets
     .reduce((acc, item) => {
@@ -253,7 +253,7 @@ export const UserDisplay: React.FC = () => {
       return acc;
     }, {} as { [playerName: string]: SearchedTicket[] });
 
-  // âœ… NEW: Get format analysis for debugging
+  // NEW: Get format analysis for debugging
   const formatAnalysis = validateTicketFormat();
   const premiumSurfaceClass = isPremiumLightTheme ? 'premium-light-surface premium-light-elevated' : '';
   const premiumHighlightClass = isPremiumLightTheme
@@ -411,7 +411,7 @@ export const UserDisplay: React.FC = () => {
                         >
                           <X className="w-3 h-3" />
                         </Button>
-                        {/* âœ… UPDATED: Use shared renderTicket utility */}
+                        {/* UPDATED: Use shared renderTicket utility */}
                         {renderTicket({
                           ticket: item.ticket,
                           calledNumbers,
@@ -522,17 +522,18 @@ export const UserDisplay: React.FC = () => {
         {/* Audio Manager for Users */}
         {gameData && (
           <AudioManager
+            gameId={gameData.gameId}
+            gameState={gameData.gameState}
             currentNumber={gameData.gameState.currentNumber}
             prizes={Object.values(gameData.prizes)}
             onAudioComplete={() => {
               // For users, no callback needed - only hosts need timing control
-              console.log('ðŸ”Š User audio announcement completed');
             }}
             forceEnable={false} // Let users enable manually
           />
         )}
 
-        {/* âœ… NEW: Development format debugging info */}
+        {/* NEW: Development format debugging info */}
         {process.env.NODE_ENV === 'development' && (
           <Card className="border-border bg-muted">
             <CardHeader>

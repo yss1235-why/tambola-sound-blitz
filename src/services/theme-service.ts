@@ -20,7 +20,6 @@ class ThemeService {
             }
             return DEFAULT_THEME_SETTINGS;
         } catch (error) {
-            console.error('❌ Error fetching theme:', error);
             return DEFAULT_THEME_SETTINGS;
         }
     }
@@ -48,10 +47,8 @@ class ThemeService {
             }
 
             await set(ref(database, THEME_PATH), cleanSettings);
-            console.log('✅ Theme saved successfully');
             return true;
         } catch (error) {
-            console.error('❌ Error saving theme:', error);
             return false;
         }
     }
@@ -81,9 +78,7 @@ class ThemeService {
             // Permission denied is expected for unauthenticated users - use defaults silently
             const isPermissionError = error?.message?.includes('permission_denied');
             if (isPermissionError) {
-                console.log('ℹ️ Theme: Using defaults (not authenticated)');
             } else {
-                console.error('❌ Theme subscription error:', error);
             }
             callback(DEFAULT_THEME_SETTINGS);
         });
@@ -156,11 +151,7 @@ class ThemeService {
         root.style.setProperty('--body-gradient-via', colors.bodyGradientVia);
         root.style.setProperty('--body-gradient-to', colors.bodyGradientTo);
 
-        console.log('🎨 Complete theme applied:', {
-            preset: colors.primary,
-            background: colors.background,
-            gameCalled: colors.gameCalled
-        });
+        // Theme application log removed for performance
     }
 
     /**

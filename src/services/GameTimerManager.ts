@@ -21,16 +21,12 @@ export class GameTimerManager {
   private isDestroyed = false;
 
   constructor() {
-    console.log('🎮 GameTimerManager initialized');
   }
 
   register(timerId: string, callback: () => void, interval: number = 1000): () => void {
     if (this.isDestroyed) {
-      console.warn('⚠️ Cannot register timer on destroyed manager');
       return () => {};
     }
-
-    console.log(`📝 Registering timer: ${timerId} with interval ${interval}ms`);
     
     this.timers.set(timerId, {
       callback,
@@ -50,7 +46,6 @@ export class GameTimerManager {
   }
 
   unregister(timerId: string): void {
-    console.log(`🗑️ Unregistering timer: ${timerId}`);
     this.timers.delete(timerId);
 
     if (this.timers.size === 0 && this.masterInterval) {
@@ -63,7 +58,6 @@ export class GameTimerManager {
     if (timer) {
       timer.enabled = true;
       timer.lastRun = Date.now(); // Reset timing
-      console.log(`✅ Timer enabled: ${timerId}`);
     }
   }
 
@@ -71,14 +65,11 @@ export class GameTimerManager {
     const timer = this.timers.get(timerId);
     if (timer) {
       timer.enabled = false;
-      console.log(`⏸️ Timer disabled: ${timerId}`);
     }
   }
 
   private startMasterLoop(): void {
     if (this.masterInterval || this.isDestroyed) return;
-
-    console.log('🔄 Starting master timer loop');
     this.masterInterval = setInterval(() => {
       if (this.isDestroyed) return;
 
@@ -94,12 +85,10 @@ export class GameTimerManager {
               timer.callback();
               timer.lastRun = now;
             } catch (error) {
-              console.error(`❌ Timer callback error (${timerId}):`, error);
             }
           } else {
             // Game state invalid, disable timer
             timer.enabled = false;
-            console.log(`⏹️ Timer disabled due to invalid game state: ${timerId}`);
           }
         }
       }
@@ -110,7 +99,6 @@ export class GameTimerManager {
     if (this.masterInterval) {
       clearInterval(this.masterInterval);
       this.masterInterval = null;
-      console.log('🛑 Master timer loop stopped');
     }
   }
 
@@ -126,14 +114,12 @@ export class GameTimerManager {
   }
 
   pauseAll(): void {
-    console.log('⏸️ Pausing all timers');
     for (const timer of this.timers.values()) {
       timer.enabled = false;
     }
   }
 
   resumeAll(): void {
-    console.log('▶️ Resuming all timers');
     const now = Date.now();
     for (const timer of this.timers.values()) {
       timer.enabled = true;
@@ -142,7 +128,6 @@ export class GameTimerManager {
   }
 
   cleanup(): void {
-    console.log('🧹 Cleaning up GameTimerManager');
     this.isDestroyed = true;
     this.stopMasterLoop();
     this.timers.clear();

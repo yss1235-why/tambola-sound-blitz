@@ -16,8 +16,8 @@ import {
 } from 'lucide-react';
 import { useGameData } from '@/providers/GameDataProvider';
 import { useTheme } from '@/providers/ThemeProvider';
-// âœ… NEW: Import shared ticket renderer utility
-import { renderTicket } from '@/utils/ticketRenderer';
+// NEW: Import shared ticket renderer utility
+import { renderTicket, resolveWinnerTickets } from '@/utils/ticketRenderer';
 
 interface RecentWinnersDisplayProps {
   hostMode?: boolean;
@@ -37,7 +37,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
     : '';
   const [expandedWinners, setExpandedWinners] = useState<Set<string>>(new Set());
 
-  // âœ… START WITH ALL TICKETS COLLAPSED for mobile-friendly one-screen view
+  // START WITH ALL TICKETS COLLAPSED for mobile-friendly one-screen view
   React.useEffect(() => {
     if (gameData && gameData.gameState.gameOver) {
       setExpandedWinners(new Set()); // Start collapsed
@@ -105,7 +105,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
 
-  // ðŸŽ¯ HOST MODE: Clean celebration view
+  // HOST MODE: Clean celebration view
   if (hostMode) {
     return (
       <div className={`space-y-4 ${isPremiumLightTheme ? 'premium-light-winners' : ''}`}>
@@ -169,7 +169,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                   <span className="font-medium text-foreground">{winner.name}</span>
                                 </div>
                                 <div className="text-sm text-muted-foreground">
-                                  Ticket {winner.ticketId}
+                                  {winner.ticketId?.includes(',') ? `Tickets ${winner.ticketId}` : `Ticket ${winner.ticketId}`}
                                   {winner.phone && (
                                     <span className="ml-2 text-xs text-muted-foreground/70">
                                       Phone: {winner.phone}
@@ -207,7 +207,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
     );
   }
 
-  // ðŸ”„ PUBLIC MODE: Detailed view with expandable tickets
+  // ”„ PUBLIC MODE: Detailed view with expandable tickets
   return (
     <div className={`min-h-screen bg-background p-2 sm:p-4 ${isPremiumLightTheme ? 'premium-light-winners' : ''}`}>
       <div className="max-w-4xl mx-auto space-y-4">
@@ -284,7 +284,9 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                             {prize.winners.map((winner, idx) => {
                               const winnerId = `${prize.id}-${idx}`;
                               const isExpanded = expandedWinners.has(winnerId);
-                              const winnerTicket = gameData.tickets[winner.ticketId];
+
+                              // Handle multi-ticket prizes (halfSheet/fullSheet store "1,2,3")
+                              const { isMultiTicket, ticketIds, tickets: winnerTickets } = resolveWinnerTickets(winner.ticketId, gameData.tickets);
 
                               return (
                                 <div key={winnerId} className="bg-card rounded-md border border-accent/30 premium-light-winner-row">
@@ -310,7 +312,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                           )}
                                         </p>
                                         <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                                          <span>Ticket {winner.ticketId}</span>
+                                          <span>{isMultiTicket ? `Tickets ${winner.ticketId}` : `Ticket ${winner.ticketId}`}</span>
                                           {winner.phone && (
                                             <span className="hidden sm:inline flex items-center">
                                               <Phone className="w-3 h-3 mr-1" />
@@ -322,7 +324,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                     </div>
                                     <div className="flex items-center flex-shrink-0 ml-2">
                                       <span className="text-xs text-muted-foreground mr-1 hidden sm:inline">
-                                        {isExpanded ? 'Hide' : 'Show'} Ticket
+                                        {isExpanded ? 'Hide' : 'Show'} {isMultiTicket ? 'Tickets' : 'Ticket'}
                                       </span>
                                       {isExpanded ?
                                         <ChevronUp className="w-4 h-4 text-accent" /> :
@@ -331,13 +333,13 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                     </div>
                                   </Button>
 
-                                  {/* Expandable Winning Ticket */}
+                                  {/* Expandable Winning Ticket(s) */}
                                   {isExpanded && (
                                     <div className="px-1.5 sm:px-2 pb-1.5 sm:pb-2 bg-muted border-t border-accent/30 premium-light-winner-ticket-expand">
                                       <div className="flex items-center justify-between mb-1.5 pt-1.5">
                                         <h5 className="font-medium text-foreground flex items-center text-xs sm:text-sm">
                                           <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 text-accent" />
-                                          {winner.name}'s Winning Ticket {winner.ticketId}
+                                          {winner.name}'s Winning {isMultiTicket ? 'Tickets' : 'Ticket'} {winner.ticketId}
                                           {prize.winners.length > 1 && (
                                             <span className="ml-2 text-accent">(#{idx + 1})</span>
                                           )}
@@ -346,15 +348,23 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                           {prize.name} Winner
                                         </Badge>
                                       </div>
-                                      {winnerTicket ? (
-                                        <div className="p-2">
-                                          {/* âœ… NEW: Use shared renderTicket utility with pattern highlighting */}
-                                          {renderTicket({
-                                            ticket: winnerTicket,
-                                            calledNumbers: gameData.gameState.calledNumbers || [],
-                                            showPlayerInfo: false,
-                                            patternHighlight: prize.id // âœ… KEY FEATURE: Pattern highlighting
-                                          })}
+                                      {winnerTickets.length > 0 ? (
+                                        <div className={`${isMultiTicket ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2' : ''} p-2`}>
+                                          {winnerTickets.map((ticket: any, tIdx: number) => (
+                                            <div key={tIdx}>
+                                              {isMultiTicket && (
+                                                <p className="text-xs text-accent font-medium mb-1 text-center">
+                                                  Ticket {ticketIds[tIdx]} ({tIdx + 1} of {ticketIds.length})
+                                                </p>
+                                              )}
+                                              {renderTicket({
+                                                ticket,
+                                                calledNumbers: gameData.gameState.calledNumbers || [],
+                                                showPlayerInfo: false,
+                                                patternHighlight: prize.id
+                                              })}
+                                            </div>
+                                          ))}
                                         </div>
                                       ) : (
                                         <div className="text-center py-4 text-muted-foreground">

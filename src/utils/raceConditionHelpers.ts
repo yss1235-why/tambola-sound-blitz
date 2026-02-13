@@ -183,7 +183,6 @@ export class CircuitBreaker {
     if (this.state === 'OPEN') {
       if (Date.now() - this.lastFailureTime > this.resetTimeout) {
         this.state = 'HALF_OPEN';
-        console.log('🔄 Circuit breaker: HALF_OPEN');
       } else {
         throw new Error('Circuit breaker is OPEN');
       }
@@ -210,7 +209,6 @@ export class CircuitBreaker {
 
     if (this.failures >= this.threshold) {
       this.state = 'OPEN';
-      console.log('🚨 Circuit breaker: OPEN');
     }
   }
 
@@ -435,7 +433,6 @@ export class SafeEventEmitter {
     const processingKey = `${event}-${Date.now()}`;
     
     if (this.processing.has(event)) {
-      console.warn(`⚠️ Event ${event} already being processed`);
       return;
     }
 
@@ -448,7 +445,6 @@ export class SafeEventEmitter {
           try {
             await listener(...args);
           } catch (error) {
-            console.error(`❌ Event listener error for ${event}:`, error);
           }
         });
         

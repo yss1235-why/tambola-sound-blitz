@@ -142,21 +142,19 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
 
     setIsBooking(true);
     try {
-      for (const ticketId of selectedTickets) {
-        await firebaseService.bookTicket(
-          ticketId,
-          bookingForm.playerName.trim(),
-          bookingForm.playerPhone.trim(),
-          gameData.gameId
-        );
-      }
+      // PERF: Single atomic batch write instead of N sequential writes
+      await firebaseService.bookTicketsBatch(
+        selectedTickets,
+        bookingForm.playerName.trim(),
+        bookingForm.playerPhone.trim(),
+        gameData.gameId
+      );
 
       setSelectedTickets([]);
       setBookingForm({ playerName: '', playerPhone: '' });
       setShowBookingDialog(false);
       onRefreshGame();
     } catch (error) {
-      console.error('Error booking tickets:', error);
     } finally {
       setIsBooking(false);
     }
@@ -180,7 +178,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       setEditForm({ playerName: '', playerPhone: '' });
       onRefreshGame();
     } catch (error) {
-      console.error('Error updating ticket:', error);
       alert('Failed to update ticket. Please try again.');
     } finally {
       setIsUpdating(false);
@@ -195,7 +192,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       await firebaseService.unbookTicket(gameData.gameId, ticketId);
       onRefreshGame();
     } catch (error) {
-      console.error('Error canceling booking:', error);
       alert('Failed to cancel booking. Please try again.');
     } finally {
       setIsCanceling('');
@@ -208,7 +204,6 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       await firebaseService.expandGameTickets(gameData.gameId, gameData.maxTickets);
       onRefreshGame();
     } catch (error) {
-      console.error('Error expanding tickets:', error);
     } finally {
       setIsExpanding(false);
     }
@@ -250,7 +245,7 @@ export const TicketManagementGrid: React.FC<TicketManagementGridProps> = ({
       {(isBooking || isUpdating || isExpanding) && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-card rounded-lg p-6 flex items-center space-x-3">
-            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
             <span className="font-medium">
               {isBooking ? 'Booking...' : isUpdating ? 'Updating...' : 'Expanding tickets...'}
             </span>

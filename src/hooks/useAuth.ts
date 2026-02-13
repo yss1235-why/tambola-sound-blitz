@@ -15,6 +15,7 @@ interface AuthState {
 interface AuthActions {
   loginAdmin: (email: string, password: string) => Promise<void>;
   loginHost: (email: string, password: string) => Promise<void>;
+  loginUnified: (email: string, password: string) => Promise<'admin' | 'host'>;
   logout: () => Promise<void>;
   clearError: () => void;
   initializeAuth: () => Promise<() => void>; // Keep for compatibility - but no-op
@@ -47,18 +48,16 @@ export const useAuth = (): AuthState & AuthActions => {
 
   // ✅ SIMPLIFIED: Auth is always initialized - no complex lazy loading
   useEffect(() => {
-    console.log('🔐 Initializing simplified auth system...');
-    
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          console.log('🔐 User session detected:', firebaseUser.email);
-          
+
           const role = await getCurrentUserRole();
-          
+
           if (role) {
             const userData = await firebaseService.getUserData();
-            
+
             if (userData) {
               setState({
                 user: userData,
@@ -67,9 +66,7 @@ export const useAuth = (): AuthState & AuthActions => {
                 initialized: true,
                 error: null
               });
-              console.log('✅ Simplified Auth: User profile loaded successfully');
             } else {
-              console.log('❌ Simplified Auth: Failed to load user profile');
               setState({
                 user: null,
                 userRole: null,
@@ -79,7 +76,6 @@ export const useAuth = (): AuthState & AuthActions => {
               });
             }
           } else {
-            console.log('❌ Simplified Auth: Invalid user role');
             setState({
               user: null,
               userRole: null,
@@ -89,7 +85,6 @@ export const useAuth = (): AuthState & AuthActions => {
             });
           }
         } catch (error: any) {
-          console.error('❌ Simplified Auth: Error loading user data:', error);
           setState({
             user: null,
             userRole: null,
@@ -99,7 +94,6 @@ export const useAuth = (): AuthState & AuthActions => {
           });
         }
       } else {
-        console.log('🔐 No user session found (user logged out or first visit)');
         setState({
           user: null,
           userRole: null,
@@ -114,7 +108,6 @@ export const useAuth = (): AuthState & AuthActions => {
     const loadingTimeout = setTimeout(() => {
       setState(prev => {
         if (prev.loading && !prev.initialized) {
-          console.warn('⚠️ Auth loading timeout reached, resolving...');
           return {
             ...prev,
             loading: false,
@@ -126,7 +119,6 @@ export const useAuth = (): AuthState & AuthActions => {
     }, 5000); // 5 second timeout
 
     return () => {
-      console.log('🧹 Cleaning up simplified auth listener');
       clearTimeout(loadingTimeout);
       unsubscribe();
     };
@@ -135,17 +127,14 @@ export const useAuth = (): AuthState & AuthActions => {
   // ✅ SIMPLIFIED: Direct admin login - no initialization needed
   const loginAdmin = useCallback(async (email: string, password: string) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
-    
+
     try {
-      console.log('🔐 Admin login attempt:', email);
       await firebaseService.loginAdmin(email, password);
-      console.log('✅ Admin login successful - auth state will update automatically');
       // State will be updated by onAuthStateChanged listener
     } catch (error: any) {
-      console.error('❌ Admin login failed:', error);
-      setState(prev => ({ 
-        ...prev, 
-        loading: false, 
+      setState(prev => ({
+        ...prev,
+        loading: false,
         error: error.message || 'Admin login failed'
       }));
       throw error;
@@ -154,37 +143,57 @@ export const useAuth = (): AuthState & AuthActions => {
 
   const loginHost = useCallback(async (email: string, password: string) => {
     setState(prev => ({ ...prev, loading: true, error: null }));
-    
+
     try {
-      console.log('🔐 Host login attempt:', email);
       await firebaseService.loginHost(email, password);
-      
+
       // Register session after successful login
       await registerHostSession();
-      
-      console.log('✅ Host login successful - auth state will update automatically');
       // State will be updated by onAuthStateChanged listener
     } catch (error: any) {
-      console.error('❌ Host login failed:', error);
-      setState(prev => ({ 
-        ...prev, 
-        loading: false, 
+      setState(prev => ({
+        ...prev,
+        loading: false,
         error: error.message || 'Host login failed'
       }));
       throw error;
     }
   }, []);
 
- // Add session registration function
+  // Unified login: auto-detects role
+  const loginUnified = useCallback(async (email: string, password: string): Promise<'admin' | 'host'> => {
+    setState(prev => ({ ...prev, loading: true, error: null }));
+
+    try {
+      const result = await firebaseService.loginUnified(email, password);
+
+      // Register session if host
+      if (result.role === 'host') {
+        await registerHostSession();
+      }
+
+      // State will be updated by onAuthStateChanged listener
+      return result.role;
+    } catch (error: any) {
+      setState(prev => ({
+        ...prev,
+        loading: false,
+        error: error.message || 'Login failed'
+      }));
+      throw error;
+    }
+  }, []);
+
+  // Add session registration function
   const registerHostSession = useCallback(async () => {
     if (!auth.currentUser) return;
-    
+
     try {
       const sessionId = generateSessionId();
-      
+
       // Get fresh user data for name
       const userData = await firebaseService.getUserData();
-      
+
       const sessionData = {
         hostId: auth.currentUser.uid,
         lastActivity: new Date().toISOString(),
@@ -192,29 +201,29 @@ export const useAuth = (): AuthState & AuthActions => {
         deviceInfo: navigator.userAgent.slice(0, 50),
         lastHeartbeat: new Date().toISOString()
       };
-      
+
       // Store session ID locally
       sessionStorage.setItem('hostSessionId', sessionId);
-      
+
       // Get all host's games using Firebase query
       const gamesQuery = query(
         ref(database, 'games'),
         orderByChild('hostId'),
         equalTo(auth.currentUser.uid)
       );
-      
+
       const gamesSnapshot = await get(gamesQuery);
-      
+
       if (gamesSnapshot.exists()) {
         const hostGames = Object.values(gamesSnapshot.val());
-        
+
         for (const game of hostGames as any[]) {
           // Add this session to the game
           await update(
             ref(database, `games/${game.gameId}/activeSessions/${sessionId}`),
             sessionData
           );
-          
+
           // Set as primary if no primary exists
           const currentGame = await get(ref(database, `games/${game.gameId}`));
           if (!currentGame.val()?.primarySession) {
@@ -223,11 +232,8 @@ export const useAuth = (): AuthState & AuthActions => {
             });
           }
         }
-        
-        console.log(`✅ Session registered for ${hostGames.length} games`);
       }
     } catch (error) {
-      console.error('❌ Failed to register session:', error);
       // Don't throw - session registration is not critical for login
     }
   }, []);
@@ -239,22 +245,18 @@ export const useAuth = (): AuthState & AuthActions => {
   // ✅ FIXED: Logout with subscription cleanup to prevent permission errors
   const logout = useCallback(async () => {
     setState(prev => ({ ...prev, loading: true, error: null }));
-    
+
     try {
-      console.log('🔐 Logout initiated...');
-      
+
       // ✅ ADDED: Cleanup all subscriptions BEFORE logout to prevent permission errors
-      console.log('🧹 Cleaning up all subscriptions before logout...');
       cleanupAllSubscriptions();
-      
+
       await firebaseService.logout();
-      console.log('✅ Logout successful - auth state will update automatically');
       // State will be updated by onAuthStateChanged listener
     } catch (error: any) {
-      console.error('❌ Logout error:', error);
-      setState(prev => ({ 
-        ...prev, 
-        loading: false, 
+      setState(prev => ({
+        ...prev,
+        loading: false,
         error: error.message || 'Logout failed'
       }));
       throw error;
@@ -262,21 +264,20 @@ export const useAuth = (): AuthState & AuthActions => {
   }, []);
 
   const clearError = useCallback(() => {
-    console.log('🧹 Clearing auth error');
     setState(prev => ({ ...prev, error: null }));
   }, []);
 
   // ✅ COMPATIBILITY: Keep initializeAuth for existing components but make it a no-op
   const initializeAuth = useCallback(async (): Promise<() => void> => {
     // No-op since auth is always initialized in simplified version
-    console.log('🔐 initializeAuth called (no-op in simplified version - auth already ready)');
-    return () => {}; // Return empty cleanup function for compatibility
+    return () => { }; // Return empty cleanup function for compatibility
   }, []);
 
   return {
     ...state,
     loginAdmin,
     loginHost,
+    loginUnified,
     logout,
     clearError,
     initializeAuth

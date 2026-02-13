@@ -289,7 +289,7 @@ export const THEME_PRESETS: Record<PresetTheme, ThemePreset> = {
             gameCalledForeground: '144 52% 27%',
             gameCurrent: '36 72% 86%',
             gameCurrentForeground: '36 61% 32%',
-            gameCell: '0 0% 100%',
+            gameCell: '216 30% 97%',
             gameCellForeground: '220 22% 30%',
             bodyGradientFrom: '220 29% 97%',
             bodyGradientVia: '214 32% 94%',

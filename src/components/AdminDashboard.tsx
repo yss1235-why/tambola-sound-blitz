@@ -37,6 +37,7 @@ interface CreateHostForm {
   phone: string;
   password: string;
   subscriptionMonths: number;
+  businessName: string; // Display name for users (e.g., "Friend's Tambola")
 }
 
 interface EditHostForm {
@@ -60,7 +61,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     email: '',
     phone: '',
     password: '',
-    subscriptionMonths: 12
+    subscriptionMonths: 12,
+    businessName: ''
   });
 
   const [editForm, setEditForm] = useState<EditHostForm>({
@@ -83,7 +85,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       const hostsList = await firebaseService.getAllHosts();
       setHosts(hostsList);
     } catch (error: any) {
-      console.error('Failed to load hosts:', error.message);
     } finally {
       setIsLoading(false);
     }
@@ -130,8 +131,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
   // OPTION 1 IMPLEMENTATION: Handle create host with credential switch
   const handleCreateHost = async () => {
-    if (!createForm.name.trim() || !createForm.email.trim() || !createForm.phone.trim() || !createForm.password.trim()) {
-      alert('Please fill in all required fields');
+    if (!createForm.name.trim() || !createForm.email.trim() || !createForm.phone.trim() || !createForm.password.trim() || !createForm.businessName.trim()) {
+      alert('Please fill in all required fields including Business Name');
       return;
     }
 
@@ -143,19 +144,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         createForm.name,
         createForm.phone,
         user.uid,
-        createForm.subscriptionMonths
+        createForm.subscriptionMonths,
+        createForm.businessName
       );
 
     } catch (error: any) {
       if (error.message.startsWith('SUCCESS:')) {
         // Host created successfully
         setShowCreateDialog(false);
-        setCreateForm({ name: '', email: '', phone: '', password: '', subscriptionMonths: 12 });
+        setCreateForm({ name: '', email: '', phone: '', password: '', subscriptionMonths: 12, businessName: '' });
         alert(error.message);
         // User will be automatically logged out and redirected to login
       } else {
         // Real error
-        console.error('Create host error:', error);
         alert(error.message || 'Failed to create host');
       }
     } finally {
@@ -184,7 +185,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       setSelectedHost(null);
 
     } catch (error: any) {
-      console.error('Update host error:', error);
       alert(error.message || 'Failed to update host');
     } finally {
       setIsLoading(false);
@@ -199,7 +199,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     try {
       await firebaseService.deleteHost(host.uid);
     } catch (error: any) {
-      console.error('Delete host error:', error);
       alert(error.message || 'Failed to delete host');
     } finally {
       setIsLoading(false);
@@ -221,7 +220,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       setNewPassword('');
 
     } catch (error: any) {
-      console.error('Change password error:', error);
       alert(error.message || 'Failed to change password');
     } finally {
       setIsLoading(false);
@@ -233,7 +231,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     try {
       await firebaseService.extendHostSubscription(host.uid, additionalMonths);
     } catch (error: any) {
-      console.error('Extend subscription error:', error);
       alert(error.message || 'Failed to extend subscription');
     } finally {
       setIsLoading(false);
@@ -245,7 +242,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     try {
       await firebaseService.toggleHostStatus(host.uid, !host.isActive);
     } catch (error: any) {
-      console.error('Toggle status error:', error);
       alert(error.message || 'Failed to update status');
     } finally {
       setIsLoading(false);
@@ -541,6 +537,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                   onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
                   placeholder="Enter password"
                 />
+              </div>
+              <div>
+                <Label htmlFor="businessName">Business Name (Display Title)</Label>
+                <Input
+                  id="businessName"
+                  value={createForm.businessName}
+                  onChange={(e) => setCreateForm({ ...createForm, businessName: e.target.value })}
+                  placeholder="e.g., Friend's Tambola, Lucky Tambola"
+                />
+                <p className="text-xs text-muted-foreground mt-1">This name will be displayed to users on their screens</p>
               </div>
               <div>
                 <Label htmlFor="subscription">Subscription (Months)</Label>

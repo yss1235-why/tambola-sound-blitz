@@ -1,87 +1,71 @@
-﻿// src/pages/Index.tsx - COMPLETE: Updated to use simplified authentication
+// src/pages/Index.tsx - COMPLETE: Updated to use simplified authentication
 import React, { useState, useCallback, useEffect } from 'react';
 import { Header } from '@/components/Header';
 import { UserLandingPage } from '@/components/UserLandingPage';
 import { GameHost } from '@/components/GameHost';
 import { AdminDashboard } from '@/components/AdminDashboard';
 import { GameDataProvider } from '@/providers/GameDataProvider';
-import { ThemeProvider } from '@/providers/ThemeProvider'; // âœ… NEW: Theme support
-import { useAuth } from '@/hooks/useAuth'; // âœ… CHANGED: Use simplified auth hook
+import { ThemeProvider } from '@/providers/ThemeProvider'; // NEW: Theme support
+import { useAuth } from '@/hooks/useAuth'; // CHANGED: Use simplified auth hook
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
 import { AdminUser, HostUser } from '@/services/firebase';
 import { GestureDetector } from '@/components/GestureDetector';
 import { DEFAULT_GESTURE_CONFIG } from '@/utils/gestureConfig';
 
 const Index = () => {
-  // âœ… SIMPLIFIED: Use new auth hook (same interface, better implementation)
+  // SIMPLIFIED: Use new auth hook (same interface, better implementation)
   const auth = useAuth();
 
-  // âœ… UNCHANGED: Games loading works the same
+  // UNCHANGED: Games loading works the same
   const { data: allGames, loading: gamesLoading, error: gamesError } = useActiveGamesSubscription();
 
-  // âœ… UNCHANGED: Local state management
+  // UNCHANGED: Local state management
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [showAdminLoginViaGesture, setShowAdminLoginViaGesture] = useState(false);
 
-  // âœ… REMOVED: No need for manual auth initialization effects
+  // REMOVED: No need for manual auth initialization effects
   // The old useEffect for auto-initializing auth is no longer needed
   // Auth is always ready in the simplified version
 
-  // âœ… SIMPLIFIED: Direct login handling - no complex initialization
-  const handleUserLogin = useCallback(async (type: 'admin' | 'host', email: string, password: string) => {
+  // UNIFIED: Single login handler - auto-detects role
+  const handleUserLogin = useCallback(async (email: string, password: string) => {
     try {
-      console.log(`ðŸ” Handling ${type} login from Index page`);
-
-      if (type === 'admin') {
-        await auth.loginAdmin(email, password);
-      } else {
-        await auth.loginHost(email, password);
-      }
+      const role = await auth.loginUnified(email, password);
 
       // For hosts, set special identifier for their current game
-      if (type === 'host') {
-        console.log('ðŸŽ® Setting host current game view');
+      if (role === 'host') {
         setSelectedGameId('HOST_CURRENT');
       }
-
-      console.log(`âœ… ${type} login handled successfully`);
       return true;
     } catch (error: any) {
-      console.error(`âŒ ${type} login failed in Index:`, error);
       // Error is handled by the auth hook
       return false;
     }
   }, [auth]);
 
-  // âœ… SIMPLIFIED: Direct logout
+  // SIMPLIFIED: Direct logout
   const handleUserLogout = useCallback(async () => {
     try {
-      console.log('ðŸ” Handling logout from Index page');
       await auth.logout();
       setSelectedGameId(null);
-      console.log('âœ… Logout handled successfully');
       return true;
     } catch (error: any) {
-      console.error('âŒ Logout failed in Index:', error);
       return false;
     }
   }, [auth]);
 
-  // âœ… UNCHANGED: Game selection logic for public users
+  // UNCHANGED: Game selection logic for public users
   const handleGameSelection = useCallback((gameId: string) => {
-    console.log('ðŸŽ¯ Game selected:', gameId);
     setSelectedGameId(gameId);
   }, []);
 
-  // âœ… COMPATIBILITY: Keep the same interface for Header component
+  // COMPATIBILITY: Keep the same interface for Header component
   // This is now a no-op since auth is always ready
   const handleRequestLogin = useCallback(async () => {
-    console.log('ðŸ” Login requested (no-op in simplified auth)');
     // No-op since auth is always ready, but keep for compatibility
     await auth.initializeAuth();
   }, [auth]);
   const handleGestureComplete = useCallback(() => {
-    console.log('ðŸŽ¯ Admin gesture detected, opening login dialog');
 
     // Clear any existing auth errors first
     if (auth.error) {
@@ -90,32 +74,40 @@ const Index = () => {
 
     setShowAdminLoginViaGesture(true);
   }, [auth]);
-  // âœ… NEW: Handle gesture state cleanup
+  // NEW: Handle gesture state cleanup
   useEffect(() => {
     // Reset gesture state when user successfully logs in
     if (auth.user && showAdminLoginViaGesture) {
-      console.log('ðŸŽ¯ User logged in, resetting gesture state');
       setShowAdminLoginViaGesture(false);
     }
   }, [auth.user, showAdminLoginViaGesture]);
 
-  // âœ… NEW: Handle admin login dialog close
+  // Dynamic document.title: update browser tab to show business name
+  useEffect(() => {
+    const name =
+      auth.userRole === 'host' && auth.user
+        ? (auth.user as HostUser).businessName
+        : (allGames?.find(g => g.gameId === selectedGameId)?.businessName || allGames?.[0]?.businessName);
+
+    if (name) {
+      document.title = name;
+    }
+  }, [auth.user, auth.userRole, allGames, selectedGameId]);
+
+  // NEW: Handle admin login dialog close
   const handleAdminLoginClose = useCallback(() => {
-    console.log('ðŸŽ¯ Admin login dialog closed, resetting gesture state');
     setShowAdminLoginViaGesture(false);
   }, []);
 
-  // âœ… UNCHANGED: Render logic stays exactly the same
+  // UNCHANGED: Render logic stays exactly the same
   const renderContent = () => {
     // Show admin dashboard if authenticated as admin
     if (auth.user && auth.userRole === 'admin') {
-      console.log('ðŸŽ¨ Rendering admin dashboard');
       return <AdminDashboard user={auth.user as AdminUser} />;
     }
 
     // Show host dashboard if authenticated as host
     if (auth.user && auth.userRole === 'host') {
-      console.log('ðŸŽ¨ Rendering host dashboard');
       return (
         <ThemeProvider>
           <GameDataProvider userId={auth.user.uid}>
@@ -125,8 +117,15 @@ const Index = () => {
       );
     }
 
+    // Get businessName from the selected game's host data if available
+    const selectedGame = allGames?.find(g => g.gameId === selectedGameId);
+    // Look up the host data by hostId to get businessName
+    // For now, pass the first game's host if available (games include host info)
+    const activeGame = selectedGame || (allGames && allGames.length > 0 ? allGames[0] : null);
+    // businessName would come from host data - for now we check if host set it
+    const currentBusinessName = activeGame?.businessName;
+
     // Show public landing page (Player view with theme support)
-    console.log('ðŸŽ¨ Rendering public landing page');
     return (
       <ThemeProvider>
         <UserLandingPage
@@ -135,26 +134,21 @@ const Index = () => {
           preloadedGames={allGames || []}
           gamesLoading={gamesLoading}
           gamesError={gamesError}
+          businessName={currentBusinessName}
         />
       </ThemeProvider>
     );
   };
 
-  // âœ… SIMPLIFIED: Only show loading if user is authenticated AND still loading
+  // SIMPLIFIED: Only show loading if user is authenticated AND still loading
   // This prevents the loading screen from showing for public users
   const showAuthLoading = auth.loading && auth.user;
 
-  console.log('ðŸŽ¨ Index page render:', {
-    authLoading: auth.loading,
-    authInitialized: auth.initialized,
-    user: auth.user ? `${auth.userRole}: ${auth.user.name}` : 'None',
-    selectedGameId,
-    showAuthLoading
-  });
+  // Index page render log removed for performance
 
   return (
     <div className="min-h-screen">
-      {/* âœ… UNCHANGED: Header interface remains exactly the same */}
+      {/* UNCHANGED: Header interface remains exactly the same */}
       <Header
         // Auth state - same interface as before
         currentUser={auth.user}
@@ -171,9 +165,15 @@ const Index = () => {
 
         forceShowAdminLogin={showAdminLoginViaGesture}
         onAdminLoginClose={handleAdminLoginClose}
+        // NEW: Pass businessName from host user or selected game
+        businessName={
+          auth.userRole === 'host' && auth.user
+            ? (auth.user as HostUser).businessName
+            : (allGames?.find(g => g.gameId === selectedGameId)?.businessName || allGames?.[0]?.businessName)
+        }
       />
 
-      {/* âœ… UNCHANGED: Loading overlay logic */}
+      {/* UNCHANGED: Loading overlay logic */}
       {showAuthLoading && (
         <div className="fixed inset-0 bg-foreground/20 backdrop-blur-sm z-40 flex items-center justify-center">
           <div className="bg-card text-card-foreground rounded-lg p-6 shadow-xl border border-border">
@@ -185,10 +185,10 @@ const Index = () => {
         </div>
       )}
 
-      {/* âœ… UNCHANGED: Content rendering */}
+      {/* UNCHANGED: Content rendering */}
       {renderContent()}
 
-      {/* âœ… UNCHANGED: Error display */}
+      {/* UNCHANGED: Error display */}
       {auth.error && (
         <div className="fixed bottom-4 right-4 bg-destructive/10 border border-destructive/30 rounded-lg p-4 shadow-lg z-50">
           <div className="flex items-center justify-between">
@@ -206,7 +206,7 @@ const Index = () => {
         </div>
       )}
 
-      {/* âœ… NEW: Gesture Detection Component */}
+      {/* NEW: Gesture Detection Component */}
       <GestureDetector
         onGestureComplete={handleGestureComplete}
         enabled={!auth.user}

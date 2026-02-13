@@ -69,10 +69,8 @@ export function useFirebaseSubscription<T>(
       if (existing) {
         // Add our callback to existing subscription
         existing.callbacks.add(stableCallback);
-        console.log(`🔄 Reusing subscription: ${subscriptionKey}`);
       } else {
         // Create new subscription
-        console.log(`🆕 Creating subscription: ${subscriptionKey}`);
         
         const callbacks = new Set<(data: any) => void>();
         callbacks.add(stableCallback);
@@ -83,7 +81,6 @@ export function useFirebaseSubscription<T>(
             try {
               callback(data);
             } catch (error) {
-              console.error('Callback error:', error);
             }
           });
         };
@@ -104,7 +101,6 @@ export function useFirebaseSubscription<T>(
           
           // If no more callbacks, cleanup subscription
           if (existing.callbacks.size === 0) {
-            console.log(`🧹 Cleaning up subscription: ${subscriptionKey}`);
             existing.unsubscribe();
             activeSubscriptions.delete(subscriptionKey);
           }
@@ -112,7 +108,6 @@ export function useFirebaseSubscription<T>(
       };
     } catch (error: any) {
       const errorMessage = error.message || 'Subscription failed';
-      console.error(`❌ Subscription error (${subscriptionKey}):`, errorMessage);
       
       setState({
         data: null,
@@ -130,7 +125,6 @@ export function useFirebaseSubscription<T>(
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
-      console.log(`🧹 Cleaning up Firebase subscription: ${subscriptionKey}`);
       isMountedRef.current = false;
       
       // Force cleanup of subscription if it exists
@@ -139,9 +133,7 @@ export function useFirebaseSubscription<T>(
         try {
           existing.unsubscribe();
           activeSubscriptions.delete(subscriptionKey);
-          console.log(`✅ Forced cleanup completed: ${subscriptionKey}`);
         } catch (error) {
-          console.warn(`⚠️ Error during forced cleanup: ${subscriptionKey}`, error);
         }
       }
     };
@@ -184,24 +176,18 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
     `host-all-games-${hostId}`,
     useCallback((callback) => {
       if (!hostId) {
-        console.log('🔐 No hostId provided, resolving with null');
         setTimeout(() => callback(null), 0);
         return () => {};
       }
       
-      console.log(`🔍 Setting up ALL GAMES subscription for host: ${hostId}`);
-      
       // ✅ NEW APPROACH: Subscribe to ALL games and filter for host's active/completed games
       const unsubscribe = firebaseService.subscribeToAllActiveGames((allGames) => {
         try {
-          console.log(`📡 Received ${allGames.length} total active games`);
           
           // Filter games for this specific host
           const hostGames = allGames.filter(game => game.hostId === hostId);
-          console.log(`🎮 Found ${hostGames.length} games for host: ${hostId}`);
           
           if (hostGames.length === 0) {
-            console.log(`ℹ️ No games found for host: ${hostId}`);
             callback(null);
             return;
           }
@@ -217,15 +203,11 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
             const currentGame = activeGames
               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
             
-            console.log(`✅ Selected active game: ${currentGame.gameId} for host: ${hostId}`);
-            console.log(`📊 Game state: isActive=${currentGame.gameState.isActive}, gameOver=${currentGame.gameState.gameOver}, calledNumbers=${currentGame.gameState.calledNumbers?.length || 0}`);
-            
             callback(currentGame);
             return;
           }
           
           // ✅ PRIORITY 2: Most recent completed game (NEW LOGIC FOR HOST WINNER DISPLAY)
-          console.log(`🏁 No active games found. Checking for recent completed games for host: ${hostId}...`);
           const completedGames = hostGames
             .filter(game => {
               // ✅ SAFETY: Ensure game is properly completed
@@ -237,19 +219,15 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
           
           if (completedGames.length > 0) {
             const recentCompleted = completedGames[0];
-            console.log(`🏆 Selected recent completed game: ${recentCompleted.gameId} for host: ${hostId}`);
-            console.log(`📊 Completed game state: gameOver=${recentCompleted.gameState.gameOver}, winners=${Object.values(recentCompleted.prizes).filter(p => p.won).length}`);
             
             callback(recentCompleted);
             return;
           }
           
           // ✅ PRIORITY 3: No games at all
-          console.log(`ℹ️ No games (active or completed) found for host: ${hostId}`);
           callback(null);
           
         } catch (error) {
-          console.error(`❌ Error processing host games for ${hostId}:`, error);
           callback(null);
         }
       });
@@ -264,14 +242,11 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
  * Utility function to cleanup all subscriptions (useful for app shutdown)
  */
 export function cleanupAllSubscriptions() {
-  console.log('🧹 Cleaning up all Firebase subscriptions');
   
   activeSubscriptions.forEach((subscription, key) => {
     try {
       subscription.unsubscribe();
-      console.log(`✅ Cleaned up: ${key}`);
     } catch (error) {
-      console.error(`❌ Cleanup error for ${key}:`, error);
     }
   });
   

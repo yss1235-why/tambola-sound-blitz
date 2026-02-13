@@ -13,6 +13,8 @@ interface AudioManagerProps {
   speechRate?: number;
   onAudioComplete?: (type: string, data?: any) => void;
   onAudioError?: (error: Error, type: string) => void;
+  onPrizeAudioComplete?: (prizeId: string) => void;
+  onAudioStarted?: (number: number) => void;
 }
 export const AudioManager: React.FC<AudioManagerProps> = ({
   gameId,
@@ -24,7 +26,9 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   forceEnable = false,
   speechRate,
   onAudioComplete,
-  onAudioError
+  onAudioError,
+  onPrizeAudioComplete,
+  onAudioStarted
 }) => {
   const [isAudioEnabled, setIsAudioEnabled] = useState(false); // Always start disabled
   const [isAudioSupported, setIsAudioSupported] = useState(false);
@@ -37,13 +41,14 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
   const gameStateRef = useRef<any>(null);
   // AUDIO-002 FIX: Prevent double game-over audio
   const gameOverAudioPlayedRef = useRef(false);
+  // Prevent double countdown audio
+  const countdownAudioPlayedRef = useRef(false);
   // AUDIO-006 FIX: Track if component is mounted for async cleanup
   const isMountedRef = useRef(true);
 
   // Initialize audio system
   useEffect(() => {
     if (!audioInitialized.current) {
-      console.log('🔊 Initializing AudioManager with coordination');
 
       // Check if audio is supported
       if ('speechSynthesis' in window) {
@@ -58,11 +63,9 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
         audioCoordinator.setGameStateRef(gameStateRef);
         // Set up audio coordinator but don't enable yet - wait for user interaction
-        console.log('🔊 Audio coordinator set up, waiting for user interaction');
         audioInitialized.current = true;
       } else {
         setIsAudioSupported(false);
-        console.warn('🔇 Speech synthesis not supported');
       }
     }
 
@@ -93,7 +96,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
     const tryEnableAudio = async () => {
       try {
-        console.log('🔊 Attempting to auto-enable audio...');
 
         // Try immediate enablement (works if user already interacted)
         const testUtterance = new SpeechSynthesisUtterance(' ');
@@ -117,15 +119,11 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
         if (audioWorks) {
           setIsAudioEnabled(true);
-          console.log('✅ Audio auto-enabled successfully');
           return true;
         }
-
-        console.log('⏳ Audio blocked by browser, waiting for user interaction...');
         return false;
 
       } catch (error) {
-        console.error('❌ Auto audio enablement failed:', error);
         return false;
       }
     };
@@ -153,7 +151,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
         if (audioWorks) {
           setIsAudioEnabled(true);
-          console.log('✅ Audio enabled after user interaction');
 
           // Remove all listeners
           ['click', 'touchstart', 'keydown', 'mousedown', 'touchend', 'scroll'].forEach(eventType => {
@@ -162,7 +159,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         }
 
       } catch (error) {
-        console.error('❌ Audio enablement failed:', error);
       }
     };
 
@@ -170,7 +166,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     tryEnableAudio().then(success => {
       if (!success) {
         // If immediate enablement fails, wait for ANY user interaction
-        console.log('📢 Setting up listeners for user interaction...');
         ['click', 'touchstart', 'keydown', 'mousedown', 'touchend', 'scroll'].forEach(eventType => {
           document.addEventListener(eventType, enableAudioOnInteraction, { passive: true });
         });
@@ -185,6 +180,27 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     };
   }, [isAudioSupported, isAudioEnabled]);
 
+  // Handle "Game Will Begin" audio during countdown
+  useEffect(() => {
+    if (!isAudioEnabled || !gameState?.isCountdown) return;
+    if (countdownAudioPlayedRef.current) return;
+
+    countdownAudioPlayedRef.current = true;
+
+    const playCountdownAudio = async () => {
+      try {
+        if (isMountedRef.current) setIsPlaying(true);
+        await audioCoordinator.playGameWillBeginAudio(() => {
+          if (isMountedRef.current) setIsPlaying(false);
+        }, speechRate);
+      } catch (error) {
+        if (isMountedRef.current) setIsPlaying(false);
+      }
+    };
+
+    playCountdownAudio();
+  }, [gameState?.isCountdown, isAudioEnabled, speechRate]);
+
   // Handle number calling audio
   useEffect(() => {
     // Allow last number audio even when game is pending end
@@ -196,7 +212,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
     const playNumberAudio = async () => {
       try {
-        console.log(`🔊 Playing audio for number: ${currentNumber} ${isPendingEnd ? '(LAST NUMBER)' : ''}`);
         setIsPlaying(true);
         lastProcessedNumber.current = currentNumber;
 
@@ -208,14 +223,12 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
             // Don't end game here - let the pending game end effect handle coordination
             if (isPendingEnd && gameId) {
-              console.log(`🏁 Last number audio completed - pending game end will coordinate final sequence`);
             }
           },
           speechRate
         );
 
       } catch (error) {
-        console.error(`❌ Number audio failed: ${currentNumber}`, error);
         setIsPlaying(false);
         onAudioError?.(error as Error, 'number');
       }
@@ -229,40 +242,50 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     if (!isAudioEnabled || !lastWinnerAnnouncement) return;
     if (lastWinnerAnnouncement === lastProcessedAnnouncement.current) return;
 
+
     // Check if announcement actually contains valid winner info
     const prizeMatch = lastWinnerAnnouncement.match(/(.*?)\s+won\s+by\s+(.*?)!/);
+
     if (!prizeMatch || !prizeMatch[1] || !prizeMatch[2] || prizeMatch[1].includes('unknown') || prizeMatch[2].includes('unknown')) {
-      console.log('🔇 Skipping audio - no valid winner info found in:', lastWinnerAnnouncement);
+      console.warn(`📢 [AudioManager] ❌ No valid prize match found — skipping`);
       lastProcessedAnnouncement.current = lastWinnerAnnouncement; // Mark as processed to avoid loops
       return;
     }
 
     const playPrizeAudio = async () => {
       try {
-        console.log(`🏆 Playing prize audio: ${lastWinnerAnnouncement}`);
         setIsPlaying(true);
         lastProcessedAnnouncement.current = lastWinnerAnnouncement;
 
-        // Extract prize type and player name from announcement
-        const prizeMatch = lastWinnerAnnouncement.match(/(.*?)\s+won\s+by\s+(.*?)!/);
+        // Extract prize type from announcement
         const prizeId = prizeMatch?.[1]?.toLowerCase().replace(/\s+/g, '') || 'unknown';
-        let playerName = prizeMatch?.[2] || 'Unknown Player';
+        const winnerInfo = prizeMatch?.[2] || '';
 
-        // Fix: Replace "T" with "Ticket" for better speech pronunciation
-        playerName = playerName.replace(/\bT(\d+)\b/g, 'Ticket $1');
+        // Extract ticket number from winner info (e.g., "T5" or "Ticket 5")
+        const ticketMatch = winnerInfo.match(/T(\d+)|Ticket\s*(\d+)/i);
+        const ticketNumber = parseInt(ticketMatch?.[1] || ticketMatch?.[2] || '0', 10);
+
+
+
+        if (ticketNumber <= 0) {
+          console.warn(`📢 [AudioManager] ❌ Invalid ticketNumber: ${ticketNumber} — skipping`);
+          setIsPlaying(false);
+          return;
+        }
+
 
         await audioCoordinator.playPrizeAudio(
           prizeId,
-          playerName,
+          ticketNumber,
           () => {
             setIsPlaying(false);
-            onAudioComplete?.('prize', { prizeId, playerName });
+            onAudioComplete?.('prize', { prizeId, ticketNumber });
           },
           speechRate
         );
 
       } catch (error) {
-        console.error('❌ Prize audio failed:', error);
+        console.error(`📢 [AudioManager] ❌ playPrizeAudio error:`, error);
         setIsPlaying(false);
         onAudioError?.(error as Error, 'prize');
       }
@@ -276,8 +299,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     const isPendingEnd = gameState?.pendingGameEnd;
     if (!isAudioEnabled || !isPendingEnd || !gameId) return;
 
-    console.log('🏁 Pending game end detected - coordinating final audio sequence');
-
     const coordinateFinalAudio = async () => {
       try {
         // Small delay to ensure all audio effects have processed
@@ -286,33 +307,27 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         // AUDIO-004 FIX: Check audioCoordinator.isPlaying() not stale React state
         let waitCount = 0;
         while (audioCoordinator.isPlaying() && waitCount < 50) { // Max 5 seconds wait
-          console.log('⏳ Waiting for current audio to finish before game end sequence');
           await new Promise(resolve => setTimeout(resolve, 100));
           waitCount++;
         }
 
         if (waitCount >= 50) {
-          console.warn('⚠️ Timeout waiting for audio to finish, proceeding anyway');
         }
 
         // AUDIO-002 FIX: Check if already played
         if (gameOverAudioPlayedRef.current) {
-          console.log('⏭️ Game over audio already played, skipping');
           return;
         }
         gameOverAudioPlayedRef.current = true;
 
         // Play game over celebration audio
-        console.log('🎉 Playing final game over celebration');
         if (isMountedRef.current) setIsPlaying(true);
 
         await audioCoordinator.playGameOverAudio(() => {
           if (isMountedRef.current) setIsPlaying(false);
-          console.log('✅ Game over audio completed - finalizing game end');
 
           // AUDIO-007 FIX: Check if mounted before dynamic import
           if (!isMountedRef.current) {
-            console.log('⚠️ Component unmounted, skipping game end completion');
             return;
           }
 
@@ -323,22 +338,18 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
               if (!isMountedRef.current) return;
               const { firebaseGame } = await import('@/services/firebase');
               await firebaseGame.completePendingGameEnd(gameId);
-              console.log('🏁 Game end completed successfully');
             } catch (error) {
-              console.error('❌ Failed to complete pending game end:', error);
             }
           }, 100);
         }, speechRate);
 
       } catch (error) {
-        console.error('❌ Final audio coordination failed:', error);
         // Fallback: still try to end the game (only if mounted)
         if (!isMountedRef.current) return;
         try {
           const { firebaseGame } = await import('@/services/firebase');
           await firebaseGame.completePendingGameEnd(gameId);
         } catch (fallbackError) {
-          console.error('❌ Fallback game end also failed:', fallbackError);
         }
       }
     };
@@ -355,13 +366,11 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     const playGameOverAudio = async () => {
       // AUDIO-002 FIX: Check if already played
       if (gameOverAudioPlayedRef.current) {
-        console.log('⏭️ Immediate game over audio already played, skipping');
         return;
       }
       gameOverAudioPlayedRef.current = true;
 
       try {
-        console.log('🏁 Playing immediate game over audio');
         setIsPlaying(true);
 
         await audioCoordinator.playGameOverAudio(() => {
@@ -370,7 +379,6 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         }, speechRate);
 
       } catch (error) {
-        console.error('❌ Game over audio failed:', error);
         setIsPlaying(false);
         onAudioError?.(error as Error, 'gameOver');
       }

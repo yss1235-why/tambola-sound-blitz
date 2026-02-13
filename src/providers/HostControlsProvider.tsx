@@ -91,6 +91,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const audioCompletionId = useRef<string | null>(null);
   const isProcessingCompletion = useRef(false);
   const numberCallerRef = useRef<SecureNumberCaller | null>(null);
+  // FIX: Add timeout recovery for stuck audio
+  const audioTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // FIX: Track call timestamp for duplicate prevention
+  const lastCallTimestamp = useRef<number>(0);
+  const MIN_CALL_INTERVAL = 2000; // 2 seconds minimum between calls
+
 
   // Simple state - only for UI feedback
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -143,7 +149,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
    * Simple timer control
    */
   const stopTimer = useCallback(() => {
-    console.log(`🛑 Stopping number calling timer`);
     isTimerActiveRef.current = false;
     isCallInProgressRef.current = false;
     isProcessingCompletion.current = false;
@@ -151,18 +156,24 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     // Clear completion tracking
     audioCompletionId.current = null;
 
+    // FIX: Clear audio timeout recovery
+    if (audioTimeoutRef.current) {
+      clearTimeout(audioTimeoutRef.current);
+      audioTimeoutRef.current = null;
+    }
+
     if (gameTimerRef.current) {
       clearTimeout(gameTimerRef.current);
       gameTimerRef.current = null;
     }
   }, []);
 
+
   // Secure number calling function for state machine
   const handleSecureNumberCall = useCallback(async (number: number) => {
     if (!gameData) return;
 
     try {
-      console.log(`🔢 State machine requesting number call: ${number}`);
 
       if (!numberCallerRef.current) {
         // BUG #2 FIX: Use singleton pattern
@@ -183,14 +194,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
       return result.success;
     } catch (error) {
-      console.error('❌ Secure number call failed:', error);
       return false;
     }
   }, [gameData]);
 
   // Game end cleanup function for state machine
   const handleGameEndCleanup = useCallback(async () => {
-    console.log('🧹 State machine cleanup on game end');
     stopTimer();
     clearAllTimers();
 
@@ -207,12 +216,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // State machine for game flow
   const stateMachine = useGameStateMachine({
     onStateChange: (state, context) => {
-      console.log('🎮 Game state changed:', state, context);
     },
     onNumberCall: handleSecureNumberCall,
     onGameEnd: handleGameEndCleanup,
     onError: (error) => {
-      console.error('❌ State machine error:', error);
       setIsProcessing(false);
     }
   });
@@ -228,9 +235,14 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
    * ✅ SIMPLIFIED: Handle audio completion - focus only on calling next number
    */
   const handleAudioComplete = useCallback(() => {
+    // FIX: Clear any pending audio timeout recovery
+    if (audioTimeoutRef.current) {
+      clearTimeout(audioTimeoutRef.current);
+      audioTimeoutRef.current = null;
+    }
+
     // Early exit if game is already over or component unmounted
     if (!gameData?.gameState?.isActive || gameData?.gameState?.gameOver) {
-      console.log('🛑 Audio complete but game is over - ignoring callback');
       return;
     }
 
@@ -238,21 +250,17 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     const completionId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     audioCompletionId.current = completionId;
 
-    console.log(`🔊 Audio completion callback received (ID: ${completionId})`);
-
     // Clear the announcing number since audio finished
     setAudioAnnouncingNumber(null);
 
     // Prevent duplicate processing with immediate check
     if (isProcessingCompletion.current) {
-      console.log('⚠️ Already processing a completion, ignoring');
       return;
     }
 
     // Mark audio system as ready on first callback
     if (!isAudioReady) {
       setIsAudioReady(true);
-      console.log('✅ Audio system now ready');
     }
 
     isProcessingCompletion.current = true;
@@ -264,7 +272,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         !gameData?.gameState?.isActive ||
         gameData?.gameState?.gameOver ||
         !isTimerActiveRef.current) {
-        console.log('🚫 Completion invalid or game ended, stopping');
         isProcessingCompletion.current = false;
         return;
       }
@@ -273,38 +280,56 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       isCallInProgressRef.current = false;
       isProcessingCompletion.current = false;
 
-      console.log('📞 Audio verified complete, scheduling next call');
+      // FIX: Check minimum call interval to prevent duplicates
+      const now = Date.now();
+      if (now - lastCallTimestamp.current < MIN_CALL_INTERVAL) {
+        return;
+      }
 
       // Use a single timeout for the next call - NO NESTED TIMEOUTS
       if (!isCallInProgressRef.current && isTimerActiveRef.current) {
         lastCallTimeRef.current = Date.now();
+        lastCallTimestamp.current = now;
         isCallInProgressRef.current = true;
+
+        // FIX: Set audio timeout recovery in case audio hangs
+        audioTimeoutRef.current = setTimeout(() => {
+          if (isCallInProgressRef.current && isTimerActiveRef.current) {
+            isCallInProgressRef.current = false;
+            isProcessingCompletion.current = false;
+          }
+        }, 15000); // 15 second safety timeout
 
         firebaseGame.callNextNumberAndContinue(gameData.gameId)
           .then(shouldContinue => {
-            console.log(`🎮 Audio complete - next call result: ${shouldContinue}`);
             if (!shouldContinue) {
-              console.log('🏁 Game ending - stopping timer and clearing state');
               isTimerActiveRef.current = false;
               isCallInProgressRef.current = false;
+              if (audioTimeoutRef.current) {
+                clearTimeout(audioTimeoutRef.current);
+                audioTimeoutRef.current = null;
+              }
               stopTimer(); // Ensure timer is fully stopped
             }
           })
           .catch(error => {
-            console.error('❌ Error calling next number:', error);
             isTimerActiveRef.current = false;
             isCallInProgressRef.current = false;
+            if (audioTimeoutRef.current) {
+              clearTimeout(audioTimeoutRef.current);
+              audioTimeoutRef.current = null;
+            }
           });
       }
     }, Math.max(300, callInterval * 1000)); // Use whichever is larger: 300ms or call interval
   }, [gameData, isAudioReady, callInterval, stopTimer]); // Removed resourceManager from dependencies
+
 
   // Audio coordination
   const audioCoordination = useAudioGameCoordination({
     gameStateRef,
     onAudioComplete: handleAudioComplete,
     onAudioError: (error, type) => {
-      console.error(`❌ Audio error (${type}):`, error);
     }
   });
 
@@ -313,11 +338,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
     // Check if game is already over
     if (gameData.gameState?.gameOver) {
-      console.log('🚫 Timer blocked - game is over');
       return;
     }
-
-    console.log('▶️ Starting centralized timer system');
 
     stopTimer(); // Ensure no existing timer is running and clear tracking
 
@@ -330,18 +352,15 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     lastCallTimeRef.current = Date.now();
 
     // Start immediately (no delay)
-    console.log(`📞 Starting first number call immediately`);
 
     // Call immediately without setTimeout
     (async () => {
       if (!isTimerActiveRef.current || !gameData) {
-        console.log('⏰ Initial call but game inactive');
         return;
       }
 
       // Check if game is already over
       if (gameData.gameState?.gameOver) {
-        console.log('🚫 Number calling blocked - game is over');
         isTimerActiveRef.current = false;
         isCallInProgressRef.current = false;
         return;
@@ -349,11 +368,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
       // Safety check for initial call too
       if (isCallInProgressRef.current) {
-        console.log('⚠️ Initial call blocked - already in progress');
         return;
       }
-
-      console.log('📞 Initial call - calling first number...');
       lastCallTimeRef.current = Date.now();
       isCallInProgressRef.current = true; // Mark call in progress
 
@@ -362,15 +378,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         const shouldContinue = await firebaseGame.callNextNumberAndContinue(gameData.gameId);
 
         if (shouldContinue && isTimerActiveRef.current) {
-          console.log('✅ First number called successfully, waiting for audio...');
           // Audio completion will schedule the next call
         } else {
-          console.log('⏸️ Game should stop after first call');
           isTimerActiveRef.current = false;
           isCallInProgressRef.current = false;
         }
       } catch (error) {
-        console.error('❌ Error in initial call:', error);
         isTimerActiveRef.current = false;
         isCallInProgressRef.current = false;
       }
@@ -386,8 +399,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const resumeCountdownTimer = useCallback((currentTimeLeft: number) => {
     if (countdownTimerRef.current || currentTimeLeft <= 0) return;
 
-    console.log(`🔄 Resuming countdown from ${currentTimeLeft}s`);
-
     let timeLeft = currentTimeLeft;
     setCountdownTime(timeLeft);
 
@@ -399,7 +410,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       try {
         await firebaseGame.updateCountdownTime(gameData!.gameId, timeLeft);
       } catch (error) {
-        console.warn('⚠️ Countdown update failed:', error);
       }
 
       if (timeLeft <= 0) {
@@ -413,10 +423,8 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
           // Automatically set to paused state after countdown
           setFirebasePaused(true);
           setIsAudioReady(true);
-          console.log('✅ Game activated but paused - host must click Resume to start');
 
         } catch (error) {
-          console.error('❌ Failed to activate game after countdown:', error);
         }
       }
     }, 1000);
@@ -456,7 +464,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       return true;
 
     } catch (error: any) {
-      console.error('❌ Game preparation failed:', error);
       setPreparationStatus(`Preparation failed: ${error.message}`);
       setPreparationProgress(0);
       return false;
@@ -470,7 +477,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
     setIsProcessing(true);
     try {
-      console.log(`🎮 Starting game preparation: ${gameData.gameId}`);
 
       clearAllTimers();
 
@@ -478,8 +484,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       if (!preparationSuccess) {
         throw new Error('Game preparation failed');
       }
-
-      console.log(`🎮 Starting countdown for: ${gameData.gameId}`);
 
       await firebaseGame.startGameWithCountdown(gameData.gameId);
 
@@ -494,7 +498,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         try {
           await firebaseGame.updateCountdownTime(gameData.gameId, timeLeft);
         } catch (error) {
-          console.error('Failed to update countdown in Firebase:', error);
         }
 
         if (timeLeft <= 0) {
@@ -506,18 +509,13 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
             setFirebasePaused(true);
             setIsAudioReady(true);
-            console.log('✅ Game activated but paused - host must click Resume to start');
 
           } catch (error) {
-            console.error('❌ Failed to activate game after countdown:', error);
           }
         }
       }, 1000);
 
-      console.log(`✅ Game start initiated: ${gameData.gameId}`);
-
     } catch (error: any) {
-      console.error('❌ Start game error:', error);
       clearAllTimers();
       setCountdownTime(0);
       throw new Error(error.message || 'Failed to start game');
@@ -530,12 +528,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     if (!gameData || isProcessing) return;
     setIsProcessing(true);
     try {
-      console.log(`⏸️ Pausing number calling: ${gameData.gameId}`);
       stopTimer();
       setFirebasePaused(true);
-      console.log(`✅ Number calling paused: ${gameData.gameId}`);
     } catch (error: any) {
-      console.error('❌ Pause error:', error);
       throw new Error(error.message || 'Failed to pause number calling');
     } finally {
       setIsProcessing(false);
@@ -554,13 +549,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       setWasAutopaused(false);
 
       if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
-        console.log('🔄 Restarting timer after manual resume');
         startTimer();
       }
-
-      console.log('✅ Game resumed successfully - audio system ready');
     } catch (error) {
-      console.error('❌ Failed to resume game:', error);
     } finally {
       setIsProcessing(false);
     }
@@ -571,16 +562,20 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
     setIsProcessing(true);
     try {
-      console.log(`🏁 Ending game: ${gameData.gameId}`);
 
       stopTimer();
 
-      await firebaseGame.endGame(gameData.gameId);
-
-      console.log(`✅ Game ended: ${gameData.gameId}`);
+      // Set pendingGameEnd instead of gameOver directly
+      // This allows AudioManager to play game-over audio before the page switch
+      const gameRef = ref(database, `games/${gameData.gameId}`);
+      await update(gameRef, {
+        'gameState/isActive': false,
+        'gameState/pendingGameEnd': true,
+        'gameState/lastNumberCalled': true,
+        'updatedAt': new Date().toISOString()
+      });
 
     } catch (error: any) {
-      console.error('❌ End game error:', error);
       throw new Error(error.message || 'Failed to end game');
     } finally {
       setIsProcessing(false);
@@ -596,9 +591,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     if (gameData?.gameId) {
       try {
         await firebaseGame.updateSpeechRate(gameData.gameId, actualRate);
-        console.log(`🔊 Speech rate ${actualRate} saved to Firebase for game ${gameData.gameId}`);
       } catch (error) {
-        console.error('❌ Failed to save speech rate to Firebase:', error);
       }
     }
   }, [gameData?.gameId]);
@@ -606,12 +599,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // Handle prize audio completion
   const handlePrizeAudioComplete = useCallback((prizeId: string) => {
     if (prizeId.startsWith('START:')) {
-      console.log(`🏆 Prize audio starting for: ${prizeId.replace('START:', '')}`);
       setIsPrizeAudioPlaying(true);
       return;
     }
-
-    console.log(`🏆 Prize audio complete for: ${prizeId}`);
     setIsPrizeAudioPlaying(false);
 
     setTimeout(() => {
@@ -622,7 +612,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
           const newNumbers = [...prev];
           if (!newNumbers.includes(lastAnnouncedNumber)) {
             newNumbers.push(lastAnnouncedNumber);
-            console.log(`✅ Visual updated after prize: ${lastAnnouncedNumber}`);
           }
           return newNumbers;
         });
@@ -632,7 +621,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
   // Handle when audio starts playing a number
   const handleAudioStarted = useCallback((number: number) => {
-    console.log(`🎤 Audio started for number ${number}`);
     setAudioAnnouncingNumber(number);
 
     setTimeout(() => {
@@ -641,12 +629,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
           const newNumbers = [...prev];
           if (!newNumbers.includes(number)) {
             newNumbers.push(number);
-            console.log(`✅ Visual updated for number: ${number}`);
           }
           return newNumbers;
         });
       } else {
-        console.log(`⏸️ Visual update blocked - prize audio is playing`);
       }
     }, 500);
   }, [isPrizeAudioPlaying]);
@@ -669,7 +655,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0;
 
       if (isActiveGame || isPausedGame) {
-        console.log(`🔄 Page refreshed during ${isActiveGame ? 'active' : 'paused'} game - implementing safety measures`);
 
         setFirebasePaused(true);
         setWasAutopaused(true);
@@ -678,10 +663,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
         if (isActiveGame) {
           firebaseGame.pauseGame(gameData.gameId)
-            .then(() => console.log('✅ Game auto-paused on refresh for safety'))
-            .catch(err => console.error('❌ Failed to auto-pause on refresh:', err));
+            .then(() => { /* Game auto-paused on refresh */ })
+            .catch(err => { /* Failed to auto-pause */ });
         } else {
-          console.log('✅ Game was already paused - maintaining pause state after refresh');
         }
 
       } else {
@@ -698,7 +682,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     if (gameData?.gameId && !numberCallerRef.current) {
       // BUG #2 FIX: Use singleton pattern
       numberCallerRef.current = SecureNumberCaller.getInstance(gameData.gameId);
-      console.log('🔢 Secure number caller initialized (singleton)');
     }
 
     const gameStateRef = {
@@ -715,7 +698,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // Cleanup
   useEffect(() => {
     return () => {
-      console.log(`🧹 Cleaning up HostControlsProvider`);
       clearAllTimers();
 
       if (numberCallerRef.current) {
@@ -737,10 +719,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         !firebasePaused &&
         isAudioReady) {
 
-        console.log('🔄 Screen became visible - checking timer state');
-
         if (!isTimerActiveRef.current) {
-          console.log('🔄 Restarting timer after screen unlock');
           lastCallTimeRef.current = Date.now();
           startTimer();
         }
@@ -754,8 +733,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         !isTimerActiveRef.current &&
         !firebasePaused &&
         isAudioReady) {
-
-        console.log('🔄 Network reconnected - checking timer state');
         lastCallTimeRef.current = Date.now();
         startTimer();
       }
@@ -773,7 +750,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // Auto-stop timer when game ends
   useEffect(() => {
     if (gameData?.gameState.gameOver && isTimerActiveRef.current) {
-      console.log(`🏁 Game ended via real-time update - stopping timer`);
       stopTimer();
     }
   }, [gameData?.gameState.gameOver, stopTimer]);
@@ -787,8 +763,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       !isProcessing &&
       !firebasePaused &&
       isAudioReady) {
-
-      console.log(`🔄 Host returned to active game - auto-resuming timer (audio ready)`);
 
       setTimeout(() => {
         if (!isTimerActiveRef.current && !isCallInProgressRef.current) {
@@ -806,7 +780,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     const recoveryRef = ref(database, `games/${gameData.gameId}/firebaseRecovered`);
     const unsubscribe = onValue(recoveryRef, async (snapshot) => {
       if (snapshot.val() === true) {
-        console.log('🎉 Firebase recovery detected - marking for manual resume');
 
         await update(ref(database, `games/${gameData.gameId}`), {
           firebaseRecovered: null,
@@ -814,7 +787,6 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         });
 
         if (gameData.gameState.isActive && !gameData.gameState.gameOver) {
-          console.log('✅ Firebase recovered - timer can be manually resumed');
           setFirebasePaused(false);
         }
       }
@@ -829,15 +801,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       const currentCountdown = gameData.gameState.countdownTime || 0;
 
       if (currentCountdown > 0) {
-        console.log(`🚨 Detected lost countdown timer - auto-resuming from ${currentCountdown}s`);
         resumeCountdownTimer(currentCountdown);
       } else if (currentCountdown === 0) {
-        console.log(`🚨 Countdown expired during disconnect - activating game but paused`);
         firebaseGame.activateGameAfterCountdown(gameData.gameId)
           .then(() => {
             setFirebasePaused(true);
             setIsAudioReady(true);
-            console.log('✅ Game activated but paused after recovery - host must click Resume');
           })
           .catch(error => console.error('❌ Failed to activate game:', error));
       }

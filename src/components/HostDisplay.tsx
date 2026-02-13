@@ -1,4 +1,4 @@
-﻿// ================================================================================
+// ================================================================================
 // FILE 1: src/components/HostDisplay.tsx - SIMPLIFIED WINNER DISPLAY
 // ================================================================================
 
@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useGameData, useBookingStats } from '@/providers/GameDataProvider';
 import { useHostControls } from '@/providers/HostControlsProvider';
-// âœ… Import simplified winner component
+// Import simplified winner component
 import { SimplifiedWinnerDisplay } from './SimplifiedWinnerDisplay';
 
 interface HostDisplayProps {
@@ -39,7 +39,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const { gameData, currentPhase, timeUntilAction, isLoading, error } = useGameData();
   const { bookedCount } = useBookingStats();
   const hostControls = useHostControls();
-  // âœ… Extract new properties
+  // Extract new properties
   const {
     isPreparingGame,
     preparationStatus,
@@ -49,21 +49,16 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   const [showWinnerDisplay, setShowWinnerDisplay] = useState(false);
   // Add delay before showing winner display
   useEffect(() => {
-    console.log('ðŸ” Game over check:', gameData?.gameState?.gameOver);
     if (gameData?.gameState?.gameOver) {
-      console.log('ðŸ† Game is over, starting winner display timer');
       // Wait 2.5 seconds for prize audio to finish
       const timer = setTimeout(() => {
-        console.log('ðŸŽ‰ Showing winner display now');
         setShowWinnerDisplay(true);
       }, 2500);
 
       return () => {
-        console.log('ðŸ§¹ Clearing winner display timer');
         clearTimeout(timer);
       };
     } else {
-      console.log('ðŸ“± Game not over, hiding winner display');
       setShowWinnerDisplay(false);
     }
   }, [gameData?.gameState?.gameOver]);
@@ -89,7 +84,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
   };
 
 
-  // âœ… SIMPLIFIED: Only automatic game control handlers
+  // SIMPLIFIED: Only automatic game control handlers
   const handleStartGame = React.useCallback(async () => {
     if (!hostControls) return;
     try {
@@ -146,7 +141,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     return (
       <Card className="border-destructive/40">
         <CardContent className="p-8 text-center">
-          <div className="text-6xl mb-4">âš ï¸</div>
+          <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-xl font-semibold text-destructive mb-2">Error Loading Game</h2>
           <p className="text-destructive mb-4">{error}</p>
           {onCreateNewGame && (
@@ -164,7 +159,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     return (
       <Card>
         <CardContent className="p-8 text-center">
-          <div className="text-6xl mb-4">ðŸŽ®</div>
+          <div className="text-6xl mb-4"></div>
           <h2 className="text-2xl font-bold text-foreground mb-2">No Active Game</h2>
           <p className="text-muted-foreground mb-4">Create a new game to start hosting</p>
           {onCreateNewGame && (
@@ -177,33 +172,30 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
     );
   }
 
-  // âœ… NEW: SIMPLIFIED WINNER DISPLAY after delay
+  // NEW: SIMPLIFIED WINNER DISPLAY after delay
   if (showWinnerDisplay && gameData?.gameState?.gameOver) {
-    console.log(`ðŸ† Showing winner display after delay`);
     return (
       <SimplifiedWinnerDisplay
         gameData={gameData}
         onCreateNewGame={() => {
-          // âœ… Add confirmation before creating new game from winner display
+          // Add confirmation before creating new game from winner display
           const confirmed = window.confirm(
-            'ðŸŽ® Create New Game\n\n' +
+            'Create New Game\n\n' +
             'You are about to create a new game. The current winner information will be cleared from your dashboard.\n\n' +
             'Make sure you have noted down any winner contact details or taken screenshots if needed.\n\n' +
             'Continue to create a new game?'
           );
 
           if (confirmed && onCreateNewGame) {
-            console.log('âœ… Host confirmed new game creation from winner display');
             onCreateNewGame();
           } else {
-            console.log('ðŸš« Host cancelled new game creation from winner display');
           }
         }}
       />
     );
   }
 
-  // âœ… EXISTING: Full interface for active games (booking, countdown, playing phases)
+  // EXISTING: Full interface for active games (booking, countdown, playing phases)
   return (
     <div className="space-y-6">
 
@@ -221,7 +213,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           <div className="flex flex-wrap gap-2">
             {currentPhase === 'booking' && (
               <>
-                {/* âœ… NEW: Preparation Status Display */}
+                {/* NEW: Preparation Status Display */}
 
 
                 <Button
@@ -236,7 +228,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                     : `Start Automatic Game (${bookedCount > 0 ? 'Ready' : 'Need players'})`
                   }
                 </Button>
-                {/* âœ… REMOVED: Preparation instructions hidden */}
+                {/* REMOVED: Preparation instructions hidden */}
               </>
             )}
             {currentPhase === 'countdown' && (
@@ -272,10 +264,10 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                         hostControls?.countdownTime === 0 && hostControls?.firebasePaused ? 'Click to Start Number Calling' : 'Resume Automatic Game'}
                     </Button>
 
-                    {/* âœ… NEW: Show auto-pause warning */}
+                    {/* NEW: Show auto-pause warning */}
                     {hostControls?.wasAutopaused && (
                       <div className="text-xs text-primary bg-primary/10 border border-primary/30 rounded px-2 py-1 text-center">
-                        âš ï¸ Game was auto-paused due to page refresh. Click Resume to continue safely.
+                        ⚠️ Game was auto-paused due to page refresh. Click Resume to continue safely.
                       </div>
                     )}
                   </div>
@@ -352,7 +344,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
             </div>
             {gameData.gameState.calledNumbers.length > 20 && (
               <p className="text-sm text-muted-foreground mt-3 text-center">
-                Showing last 20 numbers â€¢ Total called: {gameData.gameState.calledNumbers.length}
+                Showing last 20 numbers  Total called: {gameData.gameState.calledNumbers.length}
               </p>
             )}
           </CardContent>
@@ -448,7 +440,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                                   )}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                  Ticket {winner.ticketId}
+                                  {winner.ticketId?.includes(',') ? `Tickets ${winner.ticketId}` : `Ticket ${winner.ticketId}`}
                                 </p>
                               </div>
                             </div>

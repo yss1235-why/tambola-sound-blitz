@@ -43,7 +43,6 @@ export class SecureNumberCaller {
     if (instance) {
       instance.cleanup();
       this.instances.delete(gameId);
-      console.log(`🧹 Cleared SecureNumberCaller singleton for game: ${gameId}`);
     }
   }
 
@@ -55,7 +54,6 @@ export class SecureNumberCaller {
       instance.cleanup();
     }
     this.instances.clear();
-    console.log(`🧹 Cleared all SecureNumberCaller singletons`);
   }
 
   private gameId: string;
@@ -72,7 +70,6 @@ export class SecureNumberCaller {
     this.gameId = gameId;
     // BUG #1 FIX: Use unique lock name to avoid conflict with firebase-game.ts
     this.mutex = new FirebaseMutex(`number-calling-locks`, `caller-${gameId}`);
-    console.log(`🔢 SecureNumberCaller singleton created for game: ${gameId}`);
 
     // BUG #3 FIX: Sync local state from Firebase on init
     if (FEATURE_FLAGS.SYNC_LOCAL_STATE_ON_INIT) {
@@ -88,7 +85,6 @@ export class SecureNumberCaller {
     const connectedRef = ref(database, '.info/connected');
     this.connectionUnsubscribe = onValue(connectedRef, (snap) => {
       this.isConnected = snap.val() === true;
-      console.log(`🌐 Firebase connection: ${this.isConnected ? 'CONNECTED' : 'DISCONNECTED'}`);
     });
   }
 
@@ -119,10 +115,8 @@ export class SecureNumberCaller {
       if (snapshot.exists()) {
         const numbers = snapshot.val() as number[];
         this.calledNumbers = new Set(numbers);
-        console.log(`🔄 Synced ${numbers.length} called numbers from Firebase`);
       }
     } catch (error) {
-      console.warn('⚠️ Failed to sync called numbers from Firebase:', error);
     }
   }
 
@@ -143,7 +137,6 @@ export class SecureNumberCaller {
       // FIX: Check connection before attempting transaction
       const isConnected = await this.waitForConnection(3000);
       if (!isConnected) {
-        console.warn(`⚠️ No connection, attempt ${attempt}/${MAX_RETRIES}`);
         if (attempt === MAX_RETRIES) {
           return {
             number: 0,
@@ -187,14 +180,12 @@ export class SecureNumberCaller {
           error.message?.includes('network');
 
         if (isDisconnectError && attempt < MAX_RETRIES) {
-          console.log(`🔄 Retry ${attempt + 1}/${MAX_RETRIES} after disconnect error...`);
           // Exponential backoff
           await new Promise(r => setTimeout(r, BASE_DELAY * attempt));
           continue;
         }
 
         // Final failure or non-retryable error
-        console.error(`❌ Number call failed after ${attempt} attempts:`, error.message);
         return {
           number: 0,
           timestamp: Date.now(),
@@ -221,8 +212,6 @@ export class SecureNumberCaller {
   private async executeSecureNumberCall(): Promise<NumberCallResult> {
     const gameRef = ref(database, `games/${this.gameId}`);
 
-    console.log(`🔢 Executing secure number call for game: ${this.gameId}`);
-
     try {
       // Use Firebase transaction for atomic operation
       const transactionResult = await runTransaction(gameRef, (currentGame) => {
@@ -233,8 +222,6 @@ export class SecureNumberCaller {
         const gameState: GameState = currentGame.gameState || {};
         const calledNumbers = gameState.calledNumbers || [];
         const callSequence = gameState.callSequence || 0;
-
-        console.log(`🔄 Transaction: Current sequence ${callSequence}, called ${calledNumbers.length} numbers`);
 
         // Select next number using priority logic
         const selectedNumber = this.selectNextNumber(gameState, calledNumbers);
@@ -289,8 +276,6 @@ export class SecureNumberCaller {
       // Update local state
       this.calledNumbers.add(latestNumber);
 
-      console.log(`✅ Number called successfully: ${latestNumber} (sequence: ${latestSequence})`);
-
       return {
         number: latestNumber,
         timestamp: Date.now(),
@@ -299,7 +284,6 @@ export class SecureNumberCaller {
       };
 
     } catch (error: any) {
-      console.error('❌ Secure number call failed:', error);
 
       return {
         number: 0,
@@ -316,7 +300,6 @@ export class SecureNumberCaller {
     // Check for pre-generated sequence first (admin tool integration)
     if (gameState.sessionCache && gameState.sessionCache.length > calledNumbers.length) {
       const nextNumber = gameState.sessionCache[calledNumbers.length];
-      console.log(`🎯 Using pre-generated number: ${nextNumber} (position ${calledNumbers.length + 1})`);
       return nextNumber;
     }
 
@@ -343,7 +326,6 @@ export class SecureNumberCaller {
       randomIndex = randomArray[0] % availableNumbers.length;
     } catch (error) {
       if (FEATURE_FLAGS.USE_CRYPTO_FALLBACK) {
-        console.warn('⚠️ crypto.getRandomValues failed, using Math.random fallback');
         randomIndex = Math.floor(Math.random() * availableNumbers.length);
       } else {
         throw error;
@@ -351,8 +333,6 @@ export class SecureNumberCaller {
     }
 
     const selectedNumber = availableNumbers[randomIndex];
-
-    console.log(`🎲 Random selection: ${selectedNumber} from ${availableNumbers.length} available`);
     return selectedNumber;
   }
 
@@ -396,7 +376,6 @@ export class SecureNumberCaller {
       return { isValid: true, canContinue: true };
 
     } catch (error: any) {
-      console.error('❌ Game state validation error:', error);
 
       // BUG #9 FIX: Use strict validation flag
       if (FEATURE_FLAGS.USE_STRICT_VALIDATION) {
@@ -443,7 +422,6 @@ export class SecureNumberCaller {
       };
 
     } catch (error: any) {
-      console.error('❌ Error getting game statistics:', error);
       return {
         totalCalled: 0,
         remainingNumbers: 90,
@@ -464,14 +442,12 @@ export class SecureNumberCaller {
 
   // Reset internal state (for new game)
   reset(): void {
-    console.log(`🔄 Resetting SecureNumberCaller for game: ${this.gameId}`);
     this.calledNumbers.clear();
     this.callInProgress = false;
   }
 
   // Cleanup resources
   async cleanup(): Promise<void> {
-    console.log(`🧹 Cleaning up SecureNumberCaller for game: ${this.gameId}`);
     // Unsubscribe from connection listener
     if (this.connectionUnsubscribe) {
       this.connectionUnsubscribe();

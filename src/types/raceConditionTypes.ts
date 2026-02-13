@@ -294,7 +294,7 @@ export interface UseAudioGameCoordinationProps {
 
 export interface UseAudioGameCoordinationResult {
   playNumberAudio: (number: number) => Promise<void>;
-  playPrizeAudio: (prizeId: string, playerName: string) => Promise<void>;
+  playPrizeAudio: (prizeId: string, ticketNumber: number) => Promise<void>;
   playGameOverAudio: () => Promise<void>;
   stopAllAudio: () => void;
   clearAudioQueue: () => void;

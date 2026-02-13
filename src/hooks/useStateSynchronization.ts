@@ -54,7 +54,6 @@ export const useStateSynchronization = <T extends Record<string, any>>(
 
       updateState(newState);
     } catch (error) {
-      console.error('❌ Batch update error:', error);
     } finally {
       isUpdating.current = false;
     }

@@ -72,17 +72,14 @@ class FirebaseGameService {
 
         // If scheduled end time has passed (with 10 second buffer), recover
         if (now.getTime() > scheduledEnd.getTime() + 10000) {
-          console.log(`🔄 Recovering limbo game: ${gameId} (was scheduled to end at ${gameState.scheduledEndAt})`);
 
           await this.endGame(gameId);
-          console.log(`✅ Limbo game recovered and ended: ${gameId}`);
           return true;
         }
       }
 
       return false;
     } catch (error) {
-      console.error(`❌ Error recovering limbo game ${gameId}:`, error);
       return false;
     }
   }
@@ -98,7 +95,6 @@ class FirebaseGameService {
       async () => {
         for (let attempt = 1; attempt <= retries; attempt++) {
           try {
-            console.log(`🔄 Transaction attempt ${attempt}/${retries} for path: ${path}`);
 
             await runTransaction(ref(database, path), (currentData) => {
               if (currentData === null) {
@@ -108,12 +104,9 @@ class FirebaseGameService {
               // Deep merge to prevent overwriting
               return this.deepMerge(currentData, updates);
             });
-
-            console.log(`✅ Transaction successful for path: ${path}`);
             return;
 
           } catch (error: any) {
-            console.error(`❌ Transaction attempt ${attempt} failed for ${path}:`, error);
 
             if (attempt === retries) {
               throw new Error(`Transaction failed after ${retries} attempts: ${error.message}`);
@@ -131,7 +124,6 @@ class FirebaseGameService {
 
   async createGame(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
     try {
-      console.log(`🎮 Creating game for host: ${hostId} with database protection`);
 
       // STEP 1: Check for existing active games (non-atomic check first)
       const existingActiveGame = await this.getHostCurrentGame(hostId);
@@ -160,8 +152,6 @@ class FirebaseGameService {
           throw new Error('Failed to acquire creation lock');
         }
 
-        console.log('✅ Creation lock acquired, proceeding with game creation');
-
         try {
           // STEP 3: Double-check no active game exists (inside lock)
           const doubleCheckGame = await this.getHostCurrentGame(hostId);
@@ -171,23 +161,18 @@ class FirebaseGameService {
 
           // STEP 4: Proceed with actual game creation
           const gameData = await this.createGameInternal(config, hostId, ticketSetId, selectedPrizes);
-
-          console.log(`✅ Game created successfully: ${gameData.gameId}`);
           return gameData;
 
         } finally {
           // STEP 5: Always clear the lock (success or failure)
           try {
             await remove(lockRef);
-            console.log('✅ Creation lock released');
           } catch (lockError) {
-            console.error('⚠️ Failed to release creation lock:', lockError);
           }
         }
       });
 
     } catch (error: any) {
-      console.error('❌ Error creating game with protection:', error);
       throw new Error(error.message || 'Failed to create game');
     }
   }
@@ -201,9 +186,21 @@ class FirebaseGameService {
     const tickets = await this.loadTicketsFromSet(ticketSetId, config.maxTickets);
     const prizes = createPrizeConfiguration(selectedPrizes);
 
+    // Fetch host data to get businessName
+    let businessName = 'Tambola'; // Default fallback
+    try {
+      const hostSnapshot = await get(ref(database, `hosts/${hostId}`));
+      if (hostSnapshot.exists()) {
+        const hostData = hostSnapshot.val();
+        businessName = hostData.businessName || 'Tambola';
+      }
+    } catch (error) {
+    }
+
     const gameData: GameData = {
       gameId,
       name: config.name,
+      businessName, // NEW: Include host's business name
       hostId,
       hostPhone: config.hostPhone,
       createdAt: new Date().toISOString(),
@@ -231,9 +228,7 @@ class FirebaseGameService {
   async deleteGame(gameId: string): Promise<void> {
     try {
       await remove(ref(database, `games/${gameId}`));
-      console.log(`✅ Game ${gameId} deleted successfully`);
     } catch (error: any) {
-      console.error('❌ Error deleting game:', error);
       throw new Error(error.message || 'Failed to delete game');
     }
   }
@@ -243,7 +238,6 @@ class FirebaseGameService {
       const gameSnapshot = await get(ref(database, `games/${gameId}`));
       return gameSnapshot.exists() ? gameSnapshot.val() as GameData : null;
     } catch (error) {
-      console.error('Error fetching game data:', error);
       return null;
     }
   }
@@ -264,7 +258,6 @@ class FirebaseGameService {
 
       return activeGame || null;
     } catch (error) {
-      console.error('Error fetching host current game:', error);
       return null;
     }
   }
@@ -281,7 +274,6 @@ class FirebaseGameService {
         game.gameState && !game.gameState.gameOver
       );
     } catch (error) {
-      console.error('Error fetching active games:', error);
       return [];
     }
   }
@@ -324,7 +316,6 @@ class FirebaseGameService {
         let finalUpdates: any = { ...updates };
 
         if (updates.selectedPrizes) {
-          console.log(`🏆 Processing prize changes for game: ${gameId}`);
 
           const newPrizes = createPrizeConfiguration(updates.selectedPrizes);
 
@@ -339,7 +330,6 @@ class FirebaseGameService {
                 winningNumber: currentPrize.winningNumber,
                 wonAt: currentPrize.wonAt
               };
-              console.log(`✅ Preserved winner data for prize: ${prizeId}`);
             }
           });
 
@@ -352,7 +342,6 @@ class FirebaseGameService {
         return { ...currentGame, ...finalUpdates };
 
       } catch (error: any) {
-        console.error(`❌ Error updating live game settings for ${gameId}:`, error);
         throw error;
       }
     });
@@ -365,7 +354,6 @@ class FirebaseGameService {
     selectedPrizes?: string[];
   }): Promise<void> {
     try {
-      console.log(`💾 Updating host template for: ${hostId}`, templateSettings);
 
       if (templateSettings.maxTickets !== undefined) {
         if (templateSettings.maxTickets < 1 || templateSettings.maxTickets > 600) {
@@ -386,10 +374,7 @@ class FirebaseGameService {
 
       await this.safeTransactionUpdate(`hostSettings/${hostId}`, updates);
 
-      console.log(`✅ Host template updated successfully for: ${hostId}`);
-
     } catch (error: any) {
-      console.error(`❌ Error updating host template for ${hostId}:`, error);
       throw new Error(error.message || 'Failed to update host template');
     }
   }
@@ -401,7 +386,6 @@ class FirebaseGameService {
     selectedTicketSet?: string;
   }): Promise<void> {
     try {
-      console.log(`🔄 Updating game and template for game: ${gameId}, host: ${hostId}`);
 
       // Update live game settings
       await this.updateLiveGameSettings(gameId, {
@@ -418,10 +402,7 @@ class FirebaseGameService {
         selectedPrizes: settings.selectedPrizes
       });
 
-      console.log(`✅ Game and template updated successfully`);
-
     } catch (error: any) {
-      console.error(`❌ Error updating game and template:`, error);
       throw error;
     }
   }
@@ -430,7 +411,6 @@ class FirebaseGameService {
 
   async loadTicketsFromSet(ticketSetId: string, maxTickets: number): Promise<{ [ticketId: string]: TambolaTicket }> {
     try {
-      console.log(`📁 Loading tickets from set ${ticketSetId}, maxTickets: ${maxTickets}`);
 
       if (!['1', '2'].includes(ticketSetId)) {
         throw new Error(`Invalid ticket set ID: ${ticketSetId}. Must be "1" or "2".`);
@@ -459,8 +439,6 @@ class FirebaseGameService {
         throw new Error(`Empty ticket set: ${ticketSetId}.json contains no data`);
       }
 
-      console.log(`📊 Loaded ${rawData.length} ticket rows from set ${ticketSetId}`);
-
       const filteredData = rawData.filter(row => row.ticketId >= 1 && row.ticketId <= maxTickets);
 
       if (filteredData.length === 0) {
@@ -474,18 +452,14 @@ class FirebaseGameService {
         throw new Error(`Insufficient tickets in set ${ticketSetId}: Found ${availableTickets}, requested ${maxTickets}`);
       }
 
-      console.log(`🎯 Filtered to ${filteredData.length} rows covering ${availableTickets} tickets`);
-
       const ticketGroups = new Map<number, TicketRowData[]>();
 
       for (const row of filteredData) {
         if (!row.ticketId || !row.rowId || !Array.isArray(row.numbers)) {
-          console.warn(`⚠️ Invalid row structure:`, row);
           continue;
         }
 
         if (row.numbers.length !== 9) {
-          console.warn(`⚠️ Invalid row length for ticket ${row.ticketId} row ${row.rowId}: expected 9, got ${row.numbers.length}`);
           continue;
         }
 
@@ -499,7 +473,6 @@ class FirebaseGameService {
 
       for (const [ticketId, rows] of ticketGroups) {
         if (rows.length !== 3) {
-          console.warn(`⚠️ Ticket ${ticketId} has ${rows.length} rows, expected 3. Skipping.`);
           continue;
         }
 
@@ -509,7 +482,6 @@ class FirebaseGameService {
         const actualRowIds = rows.map(r => r.rowId);
 
         if (!expectedRowIds.every((id, index) => actualRowIds[index] === id)) {
-          console.warn(`⚠️ Ticket ${ticketId} has invalid row IDs: expected [1,2,3], got [${actualRowIds.join(',')}]. Skipping.`);
           continue;
         }
 
@@ -535,20 +507,15 @@ class FirebaseGameService {
         throw new Error(`Failed to create enough valid tickets: created ${createdTicketCount}, requested ${maxTickets}. Check ticket data integrity.`);
       }
 
-      console.log(`✅ Successfully created ${createdTicketCount} tickets from set ${ticketSetId}`);
-      console.log(`🎫 Ticket IDs: ${Object.keys(tickets).slice(0, 5).join(', ')}${createdTicketCount > 5 ? '...' : ''}`);
-
       return tickets;
 
     } catch (error: any) {
-      console.error('❌ Error loading tickets from set:', error);
       throw new Error(error.message || 'Failed to load tickets from set');
     }
   }
 
   async expandGameTickets(gameId: string, newMaxTickets: number, ticketSetId: string): Promise<void> {
     try {
-      console.log(`📈 Expanding game ${gameId} tickets to ${newMaxTickets} from set ${ticketSetId}`);
 
       const currentGameData = await this.getGameData(gameId);
       if (!currentGameData) {
@@ -566,10 +533,7 @@ class FirebaseGameService {
         throw new Error(`Maximum ticket limit is 600. Requested: ${newMaxTickets}`);
       }
 
-      console.log(`📊 Current game state: ${currentMaxTickets} tickets, ${Object.keys(currentTickets).length} loaded`);
-
       const bookedTickets = Object.values(currentTickets).filter(ticket => ticket.isBooked);
-      console.log(`🎫 Preserving ${bookedTickets.length} existing bookings`);
 
       const allTicketsForSet = await this.loadTicketsFromSet(ticketSetId, newMaxTickets);
 
@@ -594,12 +558,7 @@ class FirebaseGameService {
 
       await this.safeTransactionUpdate(`games/${gameId}`, updates);
 
-      console.log(`✅ Successfully expanded game ${gameId} from ${currentMaxTickets} to ${newMaxTickets} tickets`);
-      console.log(`📋 Total tickets now: ${newMaxTickets}`);
-      console.log(`👥 Existing bookings preserved: ${bookedTickets.length}`);
-
     } catch (error: any) {
-      console.error('❌ Error expanding game tickets:', error);
       throw new Error(error.message || 'Failed to expand game tickets');
     }
   }
@@ -614,10 +573,43 @@ class FirebaseGameService {
       };
 
       await update(ref(database, `games/${gameId}/tickets/${ticketId}`), updates);
-      console.log(`✅ Ticket ${ticketId} booked for ${playerName}`);
     } catch (error: any) {
-      console.error('❌ Error booking ticket:', error);
       throw new Error(error.message || 'Failed to book ticket');
+    }
+  }
+
+  /**
+   * Batch book multiple tickets in a single atomic Firebase write.
+   * Uses multi-path update — 1 network call regardless of ticket count.
+   * ~6x faster than sequential booking for a full sheet (6 tickets).
+   */
+  async bookTicketsBatch(ticketIds: string[], playerName: string, playerPhone: string, gameId: string): Promise<void> {
+    if (ticketIds.length === 0) return;
+
+    // Single ticket: use regular method
+    if (ticketIds.length === 1) {
+      return this.bookTicket(ticketIds[0], playerName, playerPhone, gameId);
+    }
+
+    try {
+      const now = new Date().toISOString();
+      const trimmedName = playerName.trim();
+      const trimmedPhone = playerPhone.trim();
+
+      // Build multi-path update object for all tickets at once
+      const batchUpdates: Record<string, any> = {};
+      for (const ticketId of ticketIds) {
+        const basePath = `games/${gameId}/tickets/${ticketId}`;
+        batchUpdates[`${basePath}/isBooked`] = true;
+        batchUpdates[`${basePath}/playerName`] = trimmedName;
+        batchUpdates[`${basePath}/playerPhone`] = trimmedPhone;
+        batchUpdates[`${basePath}/bookedAt`] = now;
+      }
+
+      // Single atomic write — all tickets updated in one network call
+      await update(ref(database), batchUpdates);
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to batch book tickets');
     }
   }
 
@@ -631,9 +623,7 @@ class FirebaseGameService {
       };
 
       await update(ref(database, `games/${gameId}/tickets/${ticketId}`), updates);
-      console.log(`✅ Ticket ${ticketId} unbooked`);
     } catch (error: any) {
-      console.error('❌ Error unbooking ticket:', error);
       throw new Error(error.message || 'Failed to unbook ticket');
     }
   }
@@ -648,7 +638,6 @@ class FirebaseGameService {
         gameOver: false
       };
       await update(ref(database, `games/${gameId}/gameState`), updates);
-      console.log(`✅ Game ${gameId} started`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to start game');
     }
@@ -657,7 +646,6 @@ class FirebaseGameService {
   async pauseGame(gameId: string): Promise<void> {
     try {
       await update(ref(database, `games/${gameId}/gameState`), { isActive: false });
-      console.log(`⏸️ Game ${gameId} paused`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to pause game');
     }
@@ -666,7 +654,6 @@ class FirebaseGameService {
   async resumeGame(gameId: string): Promise<void> {
     try {
       await update(ref(database, `games/${gameId}/gameState`), { isActive: true });
-      console.log(`▶️ Game ${gameId} resumed`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to resume game');
     }
@@ -675,16 +662,13 @@ class FirebaseGameService {
   async updateSpeechRate(gameId: string, speechRate: number): Promise<void> {
     try {
       await update(ref(database, `games/${gameId}/gameState`), { speechRate });
-      console.log(`🔊 Speech rate updated to ${speechRate} for game ${gameId}`);
     } catch (error: any) {
-      console.error('❌ Failed to update speech rate:', error);
       throw new Error(`Failed to update speech rate: ${error.message}`);
     }
   }
 
   async endGame(gameId: string): Promise<void> {
     try {
-      console.log(`🏁 Ending game with cleanup: ${gameId}`);
 
       return await this.gameMutex.withLock(
         `end-${gameId}`,
@@ -714,14 +698,11 @@ class FirebaseGameService {
             await numberCaller.cleanup();
             this.numberCallers.delete(gameId);
           }
-
-          console.log(`✅ Game ended and cleaned up: ${gameId}`);
         },
         { timeout: 15000, lockTTL: 20000 }
       );
 
     } catch (error: any) {
-      console.error('❌ Failed to end game:', error);
       throw new Error(error.message || 'Failed to end game');
     }
   }
@@ -737,9 +718,7 @@ class FirebaseGameService {
       // Use only pre-generated sequence
       if (gameData.sessionCache && gameData.sessionCache.length > calledNumbers.length) {
         newNumber = gameData.sessionCache[calledNumbers.length];
-        console.log(`🎯 Using pre-generated number ${newNumber} (position ${calledNumbers.length + 1})`);
       } else {
-        console.error('❌ No pre-generated sequence available - ending game');
         await this.endGame(gameId);
         return null;
       }
@@ -750,7 +729,6 @@ class FirebaseGameService {
       };
 
       await update(ref(database, `games/${gameId}/gameState`), updates);
-      console.log(`📢 Called pre-generated number ${newNumber} for game ${gameId}`);
 
       return newNumber;
     } catch (error: any) {
@@ -759,19 +737,18 @@ class FirebaseGameService {
   }
 
   async processNumberCall(gameId: string, number: number): Promise<void> {
-    console.log('🚫 BLOCKED: Legacy processNumberCall in firebase-game.ts called');
-    console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
     throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
   }
 
   async announceWinners(gameId: string, winners: any): Promise<void> {
     try {
       const updates = {
-        lastWinnerAnnouncement: JSON.stringify(winners),
+        lastWinnerAnnouncement: typeof winners === 'string'
+          ? winners
+          : (winners?.announcements ? winners.announcements.join(' ') : 'Prize won!'),
         lastWinnerAt: new Date().toISOString()
       };
       await update(ref(database, `games/${gameId}`), updates);
-      console.log(`🏆 Winners announced for game ${gameId}`);
     } catch (error: any) {
       throw new Error(error.message || 'Failed to announce winners');
     }
@@ -788,7 +765,6 @@ class FirebaseGameService {
    */
   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
     try {
-      console.log(`🎯 Firebase-game: Handling complete number calling for ${gameId}`);
 
       // Use mutex to prevent concurrent calls
       return await this.gameMutex.withLock(
@@ -797,7 +773,6 @@ class FirebaseGameService {
           // Step 1: Validate game can accept calls
           const canCall = await this.validateGameForCalling(gameId);
           if (!canCall.isValid) {
-            console.log(`🚫 Cannot call number: ${canCall.reason}`);
             return false;
           }
 
@@ -812,11 +787,8 @@ class FirebaseGameService {
           const result = await numberCaller.callNextNumber();
 
           if (!result.success) {
-            console.log(`❌ Secure number calling failed: ${result.error}`);
             return false;
           }
-
-          console.log(`✅ Number ${result.number} called successfully via secure caller`);
 
           // Step 4: Process prizes after successful call
           const prizeResult = await this.processPrizesAfterNumberCall(gameId, result.number);
@@ -846,19 +818,13 @@ class FirebaseGameService {
 
           const shouldContinue = numbersRemaining && !allPrizesWon;
 
-          console.log(`📊 Game continuation check:`, {
-            numbersRemaining,
-            allPrizesWon,
-            shouldContinue,
-            totalCalled: stats.totalCalled
-          });
+          // Game continuation check log removed for performance
 
           // Check if game should end
           const isLastNumber = stats.totalCalled >= 90;
           const shouldEndGame = allPrizesWon || isLastNumber;
 
           if (shouldEndGame && !gameData.gameState.gameOver) {
-            console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
 
             const gameRef = ref(database, `games/${gameId}`);
             const now = new Date();
@@ -873,24 +839,18 @@ class FirebaseGameService {
               'lastWinnerAt': now.toISOString(),
               'updatedAt': now.toISOString()
             });
-            console.log(`✅ Game finalizing - scheduled end at ${endTime.toISOString()}`);
 
             // BUG #5: setTimeout is unreliable if browser closes
             // With scheduledEndAt, other clients can recover games stuck in limbo
-            console.log(`🎵 Giving audio 6 seconds to finish...`);
             setTimeout(async () => {
               try {
                 await this.endGame(gameId);
-                console.log(`✅ Game ended successfully after audio delay`);
               } catch (error) {
-                console.error(`❌ Error ending game after timeout:`, error);
               }
             }, 5500);
 
             return false; // Stop calling more numbers
           }
-
-          console.log(`📊 Game stats: ${stats.totalCalled}/90 called, continue: ${shouldContinue}`);
           return shouldContinue;
         },
         {
@@ -900,7 +860,6 @@ class FirebaseGameService {
       );
 
     } catch (error: any) {
-      console.error('❌ Firebase-game: Number calling error:', error);
       return false;
     }
   }
@@ -913,12 +872,20 @@ class FirebaseGameService {
       const gameData = await this.getGameData(gameId);
       if (!gameData) return;
 
+      // FIX: Ensure calledNumbers includes the just-called number
+      // Firebase eventual consistency may cause the read to return stale data
+      const existingNumbers = gameData.gameState.calledNumbers || [];
+      const calledNumbers = existingNumbers.includes(calledNumber)
+        ? existingNumbers
+        : [...existingNumbers, calledNumber];
+
       // Use existing prize validation logic
       const prizeResult = await this.processNumberForPrizes(
         gameData,
         calledNumber,
-        gameData.gameState.calledNumbers || []
+        calledNumbers
       );
+
 
       if (prizeResult.hasWinners) {
         const prizeUpdates = {
@@ -929,14 +896,11 @@ class FirebaseGameService {
 
         const gameRef = ref(database, `games/${gameId}`);
         await update(gameRef, prizeUpdates);
-
-        console.log(`🏆 Prize updates applied for number ${calledNumber}`);
         return prizeResult; // Return the prize result for game ending logic
       }
 
       return null; // No winners
     } catch (error: any) {
-      console.error('❌ Error processing prizes:', error);
       return null;
     }
   }
@@ -946,7 +910,6 @@ class FirebaseGameService {
    */
   async generateGameNumbers(gameId: string): Promise<NumberGenerationResult> {
     try {
-      console.log(`🎯 Starting number generation for game: ${gameId}`);
 
       const gameData = await this.getGameData(gameId);
       if (!gameData) {
@@ -955,7 +918,6 @@ class FirebaseGameService {
 
       // Step 1: Check if admin has already generated numbers
       if (gameData.sessionCache && gameData.sessionMeta?.source === 'admin') {
-        console.log(`🔒 Admin numbers detected - validating existing sequence`);
 
         const validation = await this.validateExistingSequence(gameData);
         if (validation.isValid) {
@@ -965,7 +927,6 @@ class FirebaseGameService {
             source: 'admin'
           };
         } else {
-          console.log(`🔧 Admin sequence needs repair: ${validation.issues.join(', ')}`);
           const repaired = await this.repairSequence(gameData);
           return repaired;
         }
@@ -973,7 +934,6 @@ class FirebaseGameService {
 
       // Step 2: Check if host has already generated numbers
       if (gameData.sessionCache && gameData.sessionMeta?.source === 'host') {
-        console.log(`🏠 Host numbers detected - validating existing sequence`);
 
         const validation = await this.validateExistingSequence(gameData);
         if (validation.isValid) {
@@ -983,19 +943,16 @@ class FirebaseGameService {
             source: 'host'
           };
         } else {
-          console.log(`🔧 Host sequence needs repair: ${validation.issues.join(', ')}`);
           const repaired = await this.repairSequence(gameData);
           return repaired;
         }
       }
 
       // Step 3: Generate new host sequence
-      console.log(`🎲 Generating new host sequence`);
       const generated = await this.generateHostSequence(gameId);
       return generated;
 
     } catch (error: any) {
-      console.error('❌ Number generation failed:', error);
       return {
         success: false,
         numbers: [],
@@ -1040,15 +997,12 @@ class FirebaseGameService {
           issues.push(`Invalid numbers found: ${invalidNumbers.join(', ')}`);
         }
       }
-
-      console.log(`✅ Validation complete. Issues found: ${issues.length}`);
       return {
         isValid: issues.length === 0,
         issues
       };
 
     } catch (error: any) {
-      console.error('❌ Validation error:', error);
       return {
         isValid: false,
         issues: [`Validation failed: ${error.message}`]
@@ -1061,13 +1015,11 @@ class FirebaseGameService {
    */
   private async repairSequence(gameData: GameData): Promise<NumberGenerationResult> {
     try {
-      console.log(`🔧 Starting sequence repair for game: ${gameData.gameId}`);
 
       let numbers = [...(gameData.sessionCache || [])];
 
       // Fix number sequence
       if (numbers.length !== 90) {
-        console.log(`🔧 Fixing sequence length: ${numbers.length} → 90`);
 
         // Get all numbers that should be present
         const allNumbers = Array.from({ length: 90 }, (_, i) => i + 1);
@@ -1096,8 +1048,6 @@ class FirebaseGameService {
       };
 
       await this.saveGameNumbers(gameData.gameId, numbers, sessionMeta);
-
-      console.log(`✅ Sequence repaired successfully`);
       return {
         success: true,
         numbers,
@@ -1105,7 +1055,6 @@ class FirebaseGameService {
       };
 
     } catch (error: any) {
-      console.error('❌ Sequence repair failed:', error);
       return {
         success: false,
         numbers: [],
@@ -1120,7 +1069,6 @@ class FirebaseGameService {
     */
   private async generateHostSequence(gameId: string): Promise<NumberGenerationResult> {
     try {
-      console.log(`🎲 Generating new host sequence for game: ${gameId}`);
 
       // Generate shuffled sequence of numbers 1-90 (only during initial setup)
       const numbers = this.shuffleArray(Array.from({ length: 90 }, (_, i) => i + 1));
@@ -1135,8 +1083,6 @@ class FirebaseGameService {
 
       // Save to Firebase
       await this.saveGameNumbers(gameId, numbers, sessionMeta);
-
-      console.log(`✅ Host sequence generated successfully`);
       return {
         success: true,
         numbers,
@@ -1144,7 +1090,6 @@ class FirebaseGameService {
       };
 
     } catch (error: any) {
-      console.error('❌ Host sequence generation failed:', error);
       return {
         success: false,
         numbers: [],
@@ -1169,10 +1114,8 @@ class FirebaseGameService {
       };
 
       await update(ref(database, `games/${gameId}`), updates);
-      console.log(`✅ Game numbers saved to Firebase: ${gameId}`);
 
     } catch (error: any) {
-      console.error('❌ Failed to save game numbers:', error);
       throw new Error(`Failed to save game numbers: ${error.message}`);
     }
   }
@@ -1200,44 +1143,37 @@ class FirebaseGameService {
 
       if (!gameData) {
         // Don't stop for missing game data - might be network issue
-        console.log('⚠️ Game data not found - treating as temporary issue');
         return { isValid: true };
       }
 
       // STRICT: Always stop for gameOver (no forgiveness)
       // STRICT: Always stop for gameOver or finalizing (no forgiveness)
       if (gameData.gameState.gameOver) {
-        console.log('🛑 Game is over - strictly stopping all number calls');
         return { isValid: false, reason: 'Game has ended' };
       }
 
       if (gameData.gameState.finalizing) {
-        console.log('🛑 Game is finalizing - strictly stopping all number calls');
         return { isValid: false, reason: 'Game is finalizing' };
       }
 
       // STRICT: Always stop if all numbers called
       const calledNumbers = gameData.gameState.calledNumbers || [];
       if (calledNumbers.length >= 90) {
-        console.log('🛑 All 90 numbers called - strictly stopping');
         return { isValid: false, reason: 'All numbers have been called' };
       }
 
       // FORGIVING: Allow calling even if game appears inactive or in countdown
       // These might be temporary states due to network issues
       if (!gameData.gameState.isActive) {
-        console.log('⚠️ Game appears inactive - but continuing anyway (network forgiveness)');
       }
 
       if (gameData.gameState.isCountdown) {
-        console.log('⚠️ Game appears in countdown - but continuing anyway (network forgiveness)');
       }
 
       return { isValid: true };
 
     } catch (error: any) {
       // Don't stop for validation errors - treat as temporary
-      console.log(`⚠️ Validation error - treating as temporary: ${error.message}`);
       return { isValid: true };
     }
   }
@@ -1252,7 +1188,6 @@ class FirebaseGameService {
     number?: number;
     winners?: any;
   }> {
-    console.warn('🚫 DEPRECATED: processCompleteNumberCall called - use callNextNumberAndContinue instead');
     return {
       success: false,
       gameEnded: true,
@@ -1271,7 +1206,6 @@ class FirebaseGameService {
     winners?: any;
   }> {
     try {
-      console.log(`📞 Processing complete number call for game: ${gameId}`);
 
       // Use Firebase transaction for atomic operation
       const gameRef = ref(database, `games/${gameId}`);
@@ -1282,7 +1216,6 @@ class FirebaseGameService {
         }
 
         const calledNumbers = currentGame.gameState.calledNumbers || [];
-        console.log(`🔄 Transaction: Current called numbers length: ${calledNumbers.length}`);
 
         // Select next number
         let selectedNumber: number;
@@ -1291,9 +1224,7 @@ class FirebaseGameService {
         // Use only pre-generated sequence
         if (currentGame.sessionCache && currentGame.sessionCache.length > calledNumbers.length) {
           selectedNumber = currentGame.sessionCache[calledNumbers.length];
-          console.log(`🎯 Transaction: Using pre-generated number ${selectedNumber} (position ${calledNumbers.length + 1})`);
         } else {
-          console.error('❌ No pre-generated sequence available - ending game');
           throw new Error('Game requires pre-generated sequence but none available');
         }
         // Update game state atomically
@@ -1318,7 +1249,6 @@ class FirebaseGameService {
       // Check if transaction was aborted or failed
       // Check if transaction was aborted or failed
       if (!transactionResult.committed) {
-        console.log(`❌ Firebase transaction failed - connection issue`);
         throw new Error('Firebase transaction failed - connection lost');
       }
 
@@ -1326,7 +1256,6 @@ class FirebaseGameService {
 
       // Handle case where no numbers were available
       if (updatedGame.gameState.pendingGameEnd && !updatedGame._transactionMeta) {
-        console.log(`🏁 No more numbers available - game should end after current state`);
         return {
           success: true,
           gameEnded: true,
@@ -1336,8 +1265,6 @@ class FirebaseGameService {
 
       const selectedNumber = updatedGame._transactionMeta.selectedNumber;
       const updatedCalledNumbers = updatedGame._transactionMeta.updatedCalledNumbers;
-
-      console.log(`✅ Transaction committed: Number ${selectedNumber} called successfully`);
 
       // Process prizes (outside transaction for performance)
       const prizeResult = await this.processNumberForPrizes(
@@ -1355,7 +1282,6 @@ class FirebaseGameService {
         };
 
         await update(gameRef, prizeUpdates);
-        console.log(`🏆 Prize updates applied for number ${selectedNumber}`);
       }
 
       // Check if game should end
@@ -1363,15 +1289,9 @@ class FirebaseGameService {
       const isLastNumber = updatedCalledNumbers.length >= 90;
       const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
 
-      console.log(`🔍 Game end check:`, {
-        allPrizesWon,
-        isLastNumber,
-        currentGameOver: updatedGame.gameState.gameOver,
-        shouldEndGame,
-        numbersCalledCount: updatedCalledNumbers.length
-      });
+      // Game end check log removed for performance
+
       if (shouldEndGame && !updatedGame.gameState.gameOver) {
-        console.log(`🏁 Game ending: allPrizesWon=${allPrizesWon}, isLastNumber=${isLastNumber}`);
 
         // Set pending game end - let AudioCoordinator handle the rest
         await update(gameRef, {
@@ -1381,7 +1301,6 @@ class FirebaseGameService {
           'lastWinnerAt': new Date().toISOString(),
           'updatedAt': new Date().toISOString()
         });
-        console.log(`⏳ Game ending queued - letting AudioCoordinator finish sequence`);
       }
 
 
@@ -1395,7 +1314,6 @@ class FirebaseGameService {
       };
 
     } catch (error: any) {
-      console.error('❌ Error in processCompleteNumberCall transaction:', error);
       throw error;
     }
   }
@@ -1481,14 +1399,7 @@ class FirebaseGameService {
 
       // ✅ FIX: Add debug logging for Second Full House
       if (prizeId === 'secondFullHouse') {
-        console.log(`🔧 Second Full House prize update:`, {
-          prizeId,
-          won: prizeUpdate.won,
-          winnersCount: prizeData.winners?.length || 0,
-          hasName: !!prizeUpdate.name,
-          hasOrder: !!prizeUpdate.order,
-          prizeUpdate
-        });
+        // Log removed for performance
       }
     }
 
@@ -1507,9 +1418,6 @@ class FirebaseGameService {
  * Check if all ACTIVE/CONFIGURED prizes are won
  */
   private checkAllPrizesWon(currentPrizes: any, prizeUpdates: any): boolean {
-    console.log(`🔍 Starting prize completion check...`);
-    console.log(`📊 Current prizes:`, Object.keys(currentPrizes || {}));
-    console.log(`📊 Prize updates:`, Object.keys(prizeUpdates || {}));
 
     const allPrizes = { ...currentPrizes };
 
@@ -1519,7 +1427,6 @@ class FirebaseGameService {
         if (updatePath.startsWith('prizes/')) {
           const prizeId = updatePath.replace('prizes/', '');
           allPrizes[prizeId] = { ...allPrizes[prizeId], ...updateData };
-          console.log(`🔄 Applied update for prize ${prizeId}:`, updateData);
         }
       }
     }
@@ -1530,16 +1437,11 @@ class FirebaseGameService {
         prize.name &&
         typeof prize.won === 'boolean' &&
         prize.name !== '';
-
-      console.log(`🎯 Prize ${prizeId}: valid=${isValid}, name="${prize?.name}", won=${prize?.won}`);
       return isValid;
     });
 
-    console.log(`📋 Total configured prizes: ${allConfiguredPrizes.length}`);
-
     // If no prizes configured, don't end based on prize logic
     if (allConfiguredPrizes.length === 0) {
-      console.log(`⚠️ No configured prizes found - game will not end based on prize completion`);
       return false;
     }
 
@@ -1547,12 +1449,8 @@ class FirebaseGameService {
     const wonPrizes = allConfiguredPrizes.filter(([prizeId, prize]) => prize.won === true);
     const allPrizesWon = wonPrizes.length === allConfiguredPrizes.length;
 
-    console.log(`🏆 Prizes won: ${wonPrizes.length}/${allConfiguredPrizes.length}`);
-    console.log(`🏁 All prizes completed: ${allPrizesWon}`);
-
     // List each prize status for debugging
     allConfiguredPrizes.forEach(([prizeId, prize]) => {
-      console.log(`   📌 ${prizeId} (${prize.name}): ${prize.won ? 'WON' : 'NOT WON'}`);
     });
 
     return allPrizesWon;
@@ -1572,18 +1470,14 @@ class FirebaseGameService {
         'updatedAt': new Date().toISOString()
       });
 
-      console.log(`✅ Game countdown started: ${gameId}`);
-
       // ✅ FIX: Server-side safety timeout
       setTimeout(async () => {
         try {
           const gameData = await this.getGameData(gameId);
           if (gameData?.gameState.isCountdown) {
-            console.warn(`🚨 Countdown timeout detected for game ${gameId} - force activating`);
             await this.activateGameAfterCountdown(gameId);
           }
         } catch (error) {
-          console.error('❌ Countdown timeout safety check failed:', error);
         }
       }, 15000); // 15 second safety timeout
 
@@ -1601,10 +1495,7 @@ class FirebaseGameService {
         'gameState/countdownTime': timeLeft,
         'updatedAt': new Date().toISOString()
       });
-
-      console.log(`✅ Countdown updated: ${timeLeft}s remaining for game ${gameId}`);
     } catch (error: any) {
-      console.error('❌ Failed to update countdown time:', error);
       throw new Error(`Failed to update countdown: ${error.message}`);
     }
   }
@@ -1621,8 +1512,6 @@ class FirebaseGameService {
         'gameState/countdownTime': 0,
         'updatedAt': new Date().toISOString()
       });
-
-      console.log(`✅ Game activated after countdown: ${gameId}`);
     } catch (error: any) {
       throw new Error(`Failed to activate game: ${error.message}`);
     }
@@ -1632,7 +1521,6 @@ class FirebaseGameService {
    */
   async completePendingGameEnd(gameId: string): Promise<void> {
     try {
-      console.log(`🏁 Completing pending game end for ${gameId}`);
 
       const gameRef = ref(database, `games/${gameId}`);
 
@@ -1643,7 +1531,6 @@ class FirebaseGameService {
 
         // Only end if there's a pending game end
         if (!currentGame.gameState?.pendingGameEnd) {
-          console.log('No pending game end - skipping');
           return currentGame;
         }
 
@@ -1668,10 +1555,7 @@ class FirebaseGameService {
         this.numberCallers.delete(gameId);
       }
 
-      console.log(`✅ Game ${gameId} ended successfully after audio completion`);
-
     } catch (error: any) {
-      console.error('❌ Failed to complete pending game end:', error);
       throw new Error(error.message || 'Failed to complete pending game end');
     }
   }
@@ -1681,7 +1565,6 @@ class FirebaseGameService {
    */
   async finalizeGameEnd(gameId: string): Promise<void> {
     try {
-      console.log(`🏁 Finalizing game end for ${gameId}`);
 
       const gameRef = ref(database, `games/${gameId}`);
 
@@ -1703,10 +1586,7 @@ class FirebaseGameService {
         };
       });
 
-      console.log(`✅ Game ${gameId} ended successfully after audio completion`);
-
     } catch (error: any) {
-      console.error('❌ Failed to finalize game end:', error);
       throw new Error(error.message || 'Failed to finalize game end');
     }
   }
@@ -1738,10 +1618,7 @@ class FirebaseGameService {
         'lastWinnerAt': new Date().toISOString(),
         'updatedAt': new Date().toISOString()
       });
-
-      console.log(`🚨 Game ended due to error: ${gameId}`);
     } catch (endError) {
-      console.error('❌ Failed to end game after error:', endError);
     }
   }
   // ================== FIREBASE RETRY MECHANISM ==================
@@ -1752,12 +1629,10 @@ class FirebaseGameService {
   private async startFirebaseRetry(gameId: string): Promise<void> {
     // Don't start multiple retry loops for same game
     if (this.firebaseRetryActive.get(gameId)) {
-      console.log('🔄 Firebase retry already active for game:', gameId);
       return;
     }
 
     this.firebaseRetryActive.set(gameId, true);
-    console.log('🔄 Starting Firebase retry mechanism for game:', gameId);
 
     // Clear any existing interval
     const existingInterval = this.firebaseRetryIntervals.get(gameId);
@@ -1768,16 +1643,13 @@ class FirebaseGameService {
     // Retry every 3 seconds
     const retryInterval = setInterval(async () => {
       try {
-        console.log('🔄 Attempting Firebase connection test...');
 
         // Test Firebase with a simple read
-        const testRef = ref(database, `games/${gameId}/gameState/isActive`);
+        const testRef = ref(database, `games/ ${gameId} /gameState/isActive`);
         await get(testRef);
 
-        console.log('✅ Firebase connection restored!');
-
         // Update game state to signal recovery
-        await update(ref(database, `games/${gameId}`), {
+        await update(ref(database, `games / ${gameId} `), {
           firebaseRecovered: true,
           firebaseRecoveredAt: new Date().toISOString()
         });
@@ -1786,7 +1658,6 @@ class FirebaseGameService {
         this.stopFirebaseRetry(gameId);
 
       } catch (error) {
-        console.log('❌ Firebase still unavailable, will retry in 3 seconds...');
       }
     }, 3000);
 
@@ -1803,7 +1674,6 @@ class FirebaseGameService {
       this.firebaseRetryIntervals.delete(gameId);
     }
     this.firebaseRetryActive.set(gameId, false);
-    console.log('🛑 Stopped Firebase retry mechanism for game:', gameId);
   }
 
   /**
@@ -1838,14 +1708,12 @@ class FirebaseGameService {
      * Cleanup all resources
      */
   async cleanup(): Promise<void> {
-    console.log('🧹 Cleaning up FirebaseGameService');
 
     // Cleanup all number callers
     for (const [gameId, caller] of this.numberCallers) {
       try {
         await caller.cleanup();
       } catch (error) {
-        console.warn(`⚠️ Error cleaning up caller for ${gameId}:`, error);
       }
     }
     this.numberCallers.clear();
@@ -1867,7 +1735,6 @@ export const firebaseGame = new FirebaseGameService();
 // Cleanup on process exit
 if (typeof process !== 'undefined') {
   process.on('exit', () => {
-    console.log('🧹 Cleaning up Firebase game service');
     firebaseGame.cleanup();
   });
 }

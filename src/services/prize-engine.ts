@@ -14,7 +14,6 @@ import { FEATURE_FLAGS } from './feature-flags';
  */
 export const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => {
   if (!ticket.rows || !Array.isArray(ticket.rows) || ticket.rows.length !== 3) {
-    console.warn(`Invalid ticket structure for ${ticket.ticketId}`);
     return {
       corners: [],
       center: 0,
@@ -26,7 +25,6 @@ export const computeTicketMetadata = (ticket: TambolaTicket): TicketMetadata => 
 
   for (let i = 0; i < 3; i++) {
     if (!Array.isArray(ticket.rows[i]) || ticket.rows[i].length !== 9) {
-      console.warn(`Invalid row ${i} for ticket ${ticket.ticketId}`);
       return {
         corners: [],
         center: 0,
@@ -352,7 +350,6 @@ const validateEarlyFive = (
     ).length || 0;
     return markedCount >= 5;
   } catch (error) {
-    console.error(`Early Five validation error for ticket ${ticket.ticketId}:`, error);
     return false;
   }
 };
@@ -368,7 +365,6 @@ const validateSecondFullHouse = (
   try {
     // Step 1: Full House must be won first
     if (!prizes.fullHouse.won) {
-      console.log(`⏸️ Second Full House check skipped: Full House not won yet`, { ticketId: ticket.ticketId });
       return false;
     }
 
@@ -376,12 +372,7 @@ const validateSecondFullHouse = (
     const allNumbers = ticket.metadata?.allNumbers || computeTicketMetadata(ticket).allNumbers;
     const hasAllNumbers = allNumbers.every(num => calledNumbers.includes(num));
 
-    console.log(`🔍 Second Full House validation for ${ticket.ticketId}:`, {
-      allNumbers: allNumbers.length,
-      calledNumbers: calledNumbers.length,
-      hasAllNumbers,
-      fullHouseWinners: prizes.fullHouse.winners?.length || 0
-    });
+    // Log removed for performance
 
     // Step 3: Must have all numbers to proceed
     if (!hasAllNumbers) {
@@ -398,12 +389,10 @@ const validateSecondFullHouse = (
 
       // Phase 2 fix: strict validation rejects corrupted data
       if (FEATURE_FLAGS.USE_STRICT_SECOND_FULLHOUSE) {
-        console.error('❌ Rejecting Second Full House - corrupted winners data');
         return false;
       }
 
       // Legacy behavior: allow Second Full House if data is corrupted
-      console.log(`🛡️ Allowing Second Full House due to missing Full House winners data`);
       return true;
     }
 
@@ -411,20 +400,14 @@ const validateSecondFullHouse = (
     const alreadyWonFullHouse = fullHouseWinners.some(winner => winner.ticketId === ticket.ticketId);
 
     if (alreadyWonFullHouse) {
-      console.log(`⏸️ Second Full House excluded: Ticket ${ticket.ticketId} already won Full House`);
       return false;
     }
 
     // Step 6: Success!
-    console.log(`🏆 Second Full House winner found:`, {
-      ticketId: ticket.ticketId,
-      playerName: ticket.playerName,
-      allNumbers: allNumbers.length
-    });
+    // Log removed for performance
     return true;
 
   } catch (error) {
-    console.error(`Second Full House validation error for ticket ${ticket.ticketId}:`, error);
     return false;
   }
 };
@@ -442,7 +425,6 @@ export const validateTicketsForPrizes = async (
   const winners: { [prizeId: string]: any } = {};
 
   for (const [prizeId, prize] of Object.entries(prizes)) {
-    console.log(`🔍 Prize Loop: ${prizeId}, won: ${prize.won}`);
     if (prize.won) continue;
 
     const prizeWinners: { name: string; ticketId: string; phone?: string }[] = [];
@@ -488,7 +470,6 @@ export const validateTicketsForPrizes = async (
         let hasWon = false;
 
         try {
-          console.log(`🎯 Entering switch for: ${prizeId} (ticket: ${ticketId})`);
           switch (prizeId) {
             case 'earlyFive':
               hasWon = validateEarlyFive(ticket, calledNumbers);
@@ -505,13 +486,11 @@ export const validateTicketsForPrizes = async (
             case 'corners':
               const corners = getTicketCorners(ticket);
               hasWon = corners.every(corner => calledNumbers.includes(corner));
-              console.log(`🎯 Corners check:`, { ticketId, corners, hasWon });
               break;
 
             case 'starCorner':
               const starCorners = getStarCorners(ticket);
               hasWon = starCorners.every(corner => calledNumbers.includes(corner));
-              console.log(`⭐ Star corners check:`, { ticketId, starCorners, hasWon });
               break;
 
             case 'topLine':
@@ -527,27 +506,20 @@ export const validateTicketsForPrizes = async (
               break;
 
             default:
-              console.warn(`Unknown prize type: ${prizeId} - skipping validation`);
               continue;
           }
         } catch (error) {
-          console.error(`Prize validation error for ${prizeId} on ticket ${ticketId}:`, error);
           hasWon = false;
         }
 
         if (hasWon) {
-          console.log(`✅ Adding ${prizeId} winner:`, {
-            name: ticket.playerName,
-            ticketId: ticket.ticketId,
-            phone: ticket.playerPhone
-          });
+          // Log removed for performance
           prizeWinners.push({
             name: ticket.playerName,
             ticketId: ticket.ticketId,
             phone: ticket.playerPhone
           });
         } else if (prizeId === 'secondFullHouse') {
-          console.log(`❌ Second Full House NOT won for ticket ${ticket.ticketId}`);
         }
       }
     }
@@ -562,7 +534,6 @@ export const validateTicketsForPrizes = async (
 
   const endTime = Date.now();
   if (process.env.NODE_ENV === 'development' && endTime - startTime > 50) {
-    console.warn(`Slow prize validation: ${endTime - startTime}ms for ${Object.keys(tickets).length} tickets`);
   }
 
   return { winners };

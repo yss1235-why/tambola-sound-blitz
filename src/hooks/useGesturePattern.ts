@@ -70,7 +70,6 @@ export const useGesturePattern = (
   // Reset gesture state
   const resetGesture = useCallback(() => {
     if (config.debugMode) {
-      console.log('🎯 Gesture: Reset');
     }
     setGestureState(prev => ({
       ...prev,
@@ -89,9 +88,7 @@ export const useGesturePattern = (
       const shouldCooldown = newFailedAttempts >= config.maxFailedAttempts;
       
       if (config.debugMode) {
-        console.log(`🎯 Gesture: Failed attempt ${newFailedAttempts}/${config.maxFailedAttempts}`);
         if (shouldCooldown) {
-          console.log(`🎯 Gesture: Cooldown activated for ${config.cooldownPeriod}ms`);
         }
       }
 
@@ -110,7 +107,6 @@ export const useGesturePattern = (
             failedAttempts: 0
           }));
           if (config.debugMode) {
-            console.log('🎯 Gesture: Cooldown ended');
           }
         }, config.cooldownPeriod);
 
@@ -145,7 +141,6 @@ export const useGesturePattern = (
     if (gestureState.isInCooldown) {
       if (config.debugMode) {
         const remainingTime = Math.max(0, gestureState.cooldownEndTime - Date.now());
-        console.log(`🎯 Gesture: In cooldown, ${Math.ceil(remainingTime / 1000)}s remaining`);
       }
       return;
     }
@@ -173,7 +168,6 @@ export const useGesturePattern = (
     if (zone === 'invalid') {
       if (gestureState.isActive) {
         if (config.debugMode) {
-          console.log('🎯 Gesture: Invalid zone touched, resetting');
         }
         handleFailedAttempt();
       }
@@ -188,7 +182,6 @@ export const useGesturePattern = (
     if (!gestureState.isActive) {
       if (zone === expectedZone) {
         if (config.debugMode) {
-          console.log(`🎯 Gesture: Started, step 0, zone ${zone}`);
         }
         setGestureState(prev => ({
           ...prev,
@@ -205,7 +198,6 @@ export const useGesturePattern = (
     // Check total time limit
     if (now - gestureState.startTime > config.totalTimeLimit) {
       if (config.debugMode) {
-        console.log('🎯 Gesture: Total time limit exceeded');
       }
       handleFailedAttempt();
       return;
@@ -214,7 +206,6 @@ export const useGesturePattern = (
     // Check if we're in the expected zone
     if (zone !== expectedZone) {
       if (config.debugMode) {
-        console.log(`🎯 Gesture: Wrong zone ${zone}, expected ${expectedZone}`);
       }
       handleFailedAttempt();
       return;
@@ -223,7 +214,6 @@ export const useGesturePattern = (
     // Check tap timing within zone
     if (now - gestureState.lastTapTime > config.tapTimeLimit) {
       if (config.debugMode) {
-        console.log('🎯 Gesture: Tap timing too slow');
       }
       handleFailedAttempt();
       return;
@@ -232,7 +222,6 @@ export const useGesturePattern = (
     const newTapCount = gestureState.currentZoneTaps + 1;
     
     if (config.debugMode) {
-      console.log(`🎯 Gesture: Step ${gestureState.currentStep}, tap ${newTapCount}/${expectedTaps} in ${zone}`);
     }
 
     // Check if we completed the current step
@@ -242,7 +231,6 @@ export const useGesturePattern = (
       // Check if we completed the entire pattern
       if (nextStep >= config.pattern.length) {
         if (config.debugMode) {
-          console.log('🎯 Gesture: Pattern completed! 🎉');
         }
         resetGesture();
         onPatternComplete();
@@ -251,7 +239,6 @@ export const useGesturePattern = (
 
       // Move to next step
       if (config.debugMode) {
-        console.log(`🎯 Gesture: Step ${gestureState.currentStep} completed, moving to step ${nextStep}`);
       }
       setGestureState(prev => ({
         ...prev,
@@ -269,7 +256,6 @@ export const useGesturePattern = (
     } else {
       // Too many taps in current zone
       if (config.debugMode) {
-        console.log('🎯 Gesture: Too many taps in zone');
       }
       handleFailedAttempt();
     }

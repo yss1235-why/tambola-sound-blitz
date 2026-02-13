@@ -38,7 +38,7 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
     const winnerCount = prize.winners?.length || 0;
     return {
       status: 'won',
-      icon: 'ðŸ†',
+      icon: '†',
       className: 'bg-accent/10 border-accent/30',
       badgeVariant: 'default' as const,
       statusText: `Won by ${winnerCount} player${winnerCount !== 1 ? 's' : ''}`
@@ -143,7 +143,7 @@ export const PrizeManagementPanel: React.FC<PrizeManagementPanelProps> = ({
                                 {prize.winners.map((winner, index) => (
                                   <div key={index} className="flex items-center justify-between text-sm">
                                     <span className="font-medium text-foreground">
-                                      ðŸŽ‰ {winner.name} - Ticket {winner.ticketId}
+                                      {winner.name} - {winner.ticketId?.includes(',') ? `Tickets ${winner.ticketId}` : `Ticket ${winner.ticketId}`}
                                     </span>
                                     {winner.phone && (
                                       <span className="text-muted-foreground flex items-center">

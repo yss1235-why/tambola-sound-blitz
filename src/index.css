@@ -351,7 +351,7 @@
 
   /* Loading and animation styles */
   .loading-spinner {
-    @apply animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600;
+    @apply animate-spin rounded-full h-6 w-6 border-b-2 border-primary;
   }
 
   .loading-dots {
@@ -359,7 +359,7 @@
   }
 
   .loading-dot {
-    @apply w-2 h-2 bg-blue-600 rounded-full animate-bounce;
+    @apply w-2 h-2 bg-primary rounded-full animate-bounce;
   }
 
   .loading-dot:nth-child(1) { animation-delay: 0ms; }
@@ -507,9 +507,7 @@
 
   /* Dark mode support (if needed) - with proper contrast */
 @media (prefers-color-scheme: dark) {
-  .number-cell {
-    @apply from-slate-700 to-slate-800 text-slate-100 border-slate-600;
-  }
+  /* number-cell colors handled by theme system via CSS variables */
 
   /* Keep our custom ticket colors even in dark mode */
   .ticket-cell.number {

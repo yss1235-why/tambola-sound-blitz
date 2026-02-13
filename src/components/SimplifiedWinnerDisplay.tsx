@@ -1,4 +1,4 @@
-﻿// src/components/SimplifiedWinnerDisplay.tsx - VERIFIED: Mobile-optimized winner display for hosts
+// src/components/SimplifiedWinnerDisplay.tsx - VERIFIED: Mobile-optimized winner display for hosts
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { audioCoordinator } from '@/services/AudioCoordinator';
 
 interface SimplifiedWinnerDisplayProps {
   gameData: GameData;
-  onCreateNewGame: () => void; // âœ… VERIFIED: Correct function signature for the flow
+  onCreateNewGame: () => void; // VERIFIED: Correct function signature for the flow
 }
 
 export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = ({
@@ -18,69 +18,69 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
 }) => {
   const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
-  // ðŸ”Š Game Over Audio Announcement
-  // ðŸ”Š Game Over Audio Announcement - MEGA FUN VERSION!
+  // �� Game Over Audio Announcement
+  // �� Game Over Audio Announcement - MEGA FUN VERSION!
   React.useEffect(() => {
     // HUGE array of fun celebration messages!
     const funMessages = [
-      // ðŸŽŠ Classic Celebrations
+      // �� Classic Celebrations
       `Game Over! Woohoo! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} emerged victorious! Party time!`,
       `And that's a wrap folks! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are taking home the glory!`,
       `Boom! Game Over! High fives to our ${totalWinners} superstar${totalWinners !== 1 ? 's' : ''}! You rocked it!`,
       `Ladies and gentlemen, the game has ended! Let's hear it for our ${totalWinners} amazing winner${totalWinners !== 1 ? 's' : ''}!`,
       `That's all folks! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} can now do the victory dance!`,
 
-      // ðŸŽ¯ Energetic & Exciting
+      // Energetic & Exciting
       `Game Over! ${totalWinners} legend${totalWinners !== 1 ? 's' : ''} have conquered the game! Absolutely brilliant!`,
       `Stop the press! Game Over! We have ${totalWinners} incredible winner${totalWinners !== 1 ? 's' : ''}! Take a bow!`,
       `Ding ding ding! That's a game! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are celebrating tonight!`,
       `Jackpot! Game finished! ${totalWinners} lucky winner${totalWinners !== 1 ? 's' : ''} hit the jackpot! Amazing!`,
       `Holy moly! That's a wrap! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} crushed it! Outstanding!`,
 
-      // ðŸ˜„ Funny & Quirky
+      // �� Funny & Quirky
       `Bingo! Oh wait, wrong game! Tambola Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} for the win!`,
       `Alert! Alert! Game Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} detected! Initiating celebration protocol!`,
       `Breaking news! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} just won! In other news, everyone else didn't!`,
       `Houston, we have winners! ${totalWinners} of them to be exact! Mission accomplished!`,
       `Roses are red, violets are blue, game is over, ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} woohoo!`,
 
-      // ðŸŽª Circus/Show Style
+      // �� Circus/Show Style
       `Step right up! Step right up! We have ${totalWinners} magnificent winner${totalWinners !== 1 ? 's' : ''}! Spectacular!`,
       `Roll up! Roll up! The show is over! ${totalWinners} star${totalWinners !== 1 ? 's' : ''} steal the spotlight!`,
       `And the crowd goes wild! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} take the stage! Bravo!`,
       `Ladies and gents, boys and girls! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} have triumphed!`,
 
-      // ðŸ† Sports Commentary Style
+      // �� Sports Commentary Style
       `And it's all over! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} cross the finish line! What a match!`,
       `The final whistle blows! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} take home the trophy!`,
       `Game, set, match! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} claim victory! Sensational!`,
       `And that's the final bell! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are knockout champions!`,
       `Goal! Wait no, Game Over! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} score big time!`,
 
-      // ðŸŽ® Game Show Host Style
+      // Game Show Host Style
       `Survey says... Game Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} take the prize! Fantastic!`,
       `Come on down! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''}, you're the next Tambola champion${totalWinners !== 1 ? 's' : ''}!`,
       `Wheel... of... Fortune! Oh sorry, Tambola Over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} win big!`,
       `Is that your final answer? Yes! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} got it right!`,
 
-      // ðŸŒŸ Motivational/Epic
+      // �� Motivational/Epic
       `Champions are made today! ${totalWinners} hero${totalWinners !== 1 ? 'es' : ''} rise to glory! Epic win!`,
       `History in the making! ${totalWinners} legend${totalWinners !== 1 ? 's' : ''} write their names in gold!`,
       `Dreams come true! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} achieve greatness! Inspiring!`,
       `Against all odds! ${totalWinners} warrior${totalWinners !== 1 ? 's' : ''} claim victory! Phenomenal!`,
 
-      // ðŸŽ­ Dramatic/Theatre
+      // �� Dramatic/Theatre
       `And scene! The curtain falls! ${totalWinners} star${totalWinners !== 1 ? 's' : ''} take their final bow!`,
       `The show must go on! But not this one, it's over! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''}! Magnificent!`,
       `Exit stage left! But first, congratulate our ${totalWinners} brilliant performer${totalWinners !== 1 ? 's' : ''}!`,
 
-      // ðŸš€ Modern/Tech Style
+      // �� Modern/Tech Style
       `Download complete! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} successfully installed! GG!`,
       `Achievement unlocked! ${totalWinners} player${totalWinners !== 1 ? 's' : ''} completed the mission! Level up!`,
       `Victory.exe has loaded! ${totalWinners} user${totalWinners !== 1 ? 's' : ''} won the game! Press F to pay respects!`,
       `404 Error: Losers not found! Just kidding! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} found instead!`,
 
-      // ðŸ¾ Party/Celebration
+      // �� Party/Celebration
       `Pop the champagne! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} are partying tonight! Cheers!`,
       `Confetti cannon ready! Fire! ${totalWinners} champion${totalWinners !== 1 ? 's' : ''} deserve a celebration!`,
       `DJ, drop the beat! ${totalWinners} winner${totalWinners !== 1 ? 's' : ''} own the dance floor! Let's party!`,
@@ -93,15 +93,11 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
     // AUDIO-001 FIX: Use audioCoordinator instead of direct speechSynthesis
     // This prevents killing other queued audio and ensures proper sequencing
     const timer = setTimeout(() => {
-      console.log('ðŸŽ¯ Queueing Game Over audio via audioCoordinator:', randomMessage);
 
-      // Queue the game over audio through the coordinator
-      // Note: audioCoordinator.playGameOverAudio uses a fixed message,
-      // so we log the fun message but let the coordinator handle audio
-      audioCoordinator.playGameOverAudio(() => {
-        console.log('âœ… SimplifiedWinnerDisplay: Game over audio completed');
+      // Play congratulations audio on the winner page
+      // (Game-over audio already played before page switch via AudioManager)
+      audioCoordinator.playCongratulationsAudio(() => {
       }).catch(error => {
-        console.error('âŒ SimplifiedWinnerDisplay: Game over audio failed:', error);
       });
     }, 2000); // 2 second delay
 
@@ -112,9 +108,7 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
     };
   }, []); // Empty dependency array = runs once when component mounts
 
-  // âœ… PRESERVE: All existing console logs for debugging
-  console.log('ðŸ† SimplifiedWinnerDisplay rendered for game:', gameData.gameId);
-  console.log('ðŸ“Š Winner summary:', { totalWinners, prizesWon: wonPrizes.length });
+  // PRESERVE: All existing console logs for debugging
 
   return (
     <div className="min-h-screen bg-background p-2 sm:p-4">
@@ -212,8 +206,6 @@ export const SimplifiedWinnerDisplay: React.FC<SimplifiedWinnerDisplayProps> = (
           <CardContent className="p-3 sm:p-4 text-center">
             <Button
               onClick={() => {
-                console.log('ðŸŽ® Host clicked Create New Game from winner display');
-                console.log('ðŸ”„ Triggering flow: Alert â†’ Setup Mode â†’ Configure â†’ Create & Open Booking');
                 onCreateNewGame(); // This will trigger the alert and flow in GameHost.tsx
               }}
               className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 text-sm sm:text-base font-semibold w-full sm:w-auto"

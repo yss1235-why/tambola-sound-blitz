@@ -1,4 +1,4 @@
-﻿// src/components/AudioStatusComponent.tsx - FIXED: Show audio status for both hosts and users
+// src/components/AudioStatusComponent.tsx - FIXED: Show audio status for both hosts and users
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -69,7 +69,6 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
       const success = await new Promise<boolean>((resolve) => {
         testUtterance.onend = () => resolve(true);
         testUtterance.onerror = (event) => {
-          console.error('Audio test failed:', event.error);
           setAudioError(event.error === 'not-allowed'
             ? 'Audio blocked by browser. Please check browser settings.'
             : `Audio error: ${event.error}`
@@ -92,7 +91,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
     }
   };
 
-  // âœ… FIXED: Auto-hide notification if audio is working
+  // FIXED: Auto-hide notification if audio is working
   useEffect(() => {
     if (audioSupported && audioEnabled && !audioError) {
       const timer = setTimeout(() => setShowNotification(false), 5000);
@@ -139,7 +138,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
     );
   }
 
-  // âœ… FIXED: CHANGE 3 - Disable user notifications
+  // FIXED: CHANGE 3 - Disable user notifications
   if (!showInGameHost) {
     return null;
   }
@@ -164,7 +163,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
                   className={`text-xs ${audioEnabled ? 'text-accent border-accent/40' : 'text-primary border-primary/40'
                     }`}
                 >
-                  ðŸ”Š Game Audio
+                  �� Game Audio
                 </Badge>
                 <Button
                   variant="ghost"
@@ -172,21 +171,21 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
                   onClick={() => setShowNotification(false)}
                   className="h-4 w-4 p-0 text-muted-foreground hover:text-foreground"
                 >
-                  Ã—
+                  ×
                 </Button>
               </div>
 
               {audioEnabled ? (
                 <p className="text-sm text-accent mb-2">
-                  âœ… Audio enabled! You'll hear number announcements during the game.
+                  Audio enabled! You'll hear number announcements during the game.
                 </p>
               ) : (
                 <p className="text-sm text-foreground mb-2">
                   {!audioSupported
-                    ? 'âŒ Audio not supported in this browser'
+                    ? '❌ Audio not supported in this browser'
                     : !userInteracted
-                      ? 'ðŸ‘† Click anywhere to enable game audio'
-                      : audioError || 'ðŸ”‡ Audio disabled - click to enable'
+                      ? '�� Click anywhere to enable game audio'
+                      : audioError || '�� Audio disabled - click to enable'
                   }
                 </p>
               )}
@@ -204,7 +203,7 @@ export const AudioStatusComponent: React.FC<AudioStatusComponentProps> = ({
 
               {!audioSupported && (
                 <p className="text-xs text-muted-foreground mt-2">
-                  ðŸ’¡ Try using Chrome, Firefox, or Safari for audio support
+                  �� Try using Chrome, Firefox, or Safari for audio support
                 </p>
               )}
             </div>

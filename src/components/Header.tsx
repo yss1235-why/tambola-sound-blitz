@@ -1,11 +1,11 @@
-// src/components/Header.tsx - OPTIMIZED: Works with lazy authentication system
+// src/components/Header.tsx - UNIFIED: Single login dialog for both Host and Admin
 import React, { useState, useEffect } from 'react';
 import { useHostControls } from '@/providers/HostControlsProvider';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogIn, Menu, LogOut, User, Loader2, ImageIcon, Shield } from 'lucide-react';
+import { LogIn, LogOut, User, Loader2, ImageIcon } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,11 +22,12 @@ interface HeaderProps {
   authError: string | null;
   authInitialized: boolean;
   onRequestLogin: () => Promise<void>;
-  onUserLogin: (type: 'admin' | 'host', email: string, password: string) => Promise<boolean>;
+  onUserLogin: (email: string, password: string) => Promise<boolean>;
   onUserLogout: () => Promise<boolean>;
   onClearError: () => void;
   forceShowAdminLogin?: boolean;
   onAdminLoginClose?: () => void;
+  businessName?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -40,7 +41,8 @@ export const Header: React.FC<HeaderProps> = ({
   onUserLogout,
   onClearError,
   forceShowAdminLogin = false,
-  onAdminLoginClose
+  onAdminLoginClose,
+  businessName
 }) => {
   // Safely try to get host controls - may not be available on public pages
   let hostControls = null;
@@ -48,35 +50,28 @@ export const Header: React.FC<HeaderProps> = ({
     hostControls = useHostControls();
   } catch (error) {
     // HostControlsProvider not available (public pages) - this is fine
-    console.log('HostControls not available - public page');
   }
 
-  // Local state for dialog management
-  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
-  const [isHostLoginOpen, setIsHostLoginOpen] = useState(false);
+  // Single unified login state
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isPremiumLightTheme, setIsPremiumLightTheme] = useState(
     typeof document !== 'undefined' &&
     document.documentElement.getAttribute('data-theme-preset') === 'premiumLight'
   );
 
-  // Login form states
-  const [adminForm, setAdminForm] = useState({
+  // Single login form
+  const [loginForm, setLoginForm] = useState({
     email: '',
     password: ''
   });
 
-  const [hostForm, setHostForm] = useState({
-    email: '',
-    password: ''
-  });
-  // ✅ NEW: Handle forced admin login from gesture
+  // Handle forced login from gesture detection
   useEffect(() => {
-    if (forceShowAdminLogin && !isAdminLoginOpen) {
-      console.log('🎯 Gesture triggered admin login dialog');
-      setIsAdminLoginOpen(true);
+    if (forceShowAdminLogin && !isLoginOpen) {
+      setIsLoginOpen(true);
     }
-  }, [forceShowAdminLogin, isAdminLoginOpen]);
+  }, [forceShowAdminLogin, isLoginOpen]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -91,92 +86,55 @@ export const Header: React.FC<HeaderProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  // ✅ NEW: Handle login dialog opening (triggers auth initialization)
-  const handleOpenLogin = async (type: 'admin' | 'host') => {
+  // Open login dialog
+  const handleOpenLogin = async () => {
     try {
-      // Clear any previous errors
       if (authError) {
         onClearError();
       }
-
-      // Initialize auth system if not already done
       if (!authInitialized) {
-        console.log('🔐 Login requested, initializing auth system...');
         await onRequestLogin();
       }
-
-      // Open appropriate dialog
-      if (type === 'admin') {
-        setIsAdminLoginOpen(true);
-      } else {
-        setIsHostLoginOpen(true);
-      }
+      setIsLoginOpen(true);
     } catch (error) {
-      console.error('Failed to initialize auth for login:', error);
     }
   };
 
-  // ✅ NEW: Handle admin login
-  const handleAdminLogin = async () => {
-    if (!adminForm.email.trim() || !adminForm.password.trim()) {
+  // Unified login handler
+  const handleLogin = async () => {
+    if (!loginForm.email.trim() || !loginForm.password.trim()) {
       return;
     }
 
     setIsLoggingIn(true);
 
     try {
-      const success = await onUserLogin('admin', adminForm.email, adminForm.password);
+      const success = await onUserLogin(loginForm.email, loginForm.password);
 
       if (success) {
-        setIsAdminLoginOpen(false);
-        setAdminForm({ email: '', password: '' });
+        setIsLoginOpen(false);
+        setLoginForm({ email: '', password: '' });
       }
     } catch (error) {
       // Error handling is done by parent component
-      console.error('Admin login failed:', error);
     } finally {
       setIsLoggingIn(false);
     }
   };
 
-  // ✅ NEW: Handle host login
-  const handleHostLogin = async () => {
-    if (!hostForm.email.trim() || !hostForm.password.trim()) {
-      return;
-    }
-
-    setIsLoggingIn(true);
-
-    try {
-      const success = await onUserLogin('host', hostForm.email, hostForm.password);
-
-      if (success) {
-        setIsHostLoginOpen(false);
-        setHostForm({ email: '', password: '' });
-      }
-    } catch (error) {
-      // Error handling is done by parent component
-      console.error('Host login failed:', error);
-    } finally {
-      setIsLoggingIn(false);
-    }
-  };
-
-  // ✅ NEW: Handle logout
+  // Handle logout
   const handleLogout = async () => {
     try {
       await onUserLogout();
     } catch (error) {
-      console.error('Logout failed:', error);
     }
   };
 
-  // ✅ NEW: Handle dialog close (clears forms)
-  // ✅ NEW: Enhanced close handler for gesture support
-  const handleCloseAdminDialog = (open: boolean) => {
+  // Handle dialog close
+  const handleCloseDialog = (open: boolean) => {
     if (!open) {
-      setIsAdminLoginOpen(false);
-      setAdminForm({ email: '', password: '' });
+      setIsLoginOpen(false);
+      setLoginForm({ email: '', password: '' });
       if (authError) onClearError();
       if (onAdminLoginClose) {
         onAdminLoginClose();
@@ -184,11 +142,8 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
-  const handleCloseHostDialog = () => {
-    setIsHostLoginOpen(false);
-    setHostForm({ email: '', password: '' });
-    if (authError) onClearError();
-  };
+  // Display title: use businessName if available, show nothing during loading
+  const displayTitle = businessName || '';
 
   return (
     <header className="bg-card/90 backdrop-blur-sm shadow-lg border-b-2 border-primary">
@@ -196,7 +151,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Friend's Tambola
+              {displayTitle}
             </h1>
           </div>
 
@@ -219,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
           <div className="flex items-center space-x-2">
             {currentUser ? (
-              // ✅ EXISTING: Authenticated user dropdown (unchanged)
+              // Authenticated user dropdown
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -254,7 +209,7 @@ export const Header: React.FC<HeaderProps> = ({
                   </div>
                   <DropdownMenuSeparator />
 
-                  {/* NEW: Create Poster Button */}
+                  {/* Create Poster Button */}
                   <DropdownMenuItem
                     onClick={() => window.open('https://tambolapos.netlify.app/', '_blank')}
                     className="cursor-pointer"
@@ -270,87 +225,30 @@ export const Header: React.FC<HeaderProps> = ({
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : isPremiumLightTheme ? (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-2 border-primary/40 text-primary hover:bg-primary/10 font-semibold"
-                  disabled={authLoading}
-                  onClick={() => handleOpenLogin('host')}
-                >
-                  {authLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <User className="w-4 h-4 mr-2" />
-                  )}
-                  Host Login
-                </Button>
-                <Button
-                  size="sm"
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 font-semibold"
-                  disabled={authLoading}
-                  onClick={() => handleOpenLogin('admin')}
-                >
-                  {authLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Shield className="w-4 h-4 mr-2" />
-                  )}
-                  Admin Login
-                </Button>
-              </div>
             ) : (
-              // ? NEW: Login dropdown (triggers lazy auth)
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-2 border-primary/40 text-primary hover:bg-primary/10 font-semibold"
-                    disabled={authLoading}
-                  >
-                    {authLoading ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Menu className="w-4 h-4 mr-2" />
-                    )}
-                    Login
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      handleOpenLogin('host');
-                    }}
-                    className="cursor-pointer"
-                    disabled={authLoading}
-                  >
-                    <LogIn className="w-4 h-4 mr-2" />
-                    Host Login
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      handleOpenLogin('admin');
-                    }}
-                    className="cursor-pointer"
-                    disabled={authLoading}
-                  >
-                    <LogIn className="w-4 h-4 mr-2" />
-                    Admin Login
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              // Single Login button
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-2 border-primary/40 text-primary hover:bg-primary/10 font-semibold"
+                disabled={authLoading}
+                onClick={handleOpenLogin}
+              >
+                {authLoading ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <LogIn className="w-4 h-4 mr-2" />
+                )}
+                Login
+              </Button>
             )}
 
-            {/* ✅ NEW: Host Login Dialog (with auth initialization) */}
-            <Dialog open={isHostLoginOpen} onOpenChange={handleCloseHostDialog}>
+            {/* Unified Login Dialog */}
+            <Dialog open={isLoginOpen} onOpenChange={handleCloseDialog}>
               <DialogContent className="sm:max-w-md bg-card border-2 border-border">
                 <DialogHeader>
                   <DialogTitle className="text-foreground flex items-center">
-                    Host Login
+                    Login
                     {!authInitialized && (
                       <Loader2 className="w-4 h-4 ml-2 animate-spin text-primary" />
                     )}
@@ -371,37 +269,37 @@ export const Header: React.FC<HeaderProps> = ({
                   )}
 
                   <div>
-                    <Label htmlFor="host-email" className="text-foreground font-medium">Email</Label>
+                    <Label htmlFor="login-email" className="text-foreground font-medium">Email</Label>
                     <Input
-                      id="host-email"
+                      id="login-email"
                       type="email"
                       placeholder="Enter your email"
                       required
-                      value={hostForm.email}
-                      onChange={(e) => setHostForm(prev => ({ ...prev, email: e.target.value }))}
-                      onKeyPress={(e) => e.key === 'Enter' && !hostForm.password && document.getElementById('host-password')?.focus()}
+                      value={loginForm.email}
+                      onChange={(e) => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                      onKeyPress={(e) => e.key === 'Enter' && !loginForm.password && document.getElementById('login-password')?.focus()}
                       className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="host-password" className="text-foreground font-medium">Password</Label>
+                    <Label htmlFor="login-password" className="text-foreground font-medium">Password</Label>
                     <Input
-                      id="host-password"
+                      id="login-password"
                       type="password"
                       placeholder="Enter your password"
                       required
-                      value={hostForm.password}
-                      onChange={(e) => setHostForm(prev => ({ ...prev, password: e.target.value }))}
-                      onKeyPress={(e) => e.key === 'Enter' && hostForm.email && hostForm.password && authInitialized && handleHostLogin()}
+                      value={loginForm.password}
+                      onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                      onKeyPress={(e) => e.key === 'Enter' && loginForm.email && loginForm.password && authInitialized && handleLogin()}
                       className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
                       disabled={isLoggingIn || !authInitialized}
                     />
                   </div>
                   <Button
-                    onClick={handleHostLogin}
+                    onClick={handleLogin}
                     className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    disabled={isLoggingIn || !authInitialized || !hostForm.email || !hostForm.password}
+                    disabled={isLoggingIn || !authInitialized || !loginForm.email || !loginForm.password}
                   >
                     {isLoggingIn ? (
                       <>
@@ -409,83 +307,7 @@ export const Header: React.FC<HeaderProps> = ({
                         Logging in...
                       </>
                     ) : (
-                      'Login as Host'
-                    )}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            {/* ✅ NEW: Admin Login Dialog (with auth initialization) */}
-            <Dialog open={isAdminLoginOpen} onOpenChange={handleCloseAdminDialog}>
-              <DialogContent className="sm:max-w-md bg-card border-2 border-border">
-                <DialogHeader>
-                  <DialogTitle className="text-foreground flex items-center">
-                    Admin Login
-                    {!authInitialized && (
-                      <Loader2 className="w-4 h-4 ml-2 animate-spin text-primary" />
-                    )}
-                  </DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="p-3 bg-accent/10 rounded-lg border border-accent/30">
-                    <p className="text-sm text-accent font-medium">Admin Login</p>
-                    <p className="text-xs text-accent/80">Enter your admin credentials</p>
-                  </div>
-
-                  {!authInitialized && (
-                    <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
-                      <p className="text-sm text-primary font-medium">Initializing authentication...</p>
-                      <p className="text-xs text-primary/80">Please wait while we set up the login system</p>
-                    </div>
-                  )}
-
-                  {authError && (
-                    <div className="p-3 bg-destructive/10 rounded-lg border border-destructive/30">
-                      <p className="text-sm text-destructive">{authError}</p>
-                    </div>
-                  )}
-
-                  <div>
-                    <Label htmlFor="admin-email" className="text-foreground font-medium">Email</Label>
-                    <Input
-                      id="admin-email"
-                      type="email"
-                      placeholder="Enter your email"
-                      required
-                      value={adminForm.email}
-                      onChange={(e) => setAdminForm(prev => ({ ...prev, email: e.target.value }))}
-                      onKeyPress={(e) => e.key === 'Enter' && !adminForm.password && document.getElementById('admin-password')?.focus()}
-                      className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
-                      disabled={isLoggingIn || !authInitialized}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="admin-password" className="text-foreground font-medium">Password</Label>
-                    <Input
-                      id="admin-password"
-                      type="password"
-                      placeholder="Enter your password"
-                      required
-                      value={adminForm.password}
-                      onChange={(e) => setAdminForm(prev => ({ ...prev, password: e.target.value }))}
-                      onKeyPress={(e) => e.key === 'Enter' && adminForm.email && adminForm.password && authInitialized && handleAdminLogin()}
-                      className="border-2 border-border focus:border-ring bg-background text-foreground placeholder:text-muted-foreground"
-                      disabled={isLoggingIn || !authInitialized}
-                    />
-                  </div>
-                  <Button
-                    onClick={handleAdminLogin}
-                    className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
-                    disabled={isLoggingIn || !authInitialized || !adminForm.email || !adminForm.password}
-                  >
-                    {isLoggingIn ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Logging in...
-                      </>
-                    ) : (
-                      'Login as Admin'
+                      'Login'
                     )}
                   </Button>
                 </div>

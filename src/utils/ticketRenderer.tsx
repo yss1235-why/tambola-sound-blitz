@@ -4,6 +4,24 @@ import { TambolaTicket } from '@/services/firebase';
 import { Clock, AlertCircle, CheckCircle } from 'lucide-react';
 import { computeTicketMetadata } from '../services/prize-engine';
 
+/**
+ * Shared utility: Resolve a winner's ticketId (which may be comma-separated for
+ * Half Sheet / Full Sheet prizes) into actual ticket objects.
+ */
+export const resolveWinnerTickets = (
+  ticketId: string,
+  tickets: { [id: string]: TambolaTicket }
+): { isMultiTicket: boolean; ticketIds: string[]; tickets: TambolaTicket[] } => {
+  const isMultiTicket = ticketId?.includes(',') ?? false;
+  const ticketIds = isMultiTicket
+    ? ticketId.split(',').map(id => id.trim())
+    : [ticketId];
+  const resolved = ticketIds
+    .map(id => tickets[id])
+    .filter(Boolean);
+  return { isMultiTicket, ticketIds, tickets: resolved };
+};
+
 interface TicketRendererProps {
   ticket: TambolaTicket;
   calledNumbers: number[];
@@ -19,7 +37,6 @@ const isPatternPosition = (
   calledNumbers?: number[]
 ): boolean => {
   if (!prizeId || !ticket?.rows || !Array.isArray(ticket.rows)) {
-    console.log(`❌ Pattern check failed: missing data`, { prizeId, hasTicket: !!ticket, hasRows: !!ticket?.rows });
     return false;
   }
 
@@ -28,7 +45,6 @@ const isPatternPosition = (
 
   // Safety check for row bounds
   if (row < 0 || row >= 3 || col < 0 || col >= 9) {
-    console.log(`❌ Pattern check failed: invalid position`, { index, row, col });
     return false;
   }
 
@@ -38,8 +54,6 @@ const isPatternPosition = (
   if (currentNumber === 0) {
     return false;
   }
-
-  console.log(`🔍 Pattern check for ${prizeId} at index ${index} (row ${row}, col ${col}) = ${currentNumber}`);
 
   switch (prizeId) {
     case 'topLine':
@@ -55,7 +69,6 @@ const isPatternPosition = (
       const bottomNumbers = ticket.rows[2].filter(n => n > 0);
 
       if (topNumbers.length === 0 || bottomNumbers.length === 0) {
-        console.log(`❌ Corner: No valid numbers in top/bottom rows`);
         return false;
       }
 
@@ -68,13 +81,7 @@ const isPatternPosition = (
       ];
 
       const isCorner = cornerNumbers.includes(currentNumber);
-      console.log(`🔍 Corner check:`, {
-        currentNumber,
-        topNumbers,
-        bottomNumbers,
-        cornerNumbers,
-        isCorner
-      });
+      // Log removed for performance
 
       return isCorner;
     }
@@ -86,7 +93,6 @@ const isPatternPosition = (
       const middleNumbers = ticket.rows[1].filter(n => n > 0);
 
       if (topNumbers.length === 0 || bottomNumbers.length === 0 || middleNumbers.length === 0) {
-        console.log(`❌ Star Corner: Missing numbers in rows`);
         return false;
       }
 
@@ -105,13 +111,7 @@ const isPatternPosition = (
       const starCornerNumbers = [...cornerNumbers, centerNumber];
 
       const isStarCorner = starCornerNumbers.includes(currentNumber);
-      console.log(`🔍 Star Corner check:`, {
-        currentNumber,
-        cornerNumbers,
-        centerNumber,
-        starCornerNumbers,
-        isStarCorner
-      });
+      // Log removed for performance
 
       return isStarCorner;
     }
@@ -130,13 +130,7 @@ const isPatternPosition = (
       const firstFiveCalled = calledTicketNumbers.slice(0, 5);
 
       const isEarlyFive = firstFiveCalled.includes(currentNumber);
-      console.log(`🔍 Early Five check:`, {
-        currentNumber,
-        allTicketNumbers: allTicketNumbers.length,
-        calledTicketNumbers: calledTicketNumbers.length,
-        firstFiveCalled,
-        isEarlyFive
-      });
+      // Log removed for performance
 
       return isEarlyFive;
     }
@@ -151,8 +145,13 @@ const isPatternPosition = (
       return true;
     }
 
+    case 'halfSheet':
+    case 'fullSheet': {
+      // Sheet prizes: all numbers on each ticket are part of the winning pattern
+      return true;
+    }
+
     default:
-      console.log(`❌ Unknown pattern type: ${prizeId}`);
       return false;
   }
 };
@@ -168,7 +167,7 @@ export const renderTicket = ({
     return (
       <div className="bg-gray-100 p-4 rounded-lg border-2 border-gray-200">
         <div className="text-center py-4">
-          <div className="w-6 h-6 border-2 border-gray-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
           <p className="text-sm text-amber-700">Loading ticket...</p>
         </div>
       </div>
@@ -237,7 +236,6 @@ export const renderTicket = ({
       throw new Error(`Expected 27 cells, got ${allNumbers.length}`);
     }
   } catch (error) {
-    console.error('Error processing ticket rows:', error, ticket);
     return (
       <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
         <div className="text-center py-4">

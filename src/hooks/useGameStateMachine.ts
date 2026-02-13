@@ -52,24 +52,20 @@ export const useGameStateMachine = ({
 
   // Game control actions
   const startGame = useCallback((gameId: string) => {
-    console.log(`🎮 State machine: Starting game ${gameId}`);
     send({ type: 'START_GAME', gameId });
   }, [send]);
 
   const pauseGame = useCallback(() => {
-    console.log('⏸️ State machine: Pausing game');
     gameTimerManager.pauseAll();
     send({ type: 'PAUSE_GAME' });
   }, [send]);
 
   const resumeGame = useCallback(() => {
-    console.log('▶️ State machine: Resuming game');
     gameTimerManager.resumeAll();
     send({ type: 'RESUME_GAME' });
   }, [send]);
 
   const endGame = useCallback(async () => {
-    console.log('🏁 State machine: Ending game');
     gameTimerManager.pauseAll();
     send({ type: 'END_GAME' });
     await onGameEnd?.();
@@ -77,12 +73,10 @@ export const useGameStateMachine = ({
 
   const callNumber = useCallback(async (number: number) => {
     if (!state.can({ type: 'CALL_NUMBER', number })) {
-      console.warn(`⚠️ Cannot call number ${number} in current state:`, state.value);
       return false;
     }
 
     try {
-      console.log(`📞 State machine: Calling number ${number}`);
       send({ type: 'CALL_NUMBER', number });
       
       // Execute the actual number call
@@ -90,49 +84,40 @@ export const useGameStateMachine = ({
       
       return true;
     } catch (error) {
-      console.error('❌ Error calling number:', error);
       send({ type: 'ERROR', error: (error as Error).message });
       return false;
     }
   }, [state, send, onNumberCall]);
 
   const notifyAudioReady = useCallback(() => {
-    console.log('🔊 State machine: Audio ready');
     send({ type: 'AUDIO_READY' });
   }, [send]);
 
   const notifyAudioComplete = useCallback(() => {
-    console.log('🔊 State machine: Audio complete');
     send({ type: 'AUDIO_COMPLETE' });
   }, [send]);
 
   const notifyPrizeWon = useCallback((prizeId: string) => {
-    console.log(`🏆 State machine: Prize won - ${prizeId}`);
     send({ type: 'PRIZE_WON', prizeId });
   }, [send]);
 
   const notifyTimeUp = useCallback(() => {
-    console.log('⏰ State machine: Time up');
     send({ type: 'TIME_UP' });
   }, [send]);
 
   const notifyAllNumbersCalled = useCallback(() => {
-    console.log('📞 State machine: All numbers called');
     send({ type: 'ALL_NUMBERS_CALLED' });
   }, [send]);
 
   const handleError = useCallback((error: string) => {
-    console.error('❌ State machine error:', error);
     send({ type: 'ERROR', error });
   }, [send]);
 
   const retry = useCallback(() => {
-    console.log('🔄 State machine: Retrying');
     send({ type: 'RETRY' });
   }, [send]);
 
   const reset = useCallback(() => {
-    console.log('🔄 State machine: Resetting');
     gameTimerManager.cleanup();
     send({ type: 'RESET' });
   }, [send]);

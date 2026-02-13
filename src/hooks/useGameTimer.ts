@@ -86,7 +86,6 @@ export const useGameTimer = ({
     if (operationInProgress.current) return;
 
     operationInProgress.current = true;
-    console.log(`🎮 Starting game timer system`);
 
     // Register main countdown timer
     gameTimerManager.register(timerIdRef.current, timerCallback, 1000);
@@ -105,7 +104,6 @@ export const useGameTimer = ({
     if (operationInProgress.current) return;
 
     operationInProgress.current = true;
-    console.log(`🛑 Stopping game timer system`);
 
     gameTimerManager.unregister(timerIdRef.current);
     gameTimerManager.unregister(callTimerIdRef.current);
@@ -118,7 +116,6 @@ export const useGameTimer = ({
   const pauseTimer = useCallback(() => {
     gameTimerManager.disableTimer(timerIdRef.current);
     gameTimerManager.disableTimer(callTimerIdRef.current);
-    console.log(`⏸️ Paused game timer system`);
   }, []);
 
   // Resume timer system
@@ -126,7 +123,6 @@ export const useGameTimer = ({
     lastCallTime.current = Date.now(); // Reset call timing
     gameTimerManager.enableTimer(timerIdRef.current);
     gameTimerManager.enableTimer(callTimerIdRef.current);
-    console.log(`▶️ Resumed game timer system`);
   }, []);
 
   // Reset timer

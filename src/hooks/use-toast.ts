@@ -13,7 +13,6 @@ export const useToast = () => {
   return {
     toast: (props: ToastProps) => {
       // Do nothing - toast notifications removed
-      console.log('Toast (disabled):', props.title, props.description);
     },
     dismiss: (toastId?: string) => {
       // Do nothing
@@ -24,5 +23,4 @@ export const useToast = () => {
 
 export const toast = (props: ToastProps) => {
   // Do nothing - toast notifications removed
-  console.log('Toast (disabled):', props.title, props.description);
 };

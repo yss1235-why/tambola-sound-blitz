@@ -24,7 +24,6 @@ export class FirebaseMutex {
   constructor(lockPath: string, ownerId?: string) {
     this.lockPath = lockPath;
     this.ownerId = ownerId || `owner-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    console.log(`🔒 FirebaseMutex initialized: ${lockPath} (owner: ${this.ownerId})`);
   }
 
   // Acquire a lock with automatic retry
@@ -42,8 +41,6 @@ export class FirebaseMutex {
     const lockKey = `${this.lockPath}/${lockName}`;
     const lockId = `${this.ownerId}-${Date.now()}`;
     
-    console.log(`🔒 Acquiring lock: ${lockName} (${lockId})`);
-    
     let attempts = 0;
     const startTime = Date.now();
 
@@ -53,7 +50,6 @@ export class FirebaseMutex {
         
         if (acquired) {
           this.activeLocks.add(lockKey);
-          console.log(`✅ Lock acquired: ${lockName} (${lockId})`);
           
           // Return release function
           return async () => {
@@ -66,7 +62,6 @@ export class FirebaseMutex {
         attempts++;
         
       } catch (error) {
-        console.error(`❌ Lock acquisition error: ${lockName}`, error);
         throw error;
       }
     }
@@ -91,11 +86,9 @@ export class FirebaseMutex {
         
         // Check if lock is expired
         if (Date.now() - existingLock.timestamp > existingLock.ttl) {
-          console.log(`🔓 Cleaning up expired lock: ${lockKey}`);
           await remove(lockRef);
         } else if (existingLock.owner === this.ownerId) {
           // We already own this lock
-          console.log(`🔒 Lock already owned: ${lockKey}`);
           return true;
         } else {
           // Lock is held by someone else
@@ -123,7 +116,6 @@ export class FirebaseMutex {
       return false;
       
     } catch (error) {
-      console.error(`❌ Lock acquisition error: ${lockKey}`, error);
       return false;
     }
   }
@@ -131,7 +123,6 @@ export class FirebaseMutex {
   // Release a specific lock
   private async releaseLock(lockKey: string, lockId: string): Promise<void> {
     try {
-      console.log(`🔓 Releasing lock: ${lockKey} (${lockId})`);
       
       const lockRef = ref(database, lockKey);
       const snapshot = await get(lockRef);
@@ -143,14 +134,11 @@ export class FirebaseMutex {
         if (currentLock.owner === this.ownerId && currentLock.id === lockId) {
           await remove(lockRef);
           this.activeLocks.delete(lockKey);
-          console.log(`✅ Lock released: ${lockKey}`);
         } else {
-          console.warn(`⚠️ Cannot release lock not owned by us: ${lockKey}`);
         }
       }
       
     } catch (error) {
-      console.error(`❌ Lock release error: ${lockKey}`, error);
     }
   }
 
@@ -172,7 +160,6 @@ export class FirebaseMutex {
 
   // Release all locks owned by this instance
   async releaseAllLocks(): Promise<void> {
-    console.log(`🧹 Releasing all locks (${this.activeLocks.size})`);
     
     const releasePromises = Array.from(this.activeLocks).map(async (lockKey) => {
       try {
@@ -186,19 +173,16 @@ export class FirebaseMutex {
           }
         }
       } catch (error) {
-        console.error(`⚠️ Error releasing lock: ${lockKey}`, error);
       }
     });
 
     await Promise.all(releasePromises);
     this.activeLocks.clear();
-    console.log('✅ All locks released');
   }
 
   // Clean up expired locks (utility function)
   async cleanupExpiredLocks(): Promise<void> {
     try {
-      console.log(`🧹 Cleaning up expired locks in: ${this.lockPath}`);
       
       const locksRef = ref(database, this.lockPath);
       const snapshot = await get(locksRef);
@@ -219,7 +203,6 @@ export class FirebaseMutex {
       }
 
       if (expiredKeys.length > 0) {
-        console.log(`🧹 Removing ${expiredKeys.length} expired locks`);
         const removePromises = expiredKeys.map(key => 
           remove(ref(database, `${this.lockPath}/${key}`))
         );
@@ -227,7 +210,6 @@ export class FirebaseMutex {
       }
       
     } catch (error) {
-      console.error('❌ Error cleaning up expired locks:', error);
     }
   }
 
@@ -239,7 +221,6 @@ export class FirebaseMutex {
       
       return snapshot.exists() ? snapshot.val() : null;
     } catch (error) {
-      console.error(`❌ Error getting lock status: ${lockName}`, error);
       return null;
     }
   }
@@ -262,7 +243,6 @@ export class FirebaseMutex {
 
   // Cleanup on destroy
   async cleanup(): Promise<void> {
-    console.log('🧹 Cleaning up FirebaseMutex');
     await this.releaseAllLocks();
   }
 }

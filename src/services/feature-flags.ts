@@ -34,9 +34,8 @@ export const FEATURE_FLAGS = {
     USE_SINGLE_NUMBER_CALLER: false,         // Use singleton pattern for SecureNumberCaller
     USE_RELIABLE_GAME_ENDING: false,         // Replace setTimeout with Firebase-triggered ending
 
-    // ========== AUDIO ENHANCEMENTS ==========
-    USE_EDGE_TTS: false,                      // DISABLED: Microsoft blocks browser access (requires Node.js)
-    USE_SMART_VOICE_SELECTION: true,          // Use best available browser voice with tuning
+    // ========== AUDIO ==========
+    USE_PRERECORDED_AUDIO: true,              // Use pre-recorded Opus audio files
 }
 
 /**
@@ -51,7 +50,7 @@ export const isFeatureEnabled = (flag: keyof typeof FEATURE_FLAGS): boolean => {
  */
 export const enableFeature = (flag: keyof typeof FEATURE_FLAGS): void => {
     FEATURE_FLAGS[flag] = true
-    console.log(`🚩 Feature enabled: ${flag}`)
+    // console.log(`🚩 Feature enabled: ${flag}`)
 }
 
 /**
@@ -59,7 +58,7 @@ export const enableFeature = (flag: keyof typeof FEATURE_FLAGS): void => {
  */
 export const disableFeature = (flag: keyof typeof FEATURE_FLAGS): void => {
     FEATURE_FLAGS[flag] = false
-    console.log(`🚩 Feature disabled: ${flag}`)
+    // console.log(`🚩 Feature disabled: ${flag}`)
 }
 
 export default FEATURE_FLAGS

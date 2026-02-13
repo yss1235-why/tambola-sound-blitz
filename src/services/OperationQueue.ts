@@ -28,7 +28,6 @@ export class OperationQueue {
   
   constructor(maxConcurrent: number = 1) {
     this.maxConcurrent = maxConcurrent;
-    console.log(`🔄 OperationQueue initialized (concurrent: ${maxConcurrent})`);
   }
 
   // Queue an operation
@@ -58,8 +57,6 @@ export class OperationQueue {
       } else {
         this.queue.splice(insertIndex, 0, queuedOp);
       }
-
-      console.log(`📝 Queued operation: ${operationId} (${operation.name}, priority: ${operation.priority})`);
       
       this.processQueue();
     });
@@ -100,7 +97,6 @@ export class OperationQueue {
     }
 
     this.processing = true;
-    console.log(`🔄 Processing operation queue (${this.queue.length} operations)`);
 
     try {
       while (this.queue.length > 0 || this.running.size > 0) {
@@ -124,7 +120,6 @@ export class OperationQueue {
       }
     } finally {
       this.processing = false;
-      console.log('✅ Operation queue processing complete');
     }
   }
 
@@ -157,7 +152,6 @@ export class OperationQueue {
     const { id, name, execute, timeout, retries, onSuccess, onError } = operation;
     
     this.running.add(id);
-    console.log(`▶️ Starting operation: ${name} (${id})`);
     
     const startTime = Date.now();
     let lastError: Error | null = null;
@@ -189,8 +183,6 @@ export class OperationQueue {
         
         this.completed.set(id, operationResult);
         this.running.delete(id);
-        
-        console.log(`✅ Operation completed: ${name} (${id}) in ${duration}ms`);
         onSuccess?.(result);
         return;
 
@@ -198,7 +190,6 @@ export class OperationQueue {
         lastError = error as Error;
         
         if (attempt < (retries || 0)) {
-          console.log(`⚠️ Operation retry ${attempt + 1}/${retries}: ${name} (${id})`);
           // Wait before retry (exponential backoff)
           const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -217,14 +208,11 @@ export class OperationQueue {
     
     this.completed.set(id, operationResult);
     this.running.delete(id);
-    
-    console.error(`❌ Operation failed: ${name} (${id}) after ${duration}ms`, lastError);
     onError?.(lastError!);
   }
 
   // Clear all pending operations
   clearQueue(): void {
-    console.log(`🧹 Clearing operation queue (${this.queue.length} operations)`);
     this.queue = [];
   }
 
@@ -258,12 +246,10 @@ export class OperationQueue {
   // Clear completed operations (for memory management)
   clearCompleted(): void {
     this.completed.clear();
-    console.log('🧹 Cleared completed operations');
   }
 
   // Cleanup
   cleanup(): void {
-    console.log('🧹 Cleaning up OperationQueue');
     this.clearQueue();
     this.clearCompleted();
     this.running.clear();

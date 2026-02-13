@@ -161,7 +161,6 @@ export const useGameResourceManager = () => {
     }
 
     if (operationInProgress.current.has(operationId)) {
-      console.warn(`⚠️ Operation already in progress: ${operationId}`);
       return null;
     }
 
@@ -239,7 +238,6 @@ export const useGameResourceManager = () => {
 
   // Cleanup all resources
   const cleanupAll = useCallback(() => {
-    console.log('🧹 Cleaning up all game resources');
     isMountedRef.current = false;
 
     // Clear timers and intervals
@@ -264,7 +262,6 @@ export const useGameResourceManager = () => {
       try {
         unsubscribe();
       } catch (error) {
-        console.warn('⚠️ Error during subscription cleanup:', error);
       }
     });
 

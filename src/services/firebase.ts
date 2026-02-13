@@ -15,7 +15,7 @@ export type {
   GameState,
   HostSettings,
   CreateGameConfig,
-   NumberGenerationResult
+  NumberGenerationResult
 } from './firebase-core';
 
 // Re-export utility functions
@@ -49,6 +49,10 @@ class FirebaseService {
     return this.core.loginHost(email, password);
   }
 
+  async loginUnified(email: string, password: string) {
+    return this.core.loginUnified(email, password);
+  }
+
   async logout() {
     return this.core.logout();
   }
@@ -71,8 +75,8 @@ class FirebaseService {
   }
 
   // ========== HOST MANAGEMENT (delegate to core) ==========
-  async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number) {
-    return this.core.createHost(email, password, name, phone, adminId, subscriptionMonths);
+  async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number, businessName: string = 'Tambola') {
+    return this.core.createHost(email, password, name, phone, adminId, subscriptionMonths, businessName);
   }
 
   async getAllHosts() {
@@ -153,11 +157,15 @@ class FirebaseService {
     return this.game.bookTicket(ticketId, playerName, playerPhone, gameId);
   }
 
+  async bookTicketsBatch(ticketIds: string[], playerName: string, playerPhone: string, gameId: string) {
+    return this.game.bookTicketsBatch(ticketIds, playerName, playerPhone, gameId);
+  }
+
   async unbookTicket(gameId: string, ticketId: string) {
     return this.game.unbookTicket(gameId, ticketId);
   }
 
- // ========== GAME STATE OPERATIONS (delegate to game) ==========
+  // ========== GAME STATE OPERATIONS (delegate to game) ==========
   async startGame(gameId: string) {
     return this.game.startGame(gameId);
   }
@@ -169,18 +177,17 @@ class FirebaseService {
   async resumeGame(gameId: string) {
     return this.game.resumeGame(gameId);
   }
-  
-  
+
+
   // ========== OPTION A: NEW METHODS FOR SIMPLIFIED HOSTCONTROLSPROVIDER ==========
 
 
 
   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
-  console.log(`🎯 FirebaseService: callNextNumberAndContinue called for ${gameId}`);
-  
-  // ✅ REMOVED: Security check no longer needed since auto-resume conflict is fixed
-  return this.game.callNextNumberAndContinue(gameId);
-}
+
+    // ✅ REMOVED: Security check no longer needed since auto-resume conflict is fixed
+    return this.game.callNextNumberAndContinue(gameId);
+  }
   /**
    * 🎯 NEW: Start game with countdown setup
    * Sets up countdown state in database
@@ -189,8 +196,8 @@ class FirebaseService {
     return this.game.startGameWithCountdown(gameId);
   }
   async updateCountdownTime(gameId: string, timeLeft: number): Promise<void> {
-  return this.game.updateCountdownTime(gameId, timeLeft);
-}
+    return this.game.updateCountdownTime(gameId, timeLeft);
+  }
 
   /**
    * 🎯 NEW: Activate game after countdown completes
@@ -199,7 +206,7 @@ class FirebaseService {
   async activateGameAfterCountdown(gameId: string): Promise<void> {
     return this.game.activateGameAfterCountdown(gameId);
   }
-  
+
   /**
    * 🎯 NEW: Generate and validate game numbers for pre-generation
    */
@@ -207,26 +214,7 @@ class FirebaseService {
     return this.game.generateGameNumbers(gameId);
   }
 
-  // ========== LEGACY NUMBER CALLING METHODS ==========
 
-  /**
-   * @deprecated Use callNextNumberAndContinue instead for Option A
-   * Kept for backward compatibility
-   */
- async callNextNumber(gameId: string) {
-  console.log('🚫 BLOCKED: Legacy callNextNumber method called');
-  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
-  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
-}
-
-  /**
-   * @deprecated Use callNextNumberAndContinue instead
-   */
- async processNumberCall(gameId: string, number: number) {
-  console.log('🚫 BLOCKED: Legacy processNumberCall method called');
-  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
-  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
-}
   async announceWinners(gameId: string, winners: any) {
     return this.game.announceWinners(gameId, winners);
   }
@@ -247,22 +235,11 @@ class FirebaseService {
     return this.core.subscribeToHosts(callback);
   }
 
- createPrizeConfiguration(selectedPrizes: string[]) {
-  return this.game.createPrizeConfiguration(selectedPrizes);
-}
+  createPrizeConfiguration(selectedPrizes: string[]) {
+    return this.game.createPrizeConfiguration(selectedPrizes);
+  }
 
-  // ========== CONVENIENCE METHODS FOR BACKWARDS COMPATIBILITY ==========
 
-  /**
-   * Legacy method - kept for compatibility
-   * @deprecated Use callNextNumberAndContinue for new implementations
-   */
-  async callNumberWithPrizeValidation(gameId: string, number: number) {
-  console.log('🚫 BLOCKED: Legacy callNumberWithPrizeValidation method called');
-  console.log('🎯 Only HostControlsProvider should call numbers via callNextNumberAndContinue');
-  console.log(`📍 Attempted to call with gameId: ${gameId}, number: ${number}`);
-  throw new Error('Legacy method disabled. Use HostControlsProvider for number calling.');
-}
 }
 
 // ================== SINGLETON EXPORT ==================

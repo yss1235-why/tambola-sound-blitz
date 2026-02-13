@@ -39,7 +39,6 @@ export const ThemeConfigurator: React.FC<ThemeConfiguratorProps> = ({ adminUid }
                     setCustomColors(currentSettings.custom);
                 }
             } catch (error) {
-                console.error('Error loading theme:', error);
             } finally {
                 setIsLoading(false);
             }
@@ -114,7 +113,7 @@ export const ThemeConfigurator: React.FC<ThemeConfiguratorProps> = ({ adminUid }
         return (
             <Card className="bg-slate-800 border-slate-700">
                 <CardContent className="flex items-center justify-center py-12">
-                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </CardContent>
             </Card>
         );
@@ -178,8 +177,8 @@ export const ThemeConfigurator: React.FC<ThemeConfiguratorProps> = ({ adminUid }
                                         key={presetId}
                                         onClick={() => handlePresetSelect(presetId)}
                                         className={`relative p-4 rounded-xl border-2 transition-all ${isSelected
-                                                ? 'border-purple-500 ring-2 ring-purple-500/50'
-                                                : 'border-slate-600 hover:border-slate-500'
+                                            ? 'border-purple-500 ring-2 ring-purple-500/50'
+                                            : 'border-slate-600 hover:border-slate-500'
                                             }`}
                                     >
                                         {/* Color Preview */}

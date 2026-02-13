@@ -238,45 +238,35 @@ export const tambolaGameMachine = createMachine({
     }),
 
     startInitialization: () => {
-      console.log('🎮 Starting game initialization');
     },
 
     startGameTimers: () => {
-      console.log('⏰ Starting game timers');
     },
 
     pauseGameTimers: () => {
-      console.log('⏸️ Pausing game timers');
     },
 
     enableNumberCalling: () => {
-      console.log('📞 Enabling number calling');
     },
 
     announceNumber: (context) => {
       if (context.currentNumber) {
-        console.log(`📢 Announcing number: ${context.currentNumber}`);
       }
     },
 
     pauseAllSystems: () => {
-      console.log('⏸️ Pausing all game systems');
     },
 
     stopAllSystems: () => {
-      console.log('🛑 Stopping all game systems');
     },
 
     calculateFinalResults: () => {
-      console.log('📊 Calculating final game results');
     },
 
     beginGameEnd: () => {
-      console.log('🏁 Beginning game end sequence');
     },
 
     handleError: (context) => {
-      console.error('❌ Game error:', context.error);
     }
   },
 
@@ -295,7 +285,6 @@ export const tambolaGameMachine = createMachine({
       // Simulate game initialization
       return new Promise((resolve) => {
         setTimeout(() => {
-          console.log(`✅ Game resources initialized for: ${context.gameId}`);
           resolve(undefined);
         }, 1000);
       });
@@ -305,7 +294,6 @@ export const tambolaGameMachine = createMachine({
       // Simulate game finalization
       return new Promise((resolve) => {
         setTimeout(() => {
-          console.log(`✅ Game finalized: ${context.gameId}`);
           resolve(undefined);
         }, 500);
       });

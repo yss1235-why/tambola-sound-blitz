@@ -11,7 +11,7 @@ export const PrizeTracker: React.FC<PrizeTrackerProps> = ({ prizes }) => {
   return (
     <Card className="tambola-card">
       <CardHeader>
-        <CardTitle className="text-foreground">ðŸ† Prizes</CardTitle>
+        <CardTitle className="text-foreground">† Prizes</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {prizes.map((prize) => (
