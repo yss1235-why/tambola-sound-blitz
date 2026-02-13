@@ -147,7 +147,7 @@ const Index = () => {
   // Index page render log removed for performance
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen flex flex-col">
       {/* UNCHANGED: Header interface remains exactly the same */}
       <Header
         // Auth state - same interface as before
@@ -206,7 +206,41 @@ const Index = () => {
         </div>
       )}
 
-      {/* NEW: Gesture Detection Component */}
+      {/* Footer */}
+      <footer className="w-full border-t border-border/40 bg-card/50 backdrop-blur-sm mt-auto">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* CTA */}
+            <a
+              href="https://innovarc.uk/products?category=app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-primary hover:text-accent transition-colors duration-200 flex items-center gap-1.5"
+            >
+              <span>🎯</span>
+              <span>Host your own Tambola games</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+
+            {/* Credit */}
+            <p className="text-xs text-muted-foreground">
+              Designed & Developed by{' '}
+              <a
+                href="https://innovarc.uk/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-foreground/70 hover:text-primary transition-colors duration-200"
+              >
+                Innovative Archive
+              </a>
+            </p>
+          </div>
+        </div>
+      </footer>
+
+      {/* Gesture Detection Component */}
       <GestureDetector
         onGestureComplete={handleGestureComplete}
         enabled={!auth.user}
