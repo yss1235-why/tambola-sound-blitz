@@ -531,6 +531,45 @@ class FirebaseCoreService {
     }
   }
 
+  /**
+   * Sync the host's current businessName to all their game records.
+   * This ensures public (unauthenticated) users can read the name from game data.
+   */
+  async syncBusinessNameToGames(hostId: string): Promise<void> {
+    try {
+      // 1. Get the host's current businessName
+      const hostSnap = await get(ref(database, `hosts/${hostId}`));
+      if (!hostSnap.exists()) return;
+      const hostData = hostSnap.val();
+      const businessName = hostData.businessName;
+      if (!businessName) return;
+
+      // 2. Find all games by this host
+      const gamesQuery = query(
+        ref(database, 'games'),
+        orderByChild('hostId'),
+        equalTo(hostId)
+      );
+      const gamesSnap = await get(gamesQuery);
+      if (!gamesSnap.exists()) return;
+
+      // 3. Update businessName in each game that has a stale/missing value
+      const updates: { [path: string]: string } = {};
+      const games = gamesSnap.val();
+      for (const gameId of Object.keys(games)) {
+        if (games[gameId].businessName !== businessName) {
+          updates[`games/${gameId}/businessName`] = businessName;
+        }
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await update(ref(database), updates);
+      }
+    } catch (error) {
+      // Silently fail - non-critical operation
+    }
+  }
+
   async deleteHost(hostId: string): Promise<void> {
     try {
       await remove(ref(database, `hosts/${hostId}`));
@@ -744,36 +783,10 @@ class FirebaseCoreService {
 
           const activeCount = sortedGames.filter(g => !g.gameState.gameOver).length;
           const completedCount = sortedGames.filter(g => g.gameState.gameOver).length;
-          // Games available log removed for performance
 
-          // Fire callback IMMEDIATELY with whatever data is available
+          // businessName is synced to game records when host logs in
+          // (see syncBusinessNameToGames in firebase-core.ts)
           callback(sortedGames);
-
-          // Then try to enrich with LIVE host businessNames in background
-          // (will update UI again if host data is accessible)
-          const uniqueHostIds = [...new Set(sortedGames.map(g => g.hostId))];
-          const hostNamePromises = uniqueHostIds.map(async (hostId) => {
-            try {
-              const hostSnap = await get(ref(database, `hosts/${hostId}/businessName`));
-              return { hostId, businessName: hostSnap.exists() ? hostSnap.val() as string : undefined };
-            } catch {
-              return { hostId, businessName: undefined };
-            }
-          });
-
-          Promise.all(hostNamePromises).then((hostNames) => {
-            const hasAnyName = hostNames.some(h => h.businessName);
-            if (hasAnyName) {
-              const hostNameMap = new Map(hostNames.map(h => [h.hostId, h.businessName]));
-              const enrichedGames = sortedGames.map(game => ({
-                ...game,
-                businessName: hostNameMap.get(game.hostId) || game.businessName
-              }));
-              callback(enrichedGames);
-            }
-          }).catch(() => {
-            // Silently fail - original callback already fired
-          });
         } else {
           callback([]);
         }
