@@ -8,7 +8,7 @@ import { GameDataProvider } from '@/providers/GameDataProvider';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { useAuth } from '@/hooks/useAuth';
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
-import { useShopName } from '@/hooks/useShopName';
+import { useBusinessName } from '@/hooks/useBusinessName';
 import { AdminUser, HostUser } from '@/services/firebase';
 import { GestureDetector } from '@/components/GestureDetector';
 import { DEFAULT_GESTURE_CONFIG } from '@/utils/gestureConfig';
@@ -20,8 +20,8 @@ const Index = () => {
   // UNCHANGED: Games loading works the same
   const { data: allGames, loading: gamesLoading, error: gamesError } = useActiveGamesSubscription();
 
-  // Shop name from systemSettings (same pattern as theme - publicly accessible)
-  const { shopName } = useShopName();
+  // Business name from systemSettings (publicly accessible, same pattern as theme)
+  const { businessName: publicBusinessName } = useBusinessName();
 
   // UNCHANGED: Local state management
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -86,17 +86,17 @@ const Index = () => {
     }
   }, [auth.user, showAdminLoginViaGesture]);
 
-  // Dynamic document.title: update browser tab to show shop name
+  // Dynamic document.title: update browser tab to show business name
   useEffect(() => {
     const name =
       auth.userRole === 'host' && auth.user
         ? (auth.user as HostUser).businessName
-        : shopName;
+        : publicBusinessName;
 
     if (name) {
       document.title = name;
     }
-  }, [auth.user, auth.userRole, shopName]);
+  }, [auth.user, auth.userRole, publicBusinessName]);
 
   // NEW: Handle admin login dialog close
   const handleAdminLoginClose = useCallback(() => {
@@ -130,7 +130,7 @@ const Index = () => {
           preloadedGames={allGames || []}
           gamesLoading={gamesLoading}
           gamesError={gamesError}
-          businessName={shopName}
+          businessName={publicBusinessName}
         />
       </ThemeProvider>
     );
@@ -161,11 +161,11 @@ const Index = () => {
 
         forceShowAdminLogin={showAdminLoginViaGesture}
         onAdminLoginClose={handleAdminLoginClose}
-        // Pass shopName from systemSettings (publicly accessible)
+        // Pass businessName from systemSettings (publicly accessible)
         businessName={
           auth.userRole === 'host' && auth.user
             ? (auth.user as HostUser).businessName
-            : shopName
+            : publicBusinessName
         }
       />
 

@@ -464,7 +464,7 @@ class FirebaseCoreService {
 
   // ================== HOST MANAGEMENT ==================
 
-  async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number, businessName: string = 'Tambola'): Promise<void> {
+  async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number, businessName: string): Promise<void> {
     try {
       // STEP 1: Create Firebase Authentication user first
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -479,7 +479,7 @@ class FirebaseCoreService {
         uid: hostId,
         email,
         name,
-        businessName: businessName || 'Tambola', // Display name for users
+        businessName, // Display name for users
         phone,
         role: 'host',
         subscriptionEndDate: subscriptionEndDate.toISOString(),
@@ -491,8 +491,8 @@ class FirebaseCoreService {
       const hostRef = ref(database, `hosts/${hostId}`);
       await set(hostRef, removeUndefinedValues(hostData));
 
-      // Also write shopName to systemSettings (publicly readable, same pattern as theme)
-      await set(ref(database, 'systemSettings/shopName'), businessName || 'Tambola');
+      // Write businessName to systemSettings (publicly readable, same pattern as theme)
+      await set(ref(database, 'systemSettings/shopName'), businessName);
 
       throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
 
@@ -536,11 +536,10 @@ class FirebaseCoreService {
   }
 
   /**
-   * Sync the host's current businessName to systemSettings/shopName.
-   * This ensures public (unauthenticated) users can read it (same pattern as theme).
+   * Sync the host's current businessName to systemSettings (publicly readable).
    * Called on host login to handle hosts created before this feature existed.
    */
-  async syncShopNameToSystemSettings(hostId: string): Promise<void> {
+  async syncBusinessName(hostId: string): Promise<void> {
     try {
       const hostSnap = await get(ref(database, `hosts/${hostId}`));
       if (!hostSnap.exists()) return;

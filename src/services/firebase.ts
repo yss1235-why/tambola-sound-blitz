@@ -75,7 +75,7 @@ class FirebaseService {
   }
 
   // ========== HOST MANAGEMENT (delegate to core) ==========
-  async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number, businessName: string = 'Tambola') {
+  async createHost(email: string, password: string, name: string, phone: string, adminId: string, subscriptionMonths: number, businessName: string) {
     return this.core.createHost(email, password, name, phone, adminId, subscriptionMonths, businessName);
   }
 

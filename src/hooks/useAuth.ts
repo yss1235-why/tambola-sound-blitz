@@ -152,7 +152,7 @@ export const useAuth = (): AuthState & AuthActions => {
       await registerHostSession();
       // Sync shopName to systemSettings so public users can see it
       if (auth.currentUser) {
-        firebaseCore.syncShopNameToSystemSettings(auth.currentUser.uid).catch(() => { });
+        firebaseCore.syncBusinessName(auth.currentUser.uid).catch(() => { });
       }
       // State will be updated by onAuthStateChanged listener
     } catch (error: any) {
@@ -177,7 +177,7 @@ export const useAuth = (): AuthState & AuthActions => {
         await registerHostSession();
         // Sync shopName to systemSettings so public users can see it
         if (auth.currentUser) {
-          firebaseCore.syncShopNameToSystemSettings(auth.currentUser.uid).catch(() => { });
+          firebaseCore.syncBusinessName(auth.currentUser.uid).catch(() => { });
         }
       }
 

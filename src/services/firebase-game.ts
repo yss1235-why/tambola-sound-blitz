@@ -187,12 +187,12 @@ class FirebaseGameService {
     const prizes = createPrizeConfiguration(selectedPrizes);
 
     // Fetch host data to get businessName
-    let businessName = 'Tambola'; // Default fallback
+    let businessName = '';
     try {
       const hostSnapshot = await get(ref(database, `hosts/${hostId}`));
       if (hostSnapshot.exists()) {
         const hostData = hostSnapshot.val();
-        businessName = hostData.businessName || 'Tambola';
+        businessName = hostData.businessName || '';
       }
     } catch (error) {
     }

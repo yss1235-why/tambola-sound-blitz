@@ -368,7 +368,7 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
         <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
           <CardHeader className="text-center">
             <CardTitle className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              Welcome to {businessName || 'Tambola'}!
+              Welcome{businessName ? ` to ${businessName}` : ''}!
             </CardTitle>
             <p className="text-muted-foreground text-lg mt-2">
               Join the excitement! Book your tickets and play live Tambola games.
