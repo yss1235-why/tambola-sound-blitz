@@ -490,6 +490,10 @@ class FirebaseCoreService {
 
       const hostRef = ref(database, `hosts/${hostId}`);
       await set(hostRef, removeUndefinedValues(hostData));
+
+      // Also write shopName to systemSettings (publicly readable, same pattern as theme)
+      await set(ref(database, 'systemSettings/shopName'), businessName || 'Tambola');
+
       throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
 
     } catch (error: any) {

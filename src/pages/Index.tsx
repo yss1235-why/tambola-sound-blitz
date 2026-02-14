@@ -5,9 +5,10 @@ import { UserLandingPage } from '@/components/UserLandingPage';
 import { GameHost } from '@/components/GameHost';
 import { AdminDashboard } from '@/components/AdminDashboard';
 import { GameDataProvider } from '@/providers/GameDataProvider';
-import { ThemeProvider } from '@/providers/ThemeProvider'; // NEW: Theme support
-import { useAuth } from '@/hooks/useAuth'; // CHANGED: Use simplified auth hook
+import { ThemeProvider } from '@/providers/ThemeProvider';
+import { useAuth } from '@/hooks/useAuth';
 import { useActiveGamesSubscription } from '@/hooks/useFirebaseSubscription';
+import { useShopName } from '@/hooks/useShopName';
 import { AdminUser, HostUser } from '@/services/firebase';
 import { GestureDetector } from '@/components/GestureDetector';
 import { DEFAULT_GESTURE_CONFIG } from '@/utils/gestureConfig';
@@ -18,6 +19,9 @@ const Index = () => {
 
   // UNCHANGED: Games loading works the same
   const { data: allGames, loading: gamesLoading, error: gamesError } = useActiveGamesSubscription();
+
+  // Shop name from systemSettings (same pattern as theme - publicly accessible)
+  const { shopName } = useShopName();
 
   // UNCHANGED: Local state management
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
@@ -82,17 +86,17 @@ const Index = () => {
     }
   }, [auth.user, showAdminLoginViaGesture]);
 
-  // Dynamic document.title: update browser tab to show business name
+  // Dynamic document.title: update browser tab to show shop name
   useEffect(() => {
     const name =
       auth.userRole === 'host' && auth.user
         ? (auth.user as HostUser).businessName
-        : (allGames?.find(g => g.gameId === selectedGameId)?.businessName || allGames?.[0]?.businessName);
+        : shopName;
 
     if (name) {
       document.title = name;
     }
-  }, [auth.user, auth.userRole, allGames, selectedGameId]);
+  }, [auth.user, auth.userRole, shopName]);
 
   // NEW: Handle admin login dialog close
   const handleAdminLoginClose = useCallback(() => {
@@ -117,14 +121,6 @@ const Index = () => {
       );
     }
 
-    // Get businessName from the selected game's host data if available
-    const selectedGame = allGames?.find(g => g.gameId === selectedGameId);
-    // Look up the host data by hostId to get businessName
-    // For now, pass the first game's host if available (games include host info)
-    const activeGame = selectedGame || (allGames && allGames.length > 0 ? allGames[0] : null);
-    // businessName would come from host data - for now we check if host set it
-    const currentBusinessName = activeGame?.businessName;
-
     // Show public landing page (Player view with theme support)
     return (
       <ThemeProvider>
@@ -134,7 +130,7 @@ const Index = () => {
           preloadedGames={allGames || []}
           gamesLoading={gamesLoading}
           gamesError={gamesError}
-          businessName={currentBusinessName}
+          businessName={shopName}
         />
       </ThemeProvider>
     );
@@ -165,11 +161,11 @@ const Index = () => {
 
         forceShowAdminLogin={showAdminLoginViaGesture}
         onAdminLoginClose={handleAdminLoginClose}
-        // NEW: Pass businessName from host user or selected game
+        // Pass shopName from systemSettings (publicly accessible)
         businessName={
           auth.userRole === 'host' && auth.user
             ? (auth.user as HostUser).businessName
-            : (allGames?.find(g => g.gameId === selectedGameId)?.businessName || allGames?.[0]?.businessName)
+            : shopName
         }
       />
 

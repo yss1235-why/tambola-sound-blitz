@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { ref, update, get, query, orderByChild, equalTo } from 'firebase/database';
 import { auth, getCurrentUserRole, firebaseService, AdminUser, HostUser, database } from '@/services/firebase';
-import { firebaseCore } from '@/services/firebase-core';
 import { cleanupAllSubscriptions } from './useFirebaseSubscription';
 interface AuthState {
   user: AdminUser | HostUser | null;
@@ -150,10 +149,6 @@ export const useAuth = (): AuthState & AuthActions => {
 
       // Register session after successful login
       await registerHostSession();
-      // Sync businessName to all host's games so public users can see it
-      if (auth.currentUser) {
-        firebaseCore.syncBusinessNameToGames(auth.currentUser.uid).catch(() => { });
-      }
       // State will be updated by onAuthStateChanged listener
     } catch (error: any) {
       setState(prev => ({
@@ -175,10 +170,6 @@ export const useAuth = (): AuthState & AuthActions => {
       // Register session if host
       if (result.role === 'host') {
         await registerHostSession();
-        // Sync businessName to all host's games so public users can see it
-        if (auth.currentUser) {
-          firebaseCore.syncBusinessNameToGames(auth.currentUser.uid).catch(() => { });
-        }
       }
 
       // State will be updated by onAuthStateChanged listener
