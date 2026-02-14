@@ -536,39 +536,19 @@ class FirebaseCoreService {
   }
 
   /**
-   * Sync the host's current businessName to all their game records.
-   * This ensures public (unauthenticated) users can read the name from game data.
+   * Sync the host's current businessName to systemSettings/shopName.
+   * This ensures public (unauthenticated) users can read it (same pattern as theme).
+   * Called on host login to handle hosts created before this feature existed.
    */
-  async syncBusinessNameToGames(hostId: string): Promise<void> {
+  async syncShopNameToSystemSettings(hostId: string): Promise<void> {
     try {
-      // 1. Get the host's current businessName
       const hostSnap = await get(ref(database, `hosts/${hostId}`));
       if (!hostSnap.exists()) return;
       const hostData = hostSnap.val();
       const businessName = hostData.businessName;
       if (!businessName) return;
 
-      // 2. Find all games by this host
-      const gamesQuery = query(
-        ref(database, 'games'),
-        orderByChild('hostId'),
-        equalTo(hostId)
-      );
-      const gamesSnap = await get(gamesQuery);
-      if (!gamesSnap.exists()) return;
-
-      // 3. Update businessName in each game that has a stale/missing value
-      const updates: { [path: string]: string } = {};
-      const games = gamesSnap.val();
-      for (const gameId of Object.keys(games)) {
-        if (games[gameId].businessName !== businessName) {
-          updates[`games/${gameId}/businessName`] = businessName;
-        }
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await update(ref(database), updates);
-      }
+      await set(ref(database, 'systemSettings/shopName'), businessName);
     } catch (error) {
       // Silently fail - non-critical operation
     }
