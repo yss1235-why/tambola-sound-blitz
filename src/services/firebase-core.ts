@@ -492,7 +492,7 @@ class FirebaseCoreService {
       await set(hostRef, removeUndefinedValues(hostData));
 
       // Write businessName to systemSettings (publicly readable, same pattern as theme)
-      await set(ref(database, 'systemSettings/shopName'), businessName);
+      await set(ref(database, 'systemSettings/businessName'), businessName);
 
       throw new Error(`SUCCESS: Host ${name} created successfully. You will be logged out automatically.`);
 
@@ -547,7 +547,7 @@ class FirebaseCoreService {
       const businessName = hostData.businessName;
       if (!businessName) return;
 
-      await set(ref(database, 'systemSettings/shopName'), businessName);
+      await set(ref(database, 'systemSettings/businessName'), businessName);
     } catch (error) {
       // Silently fail - non-critical operation
     }

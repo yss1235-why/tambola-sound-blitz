@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { ref, onValue } from 'firebase/database';
 import { database } from '@/services/firebase-core';
 
-const BUSINESS_NAME_PATH = 'systemSettings/shopName';
+const BUSINESS_NAME_PATH = 'systemSettings/businessName';
 
 /**
  * Hook to subscribe to the business name from Firebase systemSettings.
