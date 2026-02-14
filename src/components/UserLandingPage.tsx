@@ -378,7 +378,31 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
         {/* Games List - Uses extracted components */}
         {gameSummaries.length === 0 ? (
-          <EmptyGameState />
+          <>
+            <EmptyGameState />
+            {/* Hosting CTA — only shown when no games */}
+            <Card className="bg-card/90 backdrop-blur-sm rounded-2xl shadow-xl border border-border">
+              <CardContent className="p-6 text-center">
+                <p className="text-sm font-medium text-foreground mb-1">
+                  🎯 Host Tambola games like a pro
+                </p>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Automated calling · Live tickets · Instant prizes
+                </p>
+                <a
+                  href="https://innovarc.uk/products?category=app"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center text-sm font-semibold text-primary hover:text-accent transition-colors duration-200 gap-1"
+                >
+                  Start Hosting
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              </CardContent>
+            </Card>
+          </>
         ) : (
           <GameList games={gameSummaries} onSelectGame={selectGame} />
         )}
