@@ -28,6 +28,9 @@ interface HeaderProps {
   forceShowAdminLogin?: boolean;
   onAdminLoginClose?: () => void;
   businessName?: string;
+  // HOST MODE GATE: When a host session exists but host mode is not active
+  hasExistingHostSession?: boolean;
+  onActivateHostMode?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,7 +45,9 @@ export const Header: React.FC<HeaderProps> = ({
   onClearError,
   forceShowAdminLogin = false,
   onAdminLoginClose,
-  businessName
+  businessName,
+  hasExistingHostSession = false,
+  onActivateHostMode
 }) => {
   // Safely try to get host controls - may not be available on public pages
   let hostControls = null;
@@ -86,9 +91,15 @@ export const Header: React.FC<HeaderProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  // Open login dialog
+  // Open login dialog — or activate host mode if session already exists
   const handleOpenLogin = async () => {
     try {
+      // HOST MODE GATE: If host session exists, skip login form entirely
+      if (hasExistingHostSession && onActivateHostMode) {
+        onActivateHostMode();
+        return;
+      }
+
       if (authError) {
         onClearError();
       }

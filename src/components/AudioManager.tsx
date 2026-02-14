@@ -235,54 +235,66 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     };
 
     playNumberAudio();
-  }, [currentNumber, isAudioEnabled, gameState, onAudioComplete, onAudioError, speechRate]);
+    // FIX: Use specific gameState primitives to avoid re-running on unrelated Firebase updates
+  }, [currentNumber, isAudioEnabled, gameState?.isActive, gameState?.gameOver, gameState?.pendingGameEnd, gameState?.lastNumberCalled, onAudioComplete, onAudioError, speechRate]);
 
-  /// Handle prize announcement audio
+  /// Handle prize announcement audio — FIXED: Announces ALL winners per prize
   useEffect(() => {
     if (!isAudioEnabled || !lastWinnerAnnouncement) return;
     if (lastWinnerAnnouncement === lastProcessedAnnouncement.current) return;
 
+    // Parse all prize-winner pairs from announcement (split on '!' to handle multiple prizes)
+    const prizeEntries = lastWinnerAnnouncement
+      .split('!')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
 
-    // Check if announcement actually contains valid winner info
-    const prizeMatch = lastWinnerAnnouncement.match(/(.*?)\s+won\s+by\s+(.*?)!/);
+    // Extract and validate each prize entry
+    const validEntries: { prizeId: string; ticketNumbers: number[] }[] = [];
+    for (const entry of prizeEntries) {
+      const match = entry.match(/(.*?)\s+won\s+by\s+(.*)/i);
+      if (!match || !match[1] || !match[2] || match[1].includes('unknown') || match[2].includes('unknown')) continue;
 
-    if (!prizeMatch || !prizeMatch[1] || !prizeMatch[2] || prizeMatch[1].includes('unknown') || prizeMatch[2].includes('unknown')) {
-      console.warn(`📢 [AudioManager] ❌ No valid prize match found — skipping`);
-      lastProcessedAnnouncement.current = lastWinnerAnnouncement; // Mark as processed to avoid loops
+      const prizeId = match[1].toLowerCase().replace(/\s+/g, '');
+      const winnerInfo = match[2];
+
+      // Extract ALL ticket numbers using matchAll (fixes single-ticket bug)
+      const allTicketMatches = [...winnerInfo.matchAll(/T(\d+)/gi)];
+      const ticketNumbers = allTicketMatches
+        .map(m => parseInt(m[1], 10))
+        .filter(n => n > 0);
+
+      if (ticketNumbers.length > 0) {
+        validEntries.push({ prizeId, ticketNumbers });
+      }
+    }
+
+    if (validEntries.length === 0) {
+      console.warn(`📢 [AudioManager] ❌ No valid prize entries found — skipping`);
+      lastProcessedAnnouncement.current = lastWinnerAnnouncement;
       return;
     }
 
-    const playPrizeAudio = async () => {
+    // Play all announcements sequentially (Option A: full sequence per winner)
+    // Each winner hears: [Prize Name] → [Won By] → [Ticket Number]
+    const playAllPrizeAudio = async () => {
       try {
         setIsPlaying(true);
         lastProcessedAnnouncement.current = lastWinnerAnnouncement;
 
-        // Extract prize type from announcement
-        const prizeId = prizeMatch?.[1]?.toLowerCase().replace(/\s+/g, '') || 'unknown';
-        const winnerInfo = prizeMatch?.[2] || '';
-
-        // Extract ticket number from winner info (e.g., "T5" or "Ticket 5")
-        const ticketMatch = winnerInfo.match(/T(\d+)|Ticket\s*(\d+)/i);
-        const ticketNumber = parseInt(ticketMatch?.[1] || ticketMatch?.[2] || '0', 10);
-
-
-
-        if (ticketNumber <= 0) {
-          console.warn(`📢 [AudioManager] ❌ Invalid ticketNumber: ${ticketNumber} — skipping`);
-          setIsPlaying(false);
-          return;
+        for (const entry of validEntries) {
+          for (const ticketNumber of entry.ticketNumbers) {
+            await audioCoordinator.playPrizeAudio(
+              entry.prizeId,
+              ticketNumber,
+              undefined,
+              speechRate
+            );
+          }
         }
 
-
-        await audioCoordinator.playPrizeAudio(
-          prizeId,
-          ticketNumber,
-          () => {
-            setIsPlaying(false);
-            onAudioComplete?.('prize', { prizeId, ticketNumber });
-          },
-          speechRate
-        );
+        setIsPlaying(false);
+        onAudioComplete?.('prize', { entries: validEntries });
 
       } catch (error) {
         console.error(`📢 [AudioManager] ❌ playPrizeAudio error:`, error);
@@ -291,7 +303,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       }
     };
 
-    playPrizeAudio();
+    playAllPrizeAudio();
   }, [lastWinnerAnnouncement, isAudioEnabled, onAudioComplete, onAudioError, speechRate]);
 
   // Handle pending game end coordination

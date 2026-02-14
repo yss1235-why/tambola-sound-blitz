@@ -27,6 +27,11 @@ const Index = () => {
   const [selectedGameId, setSelectedGameId] = useState<string | null>(null);
   const [showAdminLoginViaGesture, setShowAdminLoginViaGesture] = useState(false);
 
+  // HOST MODE GATE: Hosts see player view by default.
+  // Only switch to host dashboard when they explicitly click Login.
+  // This is per-tab (React state), so one tab can be host, another can be player.
+  const [hostModeActive, setHostModeActive] = useState(false);
+
   // REMOVED: No need for manual auth initialization effects
   // The old useEffect for auto-initializing auth is no longer needed
   // Auth is always ready in the simplified version
@@ -39,6 +44,7 @@ const Index = () => {
       // For hosts, set special identifier for their current game
       if (role === 'host') {
         setSelectedGameId('HOST_CURRENT');
+        setHostModeActive(true); // Activate host mode after explicit login
       }
       return true;
     } catch (error: any) {
@@ -47,11 +53,18 @@ const Index = () => {
     }
   }, [auth]);
 
+  // HOST MODE GATE: Activate host dashboard when host clicks Login with existing session
+  const handleActivateHostMode = useCallback(() => {
+    setHostModeActive(true);
+    setSelectedGameId('HOST_CURRENT');
+  }, []);
+
   // SIMPLIFIED: Direct logout
   const handleUserLogout = useCallback(async () => {
     try {
       await auth.logout();
       setSelectedGameId(null);
+      setHostModeActive(false); // Reset host mode on logout
       return true;
     } catch (error: any) {
       return false;
@@ -105,13 +118,13 @@ const Index = () => {
 
   // UNCHANGED: Render logic stays exactly the same
   const renderContent = () => {
-    // Show admin dashboard if authenticated as admin
+    // Show admin dashboard if authenticated as admin (admin always auto-redirects)
     if (auth.user && auth.userRole === 'admin') {
       return <AdminDashboard user={auth.user as AdminUser} />;
     }
 
-    // Show host dashboard if authenticated as host
-    if (auth.user && auth.userRole === 'host') {
+    // Show host dashboard ONLY if host explicitly activated host mode
+    if (auth.user && auth.userRole === 'host' && hostModeActive) {
       return (
         <ThemeProvider>
           <GameDataProvider userId={auth.user.uid}>
@@ -144,16 +157,17 @@ const Index = () => {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* UNCHANGED: Header interface remains exactly the same */}
+      {/* Header — when host mode is NOT active, hide host identity so Login button shows */}
       <Header
-        // Auth state - same interface as before
-        currentUser={auth.user}
-        userRole={auth.userRole}
+        // HOST MODE GATE: When hostModeActive is false, pretend no user is logged in
+        // so the Header shows the Login button instead of the user dropdown
+        currentUser={(!hostModeActive && auth.userRole === 'host') ? null : auth.user}
+        userRole={(!hostModeActive && auth.userRole === 'host') ? null : auth.userRole}
         authLoading={auth.loading}
         authError={auth.error}
         authInitialized={auth.initialized}
 
-        // Auth actions - same interface as before
+        // Auth actions
         onRequestLogin={handleRequestLogin}
         onUserLogin={handleUserLogin}
         onUserLogout={handleUserLogout}
@@ -161,12 +175,15 @@ const Index = () => {
 
         forceShowAdminLogin={showAdminLoginViaGesture}
         onAdminLoginClose={handleAdminLoginClose}
-        // Pass businessName from systemSettings (publicly accessible)
         businessName={
           auth.userRole === 'host' && auth.user
             ? (auth.user as HostUser).businessName
             : publicBusinessName
         }
+
+        // HOST MODE GATE: Let Header know there's an existing host session
+        hasExistingHostSession={!hostModeActive && auth.user !== null && auth.userRole === 'host'}
+        onActivateHostMode={handleActivateHostMode}
       />
 
       {/* UNCHANGED: Loading overlay logic */}

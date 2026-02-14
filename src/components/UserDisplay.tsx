@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useGameData } from '@/providers/GameDataProvider';
 import { NumberGrid } from './NumberGrid';
-import { AudioManager } from './AudioManager';
+
 import { AudioStatusComponent } from './AudioStatusComponent';
 import { TambolaTicket } from '@/services/firebase';
 import { renderTicket, resolveWinnerTickets } from '@/utils/ticketRenderer';
@@ -519,19 +519,7 @@ export const UserDisplay: React.FC = () => {
           </Card>
         )}
 
-        {/* Audio Manager for Users */}
-        {gameData && (
-          <AudioManager
-            gameId={gameData.gameId}
-            gameState={gameData.gameState}
-            currentNumber={gameData.gameState.currentNumber}
-            prizes={Object.values(gameData.prizes)}
-            onAudioComplete={() => {
-              // For users, no callback needed - only hosts need timing control
-            }}
-            forceEnable={false} // Let users enable manually
-          />
-        )}
+
 
         {/* NEW: Development format debugging info */}
         {process.env.NODE_ENV === 'development' && (

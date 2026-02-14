@@ -93,10 +93,19 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   const numberCallerRef = useRef<SecureNumberCaller | null>(null);
   // FIX: Add timeout recovery for stuck audio
   const audioTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // FIX: Audio-stall recovery — if audio never plays, force-continue the loop
+  const audioStallRecoveryRef = useRef<NodeJS.Timeout | null>(null);
+  const gameIdRef = useRef<string | null>(null);
+  const AUDIO_STALL_TIMEOUT = 10000; // 10 seconds — if audio doesn't complete, force next call
   // FIX: Track call timestamp for duplicate prevention
   const lastCallTimestamp = useRef<number>(0);
   const MIN_CALL_INTERVAL = 2000; // 2 seconds minimum between calls
 
+
+  // Keep gameIdRef in sync (avoids stale closures in timeouts)
+  React.useEffect(() => {
+    gameIdRef.current = gameData?.gameId ?? null;
+  }, [gameData?.gameId]);
 
   // Simple state - only for UI feedback
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -160,6 +169,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     if (audioTimeoutRef.current) {
       clearTimeout(audioTimeoutRef.current);
       audioTimeoutRef.current = null;
+    }
+
+    // FIX: Clear audio-stall recovery timeout
+    if (audioStallRecoveryRef.current) {
+      clearTimeout(audioStallRecoveryRef.current);
+      audioStallRecoveryRef.current = null;
     }
 
     if (gameTimerRef.current) {
@@ -241,6 +256,12 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       audioTimeoutRef.current = null;
     }
 
+    // FIX: Clear audio-stall recovery — audio completed normally
+    if (audioStallRecoveryRef.current) {
+      clearTimeout(audioStallRecoveryRef.current);
+      audioStallRecoveryRef.current = null;
+    }
+
     // Early exit if game is already over or component unmounted
     if (!gameData?.gameState?.isActive || gameData?.gameState?.gameOver) {
       return;
@@ -310,6 +331,22 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
                 audioTimeoutRef.current = null;
               }
               stopTimer(); // Ensure timer is fully stopped
+            } else {
+              // FIX: Set stall recovery in case audio never plays for this number
+              if (audioStallRecoveryRef.current) clearTimeout(audioStallRecoveryRef.current);
+              audioStallRecoveryRef.current = setTimeout(() => {
+                if (!isTimerActiveRef.current) return;
+                console.warn('🔄 [HostControls] Audio stall detected after number call — forcing next call');
+                isCallInProgressRef.current = false;
+                isProcessingCompletion.current = false;
+                // Force-continue the loop by calling handleAudioComplete logic
+                const gId = gameIdRef.current;
+                if (!gId) return;
+                isCallInProgressRef.current = true;
+                firebaseGame.callNextNumberAndContinue(gId)
+                  .then(cont => { if (!cont) { isTimerActiveRef.current = false; isCallInProgressRef.current = false; } })
+                  .catch(() => { isTimerActiveRef.current = false; isCallInProgressRef.current = false; });
+              }, AUDIO_STALL_TIMEOUT);
             }
           })
           .catch(error => {
@@ -379,6 +416,20 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
         if (shouldContinue && isTimerActiveRef.current) {
           // Audio completion will schedule the next call
+          // FIX: Set stall recovery in case audio never plays for this first number
+          if (audioStallRecoveryRef.current) clearTimeout(audioStallRecoveryRef.current);
+          audioStallRecoveryRef.current = setTimeout(() => {
+            if (!isTimerActiveRef.current) return;
+            console.warn('🔄 [HostControls] Audio stall detected on first number — forcing next call');
+            isCallInProgressRef.current = false;
+            isProcessingCompletion.current = false;
+            const gId = gameIdRef.current;
+            if (!gId) return;
+            isCallInProgressRef.current = true;
+            firebaseGame.callNextNumberAndContinue(gId)
+              .then(cont => { if (!cont) { isTimerActiveRef.current = false; isCallInProgressRef.current = false; } })
+              .catch(() => { isTimerActiveRef.current = false; isCallInProgressRef.current = false; });
+          }, AUDIO_STALL_TIMEOUT);
         } else {
           isTimerActiveRef.current = false;
           isCallInProgressRef.current = false;
