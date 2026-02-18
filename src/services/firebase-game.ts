@@ -763,103 +763,126 @@ class FirebaseGameService {
    * @param gameId - Game to call number for
    * @returns boolean - true if game should continue, false if game should stop
    */
+  /**
+   * Helper: Check if an error is transient (network/timeout) vs terminal (game logic)
+   */
+  private isTransientError(error: any): boolean {
+    const msg = (error?.message || '').toLowerCase();
+    return msg.includes('network') ||
+      msg.includes('timeout') ||
+      msg.includes('connection') ||
+      msg.includes('disconnect') ||
+      msg.includes('lock') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('transaction') ||
+      msg.includes('permission_denied') === false; // permission errors are NOT transient
+  }
+
   async callNextNumberAndContinue(gameId: string): Promise<boolean> {
     try {
+      // REMOVED: Redundant outer gameMutex.withLock — SecureNumberCaller already has its own mutex.
+      // The double-locking doubled the failure surface for lock acquisition timeouts.
 
-      // Use mutex to prevent concurrent calls
-      return await this.gameMutex.withLock(
-        `call-${gameId}`,
-        async () => {
-          // Step 1: Validate game can accept calls
-          const canCall = await this.validateGameForCalling(gameId);
-          if (!canCall.isValid) {
-            return false;
-          }
+      // Step 1: Validate game can accept calls
+      const canCall = await this.validateGameForCalling(gameId);
+      if (!canCall.isValid) {
+        return false; // Terminal: game is over/finalizing/all numbers called
+      }
 
-          // Step 2: Get or create secure number caller (BUG #2 FIX: use singleton)
-          let numberCaller = this.numberCallers.get(gameId);
-          if (!numberCaller) {
-            numberCaller = SecureNumberCaller.getInstance(gameId);
-            this.numberCallers.set(gameId, numberCaller);
-          }
+      // Step 2: Get or create secure number caller (BUG #2 FIX: use singleton)
+      let numberCaller = this.numberCallers.get(gameId);
+      if (!numberCaller) {
+        numberCaller = SecureNumberCaller.getInstance(gameId);
+        this.numberCallers.set(gameId, numberCaller);
+      }
 
-          // Step 3: Use secure number calling
-          const result = await numberCaller.callNextNumber();
+      // Step 3: Use secure number calling
+      const result = await numberCaller.callNextNumber();
 
-          if (!result.success) {
-            return false;
-          }
-
-          // Step 4: Process prizes after successful call
-          const prizeResult = await this.processPrizesAfterNumberCall(gameId, result.number);
-
-          // Step 5: Check if game should continue (check both numbers AND prizes)
-          const gameData = await this.getGameData(gameId);
-          if (!gameData) return false;
-
-          const stats = await numberCaller.getGameStatistics();
-          const numbersRemaining = stats.remainingNumbers > 0;
-
-          // BUG #7 FIX: Merge pending prize updates before checking
-          let allPrizesWon: boolean;
-          if (FEATURE_FLAGS.USE_MERGED_PRIZE_CHECK && prizeResult?.prizeUpdates) {
-            // Create merged prizes object
-            const mergedPrizes = { ...gameData.prizes };
-            for (const [prizeId, updates] of Object.entries(prizeResult.prizeUpdates)) {
-              if (updates && typeof updates === 'object') {
-                mergedPrizes[prizeId] = { ...mergedPrizes[prizeId], ...updates };
-              }
-            }
-            allPrizesWon = this.checkAllPrizesWon(mergedPrizes, {});
-          } else {
-            // Legacy behavior
-            allPrizesWon = this.checkAllPrizesWon(gameData.prizes, prizeResult?.prizeUpdates || {});
-          }
-
-          const shouldContinue = numbersRemaining && !allPrizesWon;
-
-          // Game continuation check log removed for performance
-
-          // Check if game should end
-          const isLastNumber = stats.totalCalled >= 90;
-          const shouldEndGame = allPrizesWon || isLastNumber;
-
-          if (shouldEndGame && !gameData.gameState.gameOver) {
-
-            const gameRef = ref(database, `games/${gameId}`);
-            const now = new Date();
-            const endTime = new Date(now.getTime() + 6000); // 6 seconds from now
-
-            // BUG #6 FIX: Record scheduled end time for limbo recovery
-            await update(gameRef, {
-              'gameState/isActive': false,
-              'gameState/finalizing': true,
-              'gameState/scheduledEndAt': endTime.toISOString(), // For recovery
-              'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game ending...' : 'All numbers called! Game ending...',
-              'lastWinnerAt': now.toISOString(),
-              'updatedAt': now.toISOString()
-            });
-
-            // BUG #5: setTimeout is unreliable if browser closes
-            // With scheduledEndAt, other clients can recover games stuck in limbo
-            setTimeout(async () => {
-              try {
-                await this.endGame(gameId);
-              } catch (error) {
-              }
-            }, 5500);
-
-            return false; // Stop calling more numbers
-          }
-          return shouldContinue;
-        },
-        {
-          timeout: 15000,
-          lockTTL: 20000
+      if (!result.success) {
+        // Check if this is a transient error (network/timeout) vs terminal (no numbers left)
+        const errorMsg = (result.error || '').toLowerCase();
+        const isTerminal = errorMsg.includes('no more numbers') ||
+          errorMsg.includes('game not found') ||
+          errorMsg.includes('already called');
+        if (isTerminal) {
+          return false; // Terminal: stop the loop
         }
-      );
+        // Transient error (network, timeout, lock): return true so the loop retries
+        console.warn(`⚠️ [callNextNumberAndContinue] Transient error during number call: ${result.error} — loop will retry`);
+        return true;
+      }
+
+      // Step 4: Process prizes after successful call
+      const prizeResult = await this.processPrizesAfterNumberCall(gameId, result.number);
+
+      // Step 5: Check if game should continue (check both numbers AND prizes)
+      const gameData = await this.getGameData(gameId);
+      if (!gameData) return true; // Can't read game data — transient, retry
+
+      const stats = await numberCaller.getGameStatistics();
+      const numbersRemaining = stats.remainingNumbers > 0;
+
+      // BUG #7 FIX: Merge pending prize updates before checking
+      let allPrizesWon: boolean;
+      if (FEATURE_FLAGS.USE_MERGED_PRIZE_CHECK && prizeResult?.prizeUpdates) {
+        // Create merged prizes object
+        const mergedPrizes = { ...gameData.prizes };
+        for (const [prizeId, updates] of Object.entries(prizeResult.prizeUpdates)) {
+          if (updates && typeof updates === 'object') {
+            mergedPrizes[prizeId] = { ...mergedPrizes[prizeId], ...updates };
+          }
+        }
+        allPrizesWon = this.checkAllPrizesWon(mergedPrizes, {});
+      } else {
+        // Legacy behavior
+        allPrizesWon = this.checkAllPrizesWon(gameData.prizes, prizeResult?.prizeUpdates || {});
+      }
+
+      const shouldContinue = numbersRemaining && !allPrizesWon;
+
+      // Check if game should end
+      const isLastNumber = stats.totalCalled >= 90;
+      const shouldEndGame = allPrizesWon || isLastNumber;
+
+      if (shouldEndGame && !gameData.gameState.gameOver) {
+
+        const gameRef = ref(database, `games/${gameId}`);
+        const now = new Date();
+
+        // FIX: Don't overwrite lastWinnerAnnouncement when prizes were already written
+        // by processPrizesAfterNumberCall. Only set game state flags + fallback announcement.
+        const gameEndUpdates: any = {
+          'gameState/pendingGameEnd': true,
+          'gameState/lastNumberCalled': true,
+          'updatedAt': now.toISOString()
+        };
+
+        // Only set announcement if no prizes were won (avoid overwriting real prize announcement)
+        if (!prizeResult?.hasWinners) {
+          gameEndUpdates['lastWinnerAnnouncement'] = allPrizesWon
+            ? 'All prizes won! Game ending...'
+            : 'All numbers called! Game ending...';
+          gameEndUpdates['lastWinnerAt'] = now.toISOString();
+        }
+
+        await update(gameRef, gameEndUpdates);
+
+        // REMOVED: 5.5s setTimeout → endGame() — unreliable and doesn't wait for audio
+        // completePendingGameEnd() is called by AudioManager after all audio finishes
+
+        return false; // Stop calling more numbers
+      }
+      return shouldContinue;
 
     } catch (error: any) {
+      // FIX: Distinguish transient vs terminal errors
+      // Transient errors (network, timeout) → return true so the loop retries
+      // Terminal errors (game ended) → return false to stop permanently
+      if (this.isTransientError(error)) {
+        console.warn(`⚠️ [callNextNumberAndContinue] Transient error: ${error.message} — loop will retry`);
+        return true;
+      }
       return false;
     }
   }
@@ -1273,34 +1296,35 @@ class FirebaseGameService {
         updatedCalledNumbers
       );
 
-      // Update prizes if any winners (separate update to avoid conflicts)
-      if (prizeResult.hasWinners) {
-        const prizeUpdates: any = {
-          ...prizeResult.prizeUpdates,
-          lastWinnerAnnouncement: prizeResult.announcements.join(' '),
-          lastWinnerAt: new Date().toISOString()
-        };
-
-        await update(gameRef, prizeUpdates);
-      }
-
       // Check if game should end
       const allPrizesWon = this.checkAllPrizesWon(updatedGame.prizes, prizeResult.prizeUpdates);
       const isLastNumber = updatedCalledNumbers.length >= 90;
       const shouldEndGame = allPrizesWon || isLastNumber || updatedGame.gameState.gameOver;
 
-      // Game end check log removed for performance
-
       if (shouldEndGame && !updatedGame.gameState.gameOver) {
-
-        // Set pending game end - let AudioCoordinator handle the rest
-        await update(gameRef, {
+        // MERGED WRITE: prize + game-end in ONE atomic update to prevent race conditions
+        // This ensures lastWinnerAnnouncement is never overwritten and audio effects
+        // receive all data (prize, pendingGameEnd, lastNumberCalled) in one render cycle
+        const gameEndUpdates: any = {
+          ...(prizeResult.hasWinners ? prizeResult.prizeUpdates : {}),
+          lastWinnerAnnouncement: prizeResult.hasWinners
+            ? prizeResult.announcements.join(' ')
+            : 'All numbers called! Game will end after audio!',
+          lastWinnerAt: new Date().toISOString(),
           'gameState/pendingGameEnd': true,
           'gameState/isActive': false,
-          'lastWinnerAnnouncement': allPrizesWon ? 'All prizes won! Game will end after audio!' : 'All numbers called! Game will end after audio!',
-          'lastWinnerAt': new Date().toISOString(),
-          'updatedAt': new Date().toISOString()
-        });
+          'gameState/lastNumberCalled': true,
+          updatedAt: new Date().toISOString()
+        };
+        await update(gameRef, gameEndUpdates);
+      } else if (prizeResult.hasWinners) {
+        // Normal prize win (not game-ending) — separate write is fine
+        const prizeUpdates: any = {
+          ...prizeResult.prizeUpdates,
+          lastWinnerAnnouncement: prizeResult.announcements.join(' '),
+          lastWinnerAt: new Date().toISOString()
+        };
+        await update(gameRef, prizeUpdates);
       }
 
 

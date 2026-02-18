@@ -179,8 +179,10 @@ const AudioManagerForHost: React.FC<{
   prizes: any[];
   forceEnable: boolean;
   gameState: any;
-  lastWinnerAnnouncement?: string;  // FIX: Add missing prop for prize announcements
-}> = ({ currentNumber, prizes, forceEnable, gameState, lastWinnerAnnouncement }) => {
+  gameId?: string;  // FIX: Pass gameId for pendingGameEnd coordination
+  isGameOver?: boolean;  // FIX: Pass isGameOver for immediate game-over audio
+  lastWinnerAnnouncement?: string;
+}> = ({ currentNumber, prizes, forceEnable, gameState, gameId, isGameOver, lastWinnerAnnouncement }) => {
   const {
     handleAudioComplete,
     handlePrizeAudioComplete,
@@ -190,10 +192,12 @@ const AudioManagerForHost: React.FC<{
 
   return (
     <AudioManager
+      gameId={gameId}
       currentNumber={currentNumber}
       prizes={prizes}
       gameState={gameState}
-      lastWinnerAnnouncement={lastWinnerAnnouncement}  // FIX: Pass to AudioManager
+      isGameOver={isGameOver}
+      lastWinnerAnnouncement={lastWinnerAnnouncement}
       onAudioComplete={handleAudioComplete}
       onPrizeAudioComplete={handlePrizeAudioComplete}
       onAudioStarted={handleAudioStarted}
@@ -832,9 +836,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
         )}
 
         {/* Winners Display Phase */}
-        {currentView === 'winners' && cachedWinnerData && (
+        {currentView === 'winners' && (cachedWinnerData || gameData) && (
           <SimplifiedWinnerDisplay
-            gameData={cachedWinnerData}
+            gameData={(cachedWinnerData || gameData)!}
             onCreateNewGame={handleCreateNewGameFromWinners}
           />
         )}
@@ -882,7 +886,9 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
                 prizes={Object.values(gameData.prizes)}
                 forceEnable={true}
                 gameState={gameData.gameState}
-                lastWinnerAnnouncement={gameData.lastWinnerAnnouncement}  // FIX: Pass prize announcement
+                gameId={gameData.gameId}
+                isGameOver={gameData.gameState.gameOver}
+                lastWinnerAnnouncement={gameData.lastWinnerAnnouncement}
               />
             </HostControlsProvider>
           </div>

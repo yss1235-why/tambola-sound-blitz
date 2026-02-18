@@ -207,6 +207,17 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
     const isPendingEnd = gameState?.pendingGameEnd && gameState?.lastNumberCalled;
     const shouldPlayAudio = (gameState?.isActive && !gameState?.gameOver) || isPendingEnd;
 
+    // SAFETY NET: If a new number arrived but audio can't play (e.g., isActive flickered off),
+    // force-fire onAudioComplete after a delay so the calling loop doesn't silently die
+    if (!shouldPlayAudio && currentNumber && currentNumber !== lastProcessedNumber.current && isAudioEnabled) {
+      const skipTimeout = setTimeout(() => {
+        console.warn(`⚠️ [AudioManager] Number ${currentNumber} skipped (shouldPlayAudio=false) — forcing onAudioComplete`);
+        lastProcessedNumber.current = currentNumber;
+        onAudioComplete?.('number', { number: currentNumber, skipped: true });
+      }, 3000); // Wait 3s in case isActive comes back
+      return () => clearTimeout(skipTimeout);
+    }
+
     if (!isAudioEnabled || !shouldPlayAudio) return;
     if (!currentNumber || currentNumber === lastProcessedNumber.current) return;
 
@@ -214,6 +225,10 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
       try {
         setIsPlaying(true);
         lastProcessedNumber.current = currentNumber;
+
+        // FIX: Notify parent that audio is about to start for this number
+        // This allows visual sync — the number should appear on screen NOW
+        onAudioStarted?.(currentNumber);
 
         await audioCoordinator.playNumberAudio(
           currentNumber,
@@ -230,13 +245,16 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
 
       } catch (error) {
         setIsPlaying(false);
+        // FIX: Fire onAudioComplete even on error so the calling loop continues
+        console.warn(`⚠️ [AudioManager] Audio error for number ${currentNumber} — firing onAudioComplete to continue loop`);
+        onAudioComplete?.('number', { number: currentNumber, error: true });
         onAudioError?.(error as Error, 'number');
       }
     };
 
     playNumberAudio();
     // FIX: Use specific gameState primitives to avoid re-running on unrelated Firebase updates
-  }, [currentNumber, isAudioEnabled, gameState?.isActive, gameState?.gameOver, gameState?.pendingGameEnd, gameState?.lastNumberCalled, onAudioComplete, onAudioError, speechRate]);
+  }, [currentNumber, isAudioEnabled, gameState?.isActive, gameState?.gameOver, gameState?.pendingGameEnd, gameState?.lastNumberCalled, onAudioComplete, onAudioError, onAudioStarted, speechRate]);
 
   /// Handle prize announcement audio — FIXED: Announces ALL winners per prize
   useEffect(() => {
@@ -300,6 +318,8 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         console.error(`📢 [AudioManager] ❌ playPrizeAudio error:`, error);
         setIsPlaying(false);
         onAudioError?.(error as Error, 'prize');
+        // FIX: Always fire onAudioComplete even on error, so the game loop doesn't stall
+        onAudioComplete?.('prize', { entries: validEntries, error: true });
       }
     };
 
@@ -324,6 +344,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         }
 
         if (waitCount >= 50) {
+          // Log removed for production
         }
 
         // AUDIO-002 FIX: Check if already played
@@ -338,19 +359,13 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         await audioCoordinator.playGameOverAudio(() => {
           if (isMountedRef.current) setIsPlaying(false);
 
-          // AUDIO-007 FIX: Check if mounted before dynamic import
-          if (!isMountedRef.current) {
-            return;
-          }
-
-          // Now complete the pending game end
+          // Complete the pending game end (safe even if unmounted — Firebase write only)
           setTimeout(async () => {
             try {
-              // AUDIO-007 FIX: Check again before import
-              if (!isMountedRef.current) return;
-              const { firebaseGame } = await import('@/services/firebase');
+              const { firebaseGame } = await import('@/services/firebase-game');
               await firebaseGame.completePendingGameEnd(gameId);
             } catch (error) {
+              console.error('Failed to complete pending game end:', error);
             }
           }, 100);
         }, speechRate);
@@ -359,7 +374,7 @@ export const AudioManager: React.FC<AudioManagerProps> = ({
         // Fallback: still try to end the game (only if mounted)
         if (!isMountedRef.current) return;
         try {
-          const { firebaseGame } = await import('@/services/firebase');
+          const { firebaseGame } = await import('@/services/firebase-game');
           await firebaseGame.completePendingGameEnd(gameId);
         } catch (fallbackError) {
         }

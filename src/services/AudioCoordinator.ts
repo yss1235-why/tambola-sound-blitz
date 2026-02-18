@@ -138,7 +138,7 @@ export class AudioCoordinator {
       const taskId = this.queueAudio({
         type: 'prize',
         data: { prizeId, ticketNumber },
-        priority: 150,
+        priority: 50,
         execute: () => preRecordedAudioService.playWinnerAnnouncement(prizeId, ticketNumber),
         onComplete: () => {
           onComplete?.();

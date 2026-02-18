@@ -16,10 +16,12 @@ export const useBusinessName = (): { businessName: string; loading: boolean } =>
 
     useEffect(() => {
         const businessNameRef = ref(database, BUSINESS_NAME_PATH);
+        let hasReceived = false;
 
         const unsubscribe = onValue(
             businessNameRef,
             (snapshot) => {
+                hasReceived = true;
                 if (snapshot.exists()) {
                     setBusinessName(snapshot.val() as string);
                 } else {
@@ -28,6 +30,7 @@ export const useBusinessName = (): { businessName: string; loading: boolean } =>
                 setLoading(false);
             },
             (error) => {
+                hasReceived = true;
                 // Permission denied or other error
                 console.error('Failed to read businessName from systemSettings:', error);
                 setBusinessName('');
@@ -35,7 +38,18 @@ export const useBusinessName = (): { businessName: string; loading: boolean } =>
             }
         );
 
-        return () => unsubscribe();
+        // ✅ FIX: Timeout to prevent infinite loading on slow/no network
+        const timeout = setTimeout(() => {
+            if (!hasReceived) {
+                setBusinessName('');
+                setLoading(false);
+            }
+        }, 10_000); // 10 seconds
+
+        return () => {
+            clearTimeout(timeout);
+            unsubscribe();
+        };
     }, []);
 
     return { businessName, loading };

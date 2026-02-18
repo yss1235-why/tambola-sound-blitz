@@ -315,8 +315,8 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
         </CardContent>
       </Card>
 
-      {/* Recent Numbers Called */}
-      {gameData.gameState.calledNumbers && gameData.gameState.calledNumbers.length > 0 && (
+      {/* Recent Numbers Called — SYNC FIX: Use visualCalledNumbers from host context */}
+      {hostControls?.visualCalledNumbers && hostControls.visualCalledNumbers.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -326,7 +326,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              {gameData.gameState.calledNumbers
+              {hostControls.visualCalledNumbers
                 .slice(-20)
                 .reverse()
                 .map((num, index) => (
@@ -342,9 +342,9 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
                   </div>
                 ))}
             </div>
-            {gameData.gameState.calledNumbers.length > 20 && (
+            {hostControls.visualCalledNumbers.length > 20 && (
               <p className="text-sm text-muted-foreground mt-3 text-center">
-                Showing last 20 numbers  Total called: {gameData.gameState.calledNumbers.length}
+                Showing last 20 numbers  Total called: {hostControls.visualCalledNumbers.length}
               </p>
             )}
           </CardContent>

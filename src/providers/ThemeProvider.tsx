@@ -28,8 +28,11 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     const colors = themeService.getActiveColors(settings);
 
     useEffect(() => {
+        let hasReceived = false;
+
         // Subscribe to theme changes from Firebase
         const unsubscribe = themeService.subscribeToTheme((newSettings) => {
+            hasReceived = true;
             setSettings(newSettings);
             setIsLoading(false);
             document.documentElement.setAttribute('data-theme-preset', newSettings.preset);
@@ -40,7 +43,16 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
             }
         });
 
+        // ✅ FIX: Timeout to prevent infinite loading on slow/no network
+        const timeout = setTimeout(() => {
+            if (!hasReceived) {
+                setSettings(DEFAULT_THEME_SETTINGS);
+                setIsLoading(false);
+            }
+        }, 5_000); // 5 seconds
+
         return () => {
+            clearTimeout(timeout);
             unsubscribe();
         };
     }, []);

@@ -29,7 +29,7 @@ export function useFirebaseSubscription<T>(
   options: SubscriptionOptions = {}
 ): SubscriptionState<T> {
   const { enabled = true, onError } = options;
-  
+
   const [state, setState] = useState<SubscriptionState<T>>({
     data: null,
     loading: enabled,
@@ -42,7 +42,7 @@ export function useFirebaseSubscription<T>(
   // Create stable callback that updates state
   const stableCallback = useCallback((data: T | null) => {
     if (!isMountedRef.current) return;
-    
+
     setState(prev => ({
       ...prev,
       data,
@@ -62,18 +62,46 @@ export function useFirebaseSubscription<T>(
 
     setState(prev => ({ ...prev, loading: true, error: null }));
 
+    let hasReceivedData = false;
+
+    // ✅ FIX: Loading timeout to prevent infinite spinner on slow/no network
+    // Firebase onValue() won't fire its first callback until the server responds.
+    // Without a timeout, loading stays true forever on offline/slow connections.
+    const LOADING_TIMEOUT_MS = 10_000; // 10 seconds
+    const loadingTimeout = setTimeout(() => {
+      if (!hasReceivedData && isMountedRef.current) {
+        setState(prev => {
+          if (prev.loading && !prev.data) {
+            return {
+              ...prev,
+              loading: false,
+              error: 'Connection timed out. Please check your internet and try again.'
+            };
+          }
+          return prev;
+        });
+      }
+    }, LOADING_TIMEOUT_MS);
+
     try {
       // Check if subscription already exists
       const existing = activeSubscriptions.get(subscriptionKey);
-      
+
+      // Wrap stableCallback to track first data arrival and clear timeout
+      const wrappedCallback = (data: T | null) => {
+        hasReceivedData = true;
+        clearTimeout(loadingTimeout);
+        stableCallback(data);
+      };
+
       if (existing) {
         // Add our callback to existing subscription
-        existing.callbacks.add(stableCallback);
+        existing.callbacks.add(wrappedCallback);
       } else {
         // Create new subscription
-        
+
         const callbacks = new Set<(data: any) => void>();
-        callbacks.add(stableCallback);
+        callbacks.add(wrappedCallback);
 
         // Create master callback that notifies all subscribers
         const masterCallback = (data: T | null) => {
@@ -86,7 +114,7 @@ export function useFirebaseSubscription<T>(
         };
 
         const unsubscribe = subscriptionFn(masterCallback);
-        
+
         activeSubscriptions.set(subscriptionKey, {
           unsubscribe,
           callbacks
@@ -95,10 +123,12 @@ export function useFirebaseSubscription<T>(
 
       // Cleanup function
       return () => {
+        clearTimeout(loadingTimeout);
         const existing = activeSubscriptions.get(subscriptionKey);
-        if (existing && callbackRef.current) {
-          existing.callbacks.delete(callbackRef.current);
-          
+        if (existing) {
+          // Remove wrapped callback (not stableCallback)
+          existing.callbacks.delete(wrappedCallback);
+
           // If no more callbacks, cleanup subscription
           if (existing.callbacks.size === 0) {
             existing.unsubscribe();
@@ -107,26 +137,27 @@ export function useFirebaseSubscription<T>(
         }
       };
     } catch (error: any) {
+      clearTimeout(loadingTimeout);
       const errorMessage = error.message || 'Subscription failed';
-      
+
       setState({
         data: null,
         loading: false,
         error: errorMessage
       });
-      
+
       if (onError) {
         onError(errorMessage);
       }
     }
   }, [subscriptionKey, enabled, subscriptionFn, stableCallback, onError]);
 
-// Enhanced cleanup with resource tracking
+  // Enhanced cleanup with resource tracking
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      
+
       // Force cleanup of subscription if it exists
       const existing = activeSubscriptions.get(subscriptionKey);
       if (existing) {
@@ -152,7 +183,7 @@ export function useGameSubscription(gameId: string | null) {
     useCallback((callback) => {
       if (!gameId) {
         callback(null);
-        return () => {};
+        return () => { };
       }
       return firebaseService.subscribeToGame(gameId, callback);
     }, [gameId]),
@@ -177,61 +208,61 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
     useCallback((callback) => {
       if (!hostId) {
         setTimeout(() => callback(null), 0);
-        return () => {};
+        return () => { };
       }
-      
+
       // ✅ NEW APPROACH: Subscribe to ALL games and filter for host's active/completed games
       const unsubscribe = firebaseService.subscribeToAllActiveGames((allGames) => {
         try {
-          
+
           // Filter games for this specific host
           const hostGames = allGames.filter(game => game.hostId === hostId);
-          
+
           if (hostGames.length === 0) {
             callback(null);
             return;
           }
-          
+
           // ✅ PRIORITY 1: Active game (not finished)
-          const activeGames = hostGames.filter(game => 
-            !game.gameState.gameOver && 
+          const activeGames = hostGames.filter(game =>
+            !game.gameState.gameOver &&
             game.gameState // Additional safety check
           );
-          
+
           if (activeGames.length > 0) {
             // Sort by creation date and get the most recent active game
             const currentGame = activeGames
               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-            
+
             callback(currentGame);
             return;
           }
-          
+
           // ✅ PRIORITY 2: Most recent completed game (NEW LOGIC FOR HOST WINNER DISPLAY)
           const completedGames = hostGames
             .filter(game => {
               // ✅ SAFETY: Ensure game is properly completed
-              return game.gameState && 
-                     game.gameState.gameOver && 
-                     game.createdAt; // Must have creation timestamp
+              return game.gameState &&
+                game.gameState.gameOver &&
+                game.createdAt; // Must have creation timestamp
             })
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-          
+
           if (completedGames.length > 0) {
             const recentCompleted = completedGames[0];
-            
+
             callback(recentCompleted);
             return;
           }
-          
+
           // ✅ PRIORITY 3: No games at all
           callback(null);
-          
+
         } catch (error) {
           callback(null);
         }
       });
-      
+
       return unsubscribe;
     }, [hostId]),
     { enabled: !!hostId }
@@ -242,14 +273,14 @@ export function useHostCurrentGameSubscription(hostId: string | null) {
  * Utility function to cleanup all subscriptions (useful for app shutdown)
  */
 export function cleanupAllSubscriptions() {
-  
+
   activeSubscriptions.forEach((subscription, key) => {
     try {
       subscription.unsubscribe();
     } catch (error) {
     }
   });
-  
+
   activeSubscriptions.clear();
 }
 

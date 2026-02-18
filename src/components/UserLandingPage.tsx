@@ -174,6 +174,13 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
     }
 
     if (currentView !== shouldShowView) {
+      // FIX: Delay redirect to 'winners' so game-over audio can finish playing
+      if (shouldShowView === 'winners' && currentView === 'game') {
+        const delayTimer = setTimeout(() => {
+          setCurrentView('winners');
+        }, 3000); // 3s delay for audio
+        return () => clearTimeout(delayTimer);
+      }
       setCurrentView(shouldShowView);
     }
   }, [selectedGameId, currentView, gameDataSource.games, onGameSelection]);

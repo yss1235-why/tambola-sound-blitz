@@ -40,7 +40,7 @@ interface HostControlsContextValue {
   speechRateScale: number;
 
   // Audio completion handlers
-  handleAudioComplete: () => void;
+  handleAudioComplete: (type?: string) => void;
   handlePrizeAudioComplete: (prizeId: string) => void;
   handleAudioStarted: (number: number) => void;
 
@@ -100,12 +100,18 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   // FIX: Track call timestamp for duplicate prevention
   const lastCallTimestamp = useRef<number>(0);
   const MIN_CALL_INTERVAL = 2000; // 2 seconds minimum between calls
+  // FIX: Ref for current gameData to avoid stale closures in setTimeout/recovery callbacks
+  const gameDataRef = useRef(gameData);
+  // FIX: Retry counter for transient errors — max 3 retries before stopping
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 3;
 
 
-  // Keep gameIdRef in sync (avoids stale closures in timeouts)
+  // Keep refs in sync (avoids stale closures in timeouts)
   React.useEffect(() => {
     gameIdRef.current = gameData?.gameId ?? null;
-  }, [gameData?.gameId]);
+    gameDataRef.current = gameData;
+  }, [gameData]);
 
   // Simple state - only for UI feedback
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -247,9 +253,9 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
   });
 
   /**
-   * ✅ SIMPLIFIED: Handle audio completion - focus only on calling next number
+   * ✅ FIXED: Handle audio completion — waits for prize audio before calling next number
    */
-  const handleAudioComplete = useCallback(() => {
+  const handleAudioComplete = useCallback((type?: string) => {
     // FIX: Clear any pending audio timeout recovery
     if (audioTimeoutRef.current) {
       clearTimeout(audioTimeoutRef.current);
@@ -262,8 +268,36 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       audioStallRecoveryRef.current = null;
     }
 
+    // FIX: Use ref for current gameData to avoid stale closures
+    const currentGameData = gameDataRef.current;
+
     // Early exit if game is already over or component unmounted
-    if (!gameData?.gameState?.isActive || gameData?.gameState?.gameOver) {
+    if (!currentGameData?.gameState?.isActive || currentGameData?.gameState?.gameOver) {
+      return;
+    }
+
+    // 🔧 POST-PRIZE SYNC FIX: If this is a number completion, check if a prize was just won.
+    // If yes, DON'T call the next number yet — wait for prize audio to finish first.
+    if (type === 'number' && currentGameData?.prizes) {
+      const calledNumbers = currentGameData.gameState?.calledNumbers || [];
+      const lastCalledNumber = calledNumbers[calledNumbers.length - 1];
+      const hasRecentWin = lastCalledNumber && Object.values(currentGameData.prizes).some(
+        (prize: any) => prize.won && prize.winningNumber === lastCalledNumber
+      );
+      if (hasRecentWin) {
+        console.log(`🎯 [HostControls] Number ${lastCalledNumber} won a prize — waiting for prize audio before next number`);
+        return; // Prize audio will call handleAudioComplete('prize') when done
+      }
+    }
+
+    // Ignore gameOver audio completions
+    if (type === 'gameOver') {
+      return;
+    }
+
+    // Don't generate new numbers during game-end wind-down
+    // coordinateFinalAudio in AudioManager handles the final sequence
+    if (currentGameData?.gameState?.pendingGameEnd) {
       return;
     }
 
@@ -284,14 +318,20 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
       setIsAudioReady(true);
     }
 
+    // Reset retry counter on successful audio completion
+    retryCountRef.current = 0;
+
     isProcessingCompletion.current = true;
 
     // Single setTimeout instead of nested ones
     setTimeout(() => {
+      // FIX: Use ref for fresh gameData inside setTimeout (not stale closure)
+      const freshGameData = gameDataRef.current;
+
       // Verify this completion is still valid and game is still active
       if (audioCompletionId.current !== completionId ||
-        !gameData?.gameState?.isActive ||
-        gameData?.gameState?.gameOver ||
+        !freshGameData?.gameState?.isActive ||
+        freshGameData?.gameState?.gameOver ||
         !isTimerActiveRef.current) {
         isProcessingCompletion.current = false;
         return;
@@ -307,6 +347,10 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
         return;
       }
 
+      // Use gameIdRef for fresh game ID (not stale closure)
+      const currentGameId = gameIdRef.current;
+      if (!currentGameId) return;
+
       // Use a single timeout for the next call - NO NESTED TIMEOUTS
       if (!isCallInProgressRef.current && isTimerActiveRef.current) {
         lastCallTimeRef.current = Date.now();
@@ -321,7 +365,7 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
           }
         }, 15000); // 15 second safety timeout
 
-        firebaseGame.callNextNumberAndContinue(gameData.gameId)
+        firebaseGame.callNextNumberAndContinue(currentGameId)
           .then(shouldContinue => {
             if (!shouldContinue) {
               isTimerActiveRef.current = false;
@@ -339,27 +383,57 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
                 console.warn('🔄 [HostControls] Audio stall detected after number call — forcing next call');
                 isCallInProgressRef.current = false;
                 isProcessingCompletion.current = false;
-                // Force-continue the loop by calling handleAudioComplete logic
+                // Force-continue the loop
                 const gId = gameIdRef.current;
                 if (!gId) return;
                 isCallInProgressRef.current = true;
                 firebaseGame.callNextNumberAndContinue(gId)
-                  .then(cont => { if (!cont) { isTimerActiveRef.current = false; isCallInProgressRef.current = false; } })
-                  .catch(() => { isTimerActiveRef.current = false; isCallInProgressRef.current = false; });
+                  .then(cont => {
+                    if (!cont) { isTimerActiveRef.current = false; isCallInProgressRef.current = false; }
+                  })
+                  .catch(() => {
+                    // FIX: Stall recovery error — retry instead of permanent stop
+                    isCallInProgressRef.current = false;
+                    isProcessingCompletion.current = false;
+                    retryCountRef.current++;
+                    if (retryCountRef.current < MAX_RETRIES && isTimerActiveRef.current) {
+                      console.warn(`🔄 [HostControls] Stall recovery retry ${retryCountRef.current}/${MAX_RETRIES}`);
+                      // Re-trigger after a delay
+                      setTimeout(() => {
+                        if (isTimerActiveRef.current) handleAudioComplete();
+                      }, 2000);
+                    } else {
+                      console.error('❌ [HostControls] Max retries exhausted — stopping timer');
+                      isTimerActiveRef.current = false;
+                    }
+                  });
               }, AUDIO_STALL_TIMEOUT);
             }
           })
           .catch(error => {
-            isTimerActiveRef.current = false;
+            // FIX: Retry on transient errors instead of permanently stopping
             isCallInProgressRef.current = false;
+            isProcessingCompletion.current = false;
             if (audioTimeoutRef.current) {
               clearTimeout(audioTimeoutRef.current);
               audioTimeoutRef.current = null;
             }
+            retryCountRef.current++;
+            if (retryCountRef.current < MAX_RETRIES && isTimerActiveRef.current) {
+              console.warn(`⚠️ [HostControls] callNextNumberAndContinue error (retry ${retryCountRef.current}/${MAX_RETRIES}): ${error.message}`);
+              // Retry after a delay
+              setTimeout(() => {
+                if (isTimerActiveRef.current) handleAudioComplete();
+              }, 2000);
+            } else {
+              console.error('❌ [HostControls] Max retries exhausted after errors — stopping timer');
+              isTimerActiveRef.current = false;
+              stopTimer();
+            }
           });
       }
     }, Math.max(300, callInterval * 1000)); // Use whichever is larger: 300ms or call interval
-  }, [gameData, isAudioReady, callInterval, stopTimer]); // Removed resourceManager from dependencies
+  }, [isAudioReady, callInterval, stopTimer]); // FIX: Removed gameData dependency — using gameDataRef instead
 
 
   // Audio coordination
@@ -616,13 +690,13 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
 
       stopTimer();
 
-      // Set pendingGameEnd instead of gameOver directly
-      // This allows AudioManager to play game-over audio before the page switch
+      // KILL SWITCH: End the game immediately
       const gameRef = ref(database, `games/${gameData.gameId}`);
       await update(gameRef, {
         'gameState/isActive': false,
-        'gameState/pendingGameEnd': true,
-        'gameState/lastNumberCalled': true,
+        'gameState/gameOver': true,
+        'gameState/pendingGameEnd': false,
+        'gameEndedAt': new Date().toISOString(),
         'updatedAt': new Date().toISOString()
       });
 
@@ -670,23 +744,19 @@ export const HostControlsProvider: React.FC<HostControlsProviderProps> = ({
     }, 100);
   }, [gameData, visualCalledNumbers]);
 
-  // Handle when audio starts playing a number
+  // Handle when audio starts playing a number — update visual display immediately
   const handleAudioStarted = useCallback((number: number) => {
     setAudioAnnouncingNumber(number);
 
-    setTimeout(() => {
-      if (!isPrizeAudioPlaying) {
-        setVisualCalledNumbers(prev => {
-          const newNumbers = [...prev];
-          if (!newNumbers.includes(number)) {
-            newNumbers.push(number);
-          }
-          return newNumbers;
-        });
-      } else {
+    // FIX: Add to visual numbers IMMEDIATELY when audio starts (no delay)
+    setVisualCalledNumbers(prev => {
+      const newNumbers = [...prev];
+      if (!newNumbers.includes(number)) {
+        newNumbers.push(number);
       }
-    }, 500);
-  }, [isPrizeAudioPlaying]);
+      return newNumbers;
+    });
+  }, []);
 
   // ================== EFFECTS ==================
 
