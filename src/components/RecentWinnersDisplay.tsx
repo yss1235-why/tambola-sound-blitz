@@ -17,7 +17,7 @@ import {
 import { useGameData } from '@/providers/GameDataProvider';
 import { useTheme } from '@/providers/ThemeProvider';
 // NEW: Import shared ticket renderer utility
-import { renderTicket, resolveWinnerTickets } from '@/utils/ticketRenderer';
+import { renderTicket, resolveWinnerTickets, getSnapshotCalledNumbers } from '@/utils/ticketRenderer';
 
 interface RecentWinnersDisplayProps {
   hostMode?: boolean;
@@ -102,7 +102,7 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
     );
   }
 
-  const wonPrizes = Object.values(gameData.prizes).filter(p => p.won);
+  const wonPrizes = Object.values(gameData.prizes || {}).filter(p => p.won);
   const totalWinners = wonPrizes.reduce((total, prize) => total + (prize.winners?.length || 0), 0);
 
   // HOST MODE: Clean celebration view
@@ -359,7 +359,10 @@ export const RecentWinnersDisplay: React.FC<RecentWinnersDisplayProps> = ({
                                               )}
                                               {renderTicket({
                                                 ticket,
-                                                calledNumbers: gameData.gameState.calledNumbers || [],
+                                                calledNumbers: getSnapshotCalledNumbers(
+                                                  gameData.gameState.calledNumbers || [],
+                                                  prize.winningNumber
+                                                ),
                                                 showPlayerInfo: false,
                                                 patternHighlight: prize.id
                                               })}

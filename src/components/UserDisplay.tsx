@@ -57,7 +57,7 @@ export const UserDisplay: React.FC = () => {
   // CHANGED: Use visual called numbers instead of database
 
   const currentNumber = gameData?.gameState.currentNumber;
-  const prizes = gameData ? Object.values(gameData.prizes).sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
+  const prizes = gameData ? Object.values(gameData.prizes || {}).sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
   // NEW: Validate ticket ID format consistency
   const validateTicketFormat = React.useCallback(() => {
     const ticketIds = Object.keys(tickets);

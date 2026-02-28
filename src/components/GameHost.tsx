@@ -883,7 +883,7 @@ export const GameHost: React.FC<GameHostProps> = ({ user }) => {
               <HostDisplay onCreateNewGame={createNewGame} />
               <AudioManagerForHost
                 currentNumber={gameData.gameState.currentNumber}
-                prizes={Object.values(gameData.prizes)}
+                prizes={Object.values(gameData.prizes || {})}
                 forceEnable={true}
                 gameState={gameData.gameState}
                 gameId={gameData.gameId}

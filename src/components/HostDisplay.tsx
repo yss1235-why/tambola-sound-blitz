@@ -360,7 +360,7 @@ export const HostDisplay: React.FC<HostDisplayProps> = ({ onCreateNewGame }) => 
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {Object.values(gameData.prizes)
+          {Object.values(gameData.prizes || {})
             .sort((a, b) => (a.order || 0) - (b.order || 0))
             .map((prize) => {
               const isExpanded = expandedPrizes.has(prize.id);

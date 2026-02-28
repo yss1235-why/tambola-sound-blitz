@@ -77,10 +77,10 @@ export const UserLandingPage: React.FC<UserLandingPageProps> = ({
 
       let winnerCount = 0;
       let prizesWon = 0;
-      const totalPrizes = Object.keys(game.prizes).length;
+      const totalPrizes = Object.keys(game.prizes || {}).length;
 
       if (game.gameState.gameOver) {
-        const wonPrizes = Object.values(game.prizes).filter(p => p.won);
+        const wonPrizes = Object.values(game.prizes || {}).filter(p => p.won);
         prizesWon = wonPrizes.length;
         winnerCount = wonPrizes.reduce((total, prize) =>
           total + (prize.winners?.length || 0), 0

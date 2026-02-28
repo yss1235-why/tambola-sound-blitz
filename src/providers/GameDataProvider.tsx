@@ -197,7 +197,7 @@ export const usePrizeStats = () => {
       return { total: 0, won: 0, remaining: 0 };
     }
 
-    const prizes = Object.values(gameData.prizes);
+    const prizes = Object.values(gameData.prizes || {});
     const total = prizes.length;
     const won = prizes.filter(p => p.won).length;
     const remaining = total - won;
