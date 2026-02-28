@@ -125,6 +125,11 @@ class FirebaseGameService {
   async createGame(config: CreateGameConfig, hostId: string, ticketSetId: string, selectedPrizes: string[]): Promise<GameData> {
     try {
 
+      // Validate prizes are selected
+      if (!selectedPrizes || selectedPrizes.length === 0) {
+        throw new Error('At least one prize must be selected to create a game.');
+      }
+
       // STEP 1: Check for existing active games (non-atomic check first)
       const existingActiveGame = await this.getHostCurrentGame(hostId);
       if (existingActiveGame && !existingActiveGame.gameState.gameOver) {
